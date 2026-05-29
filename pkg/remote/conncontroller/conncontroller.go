@@ -67,8 +67,6 @@ const (
 	ConnHealthStatus_Stalled  = "stalled"
 )
 
-const DefaultConnectionTimeout = 60 * time.Second
-
 var globalLock = &sync.Mutex{}
 var clientControllerMap = make(map[remote.SSHOpts]*SSHConn)
 var activeConnCounter = &atomic.Int32{}
