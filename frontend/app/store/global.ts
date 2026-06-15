@@ -612,6 +612,26 @@ function subscribeToConnEvents() {
                 if (connStatus == null || isBlank(connStatus.connection)) {
                     return;
                 }
+                if (connStatus.connected) {
+                    // Auto-dismiss password prompts for this connection on successful connect
+                    const userInputModals = globalStore.get(modalsModel.activeUserInputModalsAtom);
+                    const modalEntry = userInputModals[connStatus.connection];
+                    if (modalEntry) {
+                        const promptType = modalEntry.props?.prompttype;
+                        const title = (modalEntry.props?.title ?? "").toLowerCase();
+                        // Use PromptType field if available, fall back to title string matching
+                        const isPasswordPrompt =
+                            promptType === "password" ||
+                            promptType === "passphrase" ||
+                            promptType === "keyboard-interactive" ||
+                            title.includes("password") ||
+                            title.includes("passphrase") ||
+                            title.includes("authentication");
+                        if (isPasswordPrompt) {
+                            modalsModel.dismissUserInputModal(connStatus.connection);
+                        }
+                    }
+                }
                 console.log("connstatus update", connStatus);
                 const curAtom = getConnStatusAtom(connStatus.connection);
                 globalStore.set(curAtom, connStatus);
