@@ -13,6 +13,7 @@ import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WaveEnv } from "@/app/waveenv/waveenv";
 import { atom } from "jotai";
 import { QuickTipsViewModel } from "../view/quicktipsview/quicktipsview";
+import { ThemeEditorViewModel } from "../view/themeeditor/themeeditor";
 import { WaveConfigViewModel } from "../view/waveconfig/waveconfig-model";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
 import { HelpViewModel } from "@/view/helpview/helpview";
@@ -34,6 +35,7 @@ BlockRegistry.set("launcher", LauncherViewModel);
 BlockRegistry.set("tsunami", TsunamiViewModel);
 BlockRegistry.set("aifilediff", AiFileDiffViewModel);
 BlockRegistry.set("waveconfig", WaveConfigViewModel);
+BlockRegistry.set("themeeditor", ThemeEditorViewModel);
 BlockRegistry.set("processviewer", ProcessViewerViewModel);
 
 function makeDefaultViewModel(viewType: string): ViewModel {

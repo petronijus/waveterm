@@ -25,6 +25,7 @@ import (
 
 const SettingsFile = "settings.json"
 const ConnectionsFile = "connections.json"
+const UIThemesFile = "uithemes.json"
 const ProfilesFile = "profiles.json"
 
 var configWriteLock sync.Mutex
@@ -925,6 +926,28 @@ func SetConnectionsConfigValue(connName string, toMerge waveobj.MetaMapType) err
 	}
 	m[connName] = connData
 	return WriteWaveHomeConfigFile(ConnectionsFile, m)
+}
+
+// SetUIThemeValue writes (or, when themeData is nil, deletes) a UI theme entry in
+// the user's uithemes.json. User entries merge over the built-in defaults, so this
+// is how the Themes editor persists custom themes and overrides of built-ins.
+func SetUIThemeValue(themeName string, themeData waveobj.MetaMapType) error {
+	if themeName == "" {
+		return fmt.Errorf("themeName cannot be empty")
+	}
+	m, cerrs := ReadWaveHomeConfigFile(UIThemesFile)
+	if len(cerrs) > 0 {
+		return fmt.Errorf("error reading config file: %v", cerrs[0])
+	}
+	if m == nil {
+		m = make(waveobj.MetaMapType)
+	}
+	if themeData == nil {
+		delete(m, themeName)
+	} else {
+		m[themeName] = themeData
+	}
+	return WriteWaveHomeConfigFile(UIThemesFile, m)
 }
 
 func MigratePresetsBackgrounds() {

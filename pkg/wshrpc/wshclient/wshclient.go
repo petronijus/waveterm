@@ -872,6 +872,12 @@ func SetSecretsCommand(w *wshutil.WshRpc, data map[string]*string, opts *wshrpc.
 	return err
 }
 
+// command "setuitheme", wshserver.SetUIThemeCommand
+func SetUIThemeCommand(w *wshutil.WshRpc, data wshrpc.UIThemeRequest, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "setuitheme", data, opts)
+	return err
+}
+
 // command "setvar", wshserver.SetVarCommand
 func SetVarCommand(w *wshutil.WshRpc, data wshrpc.CommandVarData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setvar", data, opts)

@@ -559,6 +559,10 @@ func (ws *WshServer) SetConnectionsConfigCommand(ctx context.Context, data wshrp
 	return wconfig.SetConnectionsConfigValue(data.Host, data.MetaMapType)
 }
 
+func (ws *WshServer) SetUIThemeCommand(ctx context.Context, data wshrpc.UIThemeRequest) error {
+	return wconfig.SetUIThemeValue(data.ThemeName, data.MetaMapType)
+}
+
 func (ws *WshServer) GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error) {
 	watcher := wconfig.GetWatcher()
 	return watcher.GetFullConfig(), nil

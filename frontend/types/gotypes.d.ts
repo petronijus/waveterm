@@ -1777,6 +1777,12 @@ declare global {
         providerMetadata?: {[key: string]: any};
     };
 
+    // wshrpc.UIThemeRequest
+    type UIThemeRequest = {
+        themename: string;
+        metamaptype: MetaType;
+    };
+
     // wconfig.UIThemeType
     type UIThemeType = {
         "display:name": string;
