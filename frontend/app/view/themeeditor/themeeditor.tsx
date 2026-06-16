@@ -8,7 +8,7 @@ import { TabRpcClient } from "@/store/wshrpcutil";
 import { fireAndForget } from "@/util/util";
 import { atom, useAtomValue } from "jotai";
 import type { Atom } from "jotai";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { applyUITheme } from "../../uitheme";
 import "./themeeditor.scss";
 
@@ -118,6 +118,8 @@ function ThemeEditorView() {
     const activeTheme = uiThemes[activeName];
     const [draft, setDraft] = useState<UIThemeType | null>(activeTheme ?? null);
     const [dirty, setDirty] = useState(false);
+    const [naming, setNaming] = useState(false);
+    const [newName, setNewName] = useState("");
 
     // When the active theme (or its saved config) changes and we have no pending
     // edits, sync the draft from config so the editor follows the selection.
@@ -126,6 +128,20 @@ function ThemeEditorView() {
             setDraft(activeTheme ?? null);
         }
     }, [activeName, activeTheme]);
+
+    // Revert any unsaved live-preview edits when the panel is closed, so a
+    // half-finished theme doesn't stick on the app. Refs keep the cleanup current.
+    const dirtyRef = useRef(dirty);
+    const savedRef = useRef(activeTheme);
+    dirtyRef.current = dirty;
+    savedRef.current = activeTheme;
+    useEffect(() => {
+        return () => {
+            if (dirtyRef.current) {
+                applyUITheme(savedRef.current ?? null);
+            }
+        };
+    }, []);
 
     const updateField = (key: keyof UIThemeType, value: string) => {
         const next = { ...(draft as UIThemeType), [key]: value };
@@ -146,10 +162,14 @@ function ThemeEditorView() {
         setDirty(false);
     };
 
-    const saveAsNew = () => {
-        if (draft == null) return;
-        const name = window.prompt("New theme name:", (draft["display:name"] ?? activeName) + " (custom)");
-        if (!name) return;
+    const startNaming = () => {
+        setNewName((draft?.["display:name"] ?? activeName) + " Custom");
+        setNaming(true);
+    };
+
+    const confirmSaveAsNew = () => {
+        const name = newName.trim();
+        if (draft == null || name === "") return;
         const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom";
         const newTheme: UIThemeType = {
             ...(draft as UIThemeType),
@@ -159,6 +179,7 @@ function ThemeEditorView() {
         saveTheme(id, newTheme);
         setActiveTheme(id);
         setDirty(false);
+        setNaming(false);
     };
 
     return (
@@ -185,15 +206,40 @@ function ThemeEditorView() {
                 <div className="theme-editor-header">
                     <div className="theme-editor-title">{draft?.["display:name"] ?? activeName}</div>
                     <div className="theme-editor-actions">
-                        <button className="theme-btn" disabled={!dirty} onClick={revert}>
-                            Reset
-                        </button>
-                        <button className="theme-btn" disabled={!dirty} onClick={save}>
-                            Save
-                        </button>
-                        <button className="theme-btn primary" onClick={saveAsNew}>
-                            Save as New…
-                        </button>
+                        {naming ? (
+                            <>
+                                <input
+                                    type="text"
+                                    className="theme-name-input"
+                                    autoFocus
+                                    placeholder="Theme name"
+                                    value={newName}
+                                    onChange={(e) => setNewName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") confirmSaveAsNew();
+                                        if (e.key === "Escape") setNaming(false);
+                                    }}
+                                />
+                                <button className="theme-btn primary" onClick={confirmSaveAsNew}>
+                                    Create
+                                </button>
+                                <button className="theme-btn" onClick={() => setNaming(false)}>
+                                    Cancel
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button className="theme-btn" disabled={!dirty} onClick={revert}>
+                                    Reset
+                                </button>
+                                <button className="theme-btn" disabled={!dirty} onClick={save}>
+                                    Save
+                                </button>
+                                <button className="theme-btn primary" onClick={startNaming}>
+                                    Save as New…
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
                 {draft == null ? (

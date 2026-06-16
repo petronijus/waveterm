@@ -12,6 +12,11 @@ import { useEffect } from "react";
 
 const DefaultUITheme = "dracula";
 
+// Cache the last-applied (saved) theme so we can re-apply it synchronously on the
+// next launch, before the config arrives over the websocket — eliminates the
+// flash-of-default-theme (FOUC) when a non-default theme is selected.
+const CACHE_KEY = "waveterm:uitheme";
+
 // Variables we set at runtime so we can cleanly remove them when no theme is active.
 const MANAGED_VARS = [
     "--main-bg-color",
@@ -148,6 +153,28 @@ export const UIThemeUpdater = () => {
     const theme = getActiveUITheme(fullConfig);
     useEffect(() => {
         applyUITheme(theme);
+        // cache the saved theme for a synchronous re-apply on next launch (no FOUC)
+        try {
+            if (theme != null) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(theme));
+            }
+        } catch {
+            // ignore (private mode / quota)
+        }
     }, [theme]);
     return null;
 };
+
+// Synchronously apply the cached theme at module load — runs before React mounts
+// and before the config websocket arrives, so the window paints with the correct
+// theme instead of the bundled default.
+(function applyCachedThemeEarly() {
+    try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+            applyUITheme(JSON.parse(raw) as UIThemeType);
+        }
+    } catch {
+        // ignore
+    }
+})();

@@ -141,6 +141,16 @@
         }
     }
 
+    .theme-name-input {
+        font-size: 12px;
+        padding: 5px 8px;
+        color: var(--main-text-color);
+        background-color: var(--panel-bg-color);
+        border: 1px solid var(--form-element-border-color);
+        border-radius: 5px;
+        min-width: 160px;
+    }
+
     .theme-btn {
         font-size: 12px;
         padding: 5px 12px;

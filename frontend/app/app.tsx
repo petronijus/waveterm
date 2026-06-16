@@ -39,9 +39,9 @@ import "./app.scss";
 // tailwindsetup.css should come *after* app.scss (don't remove the newline above otherwise prettier will reorder these imports)
 import "../tailwindsetup.css";
 
-// custom-theme.css must be the *last* stylesheet import so its :root overrides
-// win over theme.scss and tailwindsetup.css (Dracula theming — feat/wave-theme)
-import "./custom-theme.css";
+// UI theming is applied at runtime by UIThemeUpdater (uitheme.ts), which sets the
+// :root CSS variables for the selected app:theme and caches it for a flash-free
+// re-apply on next launch. (Replaces the old static custom-theme.css overlay.)
 
 const dlog = debug("wave:app");
 const focusLog = debug("wave:focus");
