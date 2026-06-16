@@ -16,8 +16,8 @@
 			y2="11.5059"
 			gradientUnits="userSpaceOnUse"
 		>
-			<stop offset="0.1418" stop-color="#1F4D22" />
-			<stop offset="0.8656" stop-color="#418D31" />
+			<stop offset="0.1418" stop-color="#3b2a66" />
+			<stop offset="0.8656" stop-color="#8a64d0" />
 		</linearGradient>
 		<linearGradient
 			id="paint1_linear_1073_4777"
@@ -27,8 +27,8 @@
 			y2="22.0719"
 			gradientUnits="userSpaceOnUse"
 		>
-			<stop offset="0.2223" stop-color="#418D31" />
-			<stop offset="0.7733" stop-color="#58C142" />
+			<stop offset="0.2223" stop-color="#8a64d0" />
+			<stop offset="0.7733" stop-color="#bd93f9" />
 		</linearGradient>
 	</defs>
 </svg>
