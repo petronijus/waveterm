@@ -1027,6 +1027,31 @@ export class TermViewModel implements ViewModel {
             checked: curThemeName == null,
             click: () => this.setTerminalTheme(null),
         });
+
+        // App-wide UI theme submenu (app:theme global setting), parallel to the
+        // terminal theme submenu above. Selecting one re-themes the whole UI live.
+        const uiThemes = fullConfig?.uithemes ?? {};
+        const uiThemeKeys = Object.keys(uiThemes).sort(
+            (a, b) => (uiThemes[a]["display:order"] ?? 0) - (uiThemes[b]["display:order"] ?? 0)
+        );
+        const curUITheme = globalStore.get(getSettingsKeyAtom("app:theme")) ?? "dracula";
+        const setUITheme = (name: string) => {
+            RpcApi.SetConfigCommand(TabRpcClient, { "app:theme": name } as SettingsType);
+        };
+        const uiThemeSubMenu: ContextMenuItem[] = uiThemeKeys.map((name) => ({
+            label: uiThemes[name]["display:name"] ?? name,
+            type: "checkbox",
+            checked: curUITheme == name,
+            click: () => setUITheme(name),
+        }));
+        uiThemeSubMenu.push({ type: "separator" });
+        uiThemeSubMenu.push({
+            label: "Edit Themes…",
+            click: () => {
+                createBlock({ meta: { view: "themeeditor" } });
+            },
+        });
+
         const transparencySubMenu: ContextMenuItem[] = [];
         transparencySubMenu.push({
             label: "Default",
@@ -1174,8 +1199,12 @@ export class TermViewModel implements ViewModel {
             },
         ];
         fullMenu.push({
-            label: "Themes",
+            label: "Terminal Theme",
             submenu: submenu,
+        });
+        fullMenu.push({
+            label: "UI Theme",
+            submenu: uiThemeSubMenu,
         });
         fullMenu.push({
             label: "Font Size",

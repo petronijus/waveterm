@@ -7,6 +7,7 @@ package wconfig
 
 const (
 	ConfigKey_AppClear                       = "app:*"
+	ConfigKey_AppTheme                       = "app:theme"
 	ConfigKey_AppGlobalHotkey                = "app:globalhotkey"
 	ConfigKey_AppDismissArchitectureWarning  = "app:dismissarchitecturewarning"
 	ConfigKey_AppDefaultNewBlock             = "app:defaultnewblock"

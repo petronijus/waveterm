@@ -1024,6 +1024,7 @@ declare global {
         presets: {[key: string]: MetaType};
         backgrounds: {[key: string]: BackgroundConfigType};
         termthemes: {[key: string]: TermThemeType};
+        uithemes: {[key: string]: UIThemeType};
         connections: {[key: string]: ConnKeywords};
         bookmarks: {[key: string]: WebBookmark};
         waveai: {[key: string]: AIModeConfigType};
@@ -1384,6 +1385,7 @@ declare global {
     // wconfig.SettingsType
     type SettingsType = {
         "app:*"?: boolean;
+        "app:theme"?: string;
         "app:globalhotkey"?: string;
         "app:dismissarchitecturewarning"?: boolean;
         "app:defaultnewblock"?: string;
@@ -1773,6 +1775,25 @@ declare global {
         id?: string;
         data?: any;
         providerMetadata?: {[key: string]: any};
+    };
+
+    // wconfig.UIThemeType
+    type UIThemeType = {
+        "display:name": string;
+        "display:order": number;
+        background: string;
+        foreground: string;
+        secondaryText: string;
+        greyText: string;
+        accent: string;
+        border: string;
+        panelBg: string;
+        highlightBg: string;
+        modalBg: string;
+        link: string;
+        error: string;
+        warning: string;
+        success: string;
     };
 
     // userinput.UserInputRequest

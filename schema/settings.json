@@ -8,6 +8,9 @@
         "app:*": {
           "type": "boolean"
         },
+        "app:theme": {
+          "type": "string"
+        },
         "app:globalhotkey": {
           "type": "string"
         },

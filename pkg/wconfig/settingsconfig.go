@@ -58,6 +58,7 @@ type AiSettingsType struct {
 
 type SettingsType struct {
 	AppClear                      bool   `json:"app:*,omitempty"`
+	AppTheme                      string `json:"app:theme,omitempty"`
 	AppGlobalHotkey               string `json:"app:globalhotkey,omitempty"`
 	AppDismissArchitectureWarning bool   `json:"app:dismissarchitecturewarning,omitempty"`
 	AppDefaultNewBlock            string `json:"app:defaultnewblock,omitempty"`
@@ -365,6 +366,28 @@ type TermThemeType struct {
 	Cursor              string  `json:"cursor"`
 }
 
+// UIThemeType is an app-wide UI color scheme (distinct from TermThemeType which
+// only colors the terminal). Each field is a solid CSS color; the frontend
+// applier maps these to the :root CSS variables and derives the alpha-blended
+// variants (block bg, hover, highlight, accent bg, ...) at runtime.
+type UIThemeType struct {
+	DisplayName    string  `json:"display:name"`
+	DisplayOrder   float64 `json:"display:order"`
+	Background     string  `json:"background"`     // --main-bg-color (+ derived block bg)
+	Foreground     string  `json:"foreground"`     // --main-text-color
+	SecondaryText  string  `json:"secondaryText"`  // --secondary-text-color
+	GreyText       string  `json:"greyText"`       // --grey-text-color
+	Accent         string  `json:"accent"`         // --accent-color (+ tab/button/form accents)
+	Border         string  `json:"border"`         // base for --border-color / --hover-bg-color (alpha-blended)
+	PanelBg        string  `json:"panelBg"`        // base for --panel-bg-color
+	HighlightBg    string  `json:"highlightBg"`    // base for --highlight-bg-color (defaults to accent)
+	ModalBg        string  `json:"modalBg"`        // --modal-bg-color
+	Link           string  `json:"link"`           // --link-color
+	Error          string  `json:"error"`          // --error-color
+	Warning        string  `json:"warning"`        // --warning-color
+	Success        string  `json:"success"`        // --success-color
+}
+
 type FullConfigType struct {
 	Settings       SettingsType                    `json:"settings" merge:"meta"`
 	MimeTypes      map[string]MimeTypeConfigType   `json:"mimetypes"`
@@ -373,6 +396,7 @@ type FullConfigType struct {
 	Presets        map[string]waveobj.MetaMapType  `json:"presets"`
 	Backgrounds    map[string]BackgroundConfigType `json:"backgrounds"`
 	TermThemes     map[string]TermThemeType        `json:"termthemes"`
+	UIThemes       map[string]UIThemeType          `json:"uithemes"`
 	Connections    map[string]ConnKeywords         `json:"connections"`
 	Bookmarks      map[string]WebBookmark          `json:"bookmarks"`
 	WaveAIModes    map[string]AIModeConfigType     `json:"waveai"`
