@@ -38,6 +38,10 @@ import "./app.scss";
 // tailwindsetup.css should come *after* app.scss (don't remove the newline above otherwise prettier will reorder these imports)
 import "../tailwindsetup.css";
 
+// custom-theme.css must be the *last* stylesheet import so its :root overrides
+// win over theme.scss and tailwindsetup.css (Dracula theming — feat/wave-theme)
+import "./custom-theme.css";
+
 const dlog = debug("wave:app");
 const focusLog = debug("wave:focus");
 
