@@ -6,6 +6,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { ThemeEditorView } from "@/app/view/themeeditor/themeeditor";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
@@ -94,6 +95,14 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             path: "backgrounds.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/tab-backgrounds",
+            hasJsonView: true,
+        },
+        {
+            name: "Themes",
+            path: "uithemes.json",
+            language: "json",
+            description: "App UI color themes",
+            visualComponent: ThemeEditorView,
             hasJsonView: true,
         },
         {

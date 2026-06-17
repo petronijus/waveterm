@@ -101,7 +101,9 @@ function ThemeSwatches({ theme }: { theme: UIThemeType }) {
     );
 }
 
-function ThemeEditorView() {
+// Self-contained editor UI; ignores props so it can render both as a block view
+// (themeeditor) and as the "Themes" tab inside Wave Config settings.
+export function ThemeEditorView() {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const uiThemes = (fullConfig?.uithemes ?? {}) as { [k: string]: UIThemeType };
     const activeName = (fullConfig?.settings?.["app:theme"] as string) || DefaultUITheme;

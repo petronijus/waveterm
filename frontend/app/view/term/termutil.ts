@@ -4,6 +4,7 @@
 export const DefaultTermTheme = "default-dark";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getActiveUITheme } from "@/app/uitheme";
 import * as TermTypes from "@xterm/xterm";
 import base64 from "base64-js";
 import { colord } from "colord";
@@ -40,6 +41,22 @@ export function computeTheme(
         theme = fullConfig?.termthemes?.[DefaultTermTheme] || ({} as any);
     }
     const themeCopy = { ...theme };
+    // Overlay the active UI theme's base colors so the terminal follows the app
+    // theme (like VS Code): the UI theme drives foreground/background/cursor while
+    // the terminal theme keeps providing the ANSI 16-color palette for command output.
+    const uiTheme = getActiveUITheme(fullConfig);
+    if (uiTheme != null) {
+        if (uiTheme.foreground) {
+            themeCopy.foreground = uiTheme.foreground;
+            themeCopy.cmdtext = uiTheme.foreground;
+        }
+        if (uiTheme.background) {
+            themeCopy.background = uiTheme.background;
+        }
+        if (uiTheme.accent) {
+            themeCopy.cursor = uiTheme.accent;
+        }
+    }
     if (termTransparency != null && termTransparency > 0) {
         if (themeCopy.background) {
             themeCopy.background = applyTransparencyToColor(themeCopy.background, termTransparency);
