@@ -6,10 +6,10 @@ import { atoms } from "@/store/global";
 import { RpcApi } from "@/store/wshclientapi";
 import { TabRpcClient } from "@/store/wshrpcutil";
 import { fireAndForget } from "@/util/util";
-import { atom, useAtomValue } from "jotai";
+import { atom, useAtomValue, useSetAtom } from "jotai";
 import type { Atom } from "jotai";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { applyUITheme } from "../../uitheme";
+import { useEffect, useMemo, useState } from "react";
+import { uiThemeOverrideAtom } from "../../uitheme";
 import "./themeeditor.scss";
 
 const DefaultUITheme = "dracula";
@@ -131,17 +131,15 @@ export function ThemeEditorView() {
         }
     }, [activeName, activeTheme]);
 
-    // Revert any unsaved live-preview edits when the panel is closed, so a
-    // half-finished theme doesn't stick on the app. Refs keep the cleanup current.
-    const dirtyRef = useRef(dirty);
-    const savedRef = useRef(activeTheme);
-    dirtyRef.current = dirty;
-    savedRef.current = activeTheme;
+    // Live preview drives the override atom: UIThemeUpdater (CSS vars) and the
+    // terminal (computeTheme) both read it, so edits preview everywhere instantly.
+    const setOverride = useSetAtom(uiThemeOverrideAtom);
+
+    // Clear any unsaved live-preview override when the panel is closed, so a
+    // half-finished theme doesn't stick on the app.
     useEffect(() => {
         return () => {
-            if (dirtyRef.current) {
-                applyUITheme(savedRef.current ?? null);
-            }
+            setOverride(null);
         };
     }, []);
 
@@ -149,19 +147,26 @@ export function ThemeEditorView() {
         const next = { ...(draft as UIThemeType), [key]: value };
         setDraft(next);
         setDirty(true);
-        applyUITheme(next); // live preview
+        setOverride(next); // live preview (UI + terminal)
     };
 
     const revert = () => {
         setDraft(activeTheme ?? null);
         setDirty(false);
-        applyUITheme(activeTheme ?? null);
+        setOverride(null);
     };
 
     const save = () => {
         if (draft == null) return;
         saveTheme(activeName, draft);
         setDirty(false);
+        setOverride(null);
+    };
+
+    const selectTheme = (name: string) => {
+        setOverride(null);
+        setDirty(false);
+        setActiveTheme(name);
     };
 
     const startNaming = () => {
@@ -181,6 +186,7 @@ export function ThemeEditorView() {
         saveTheme(id, newTheme);
         setActiveTheme(id);
         setDirty(false);
+        setOverride(null);
         setNaming(false);
     };
 
@@ -195,7 +201,7 @@ export function ThemeEditorView() {
                             key={name}
                             className={"theme-card" + (name === activeName ? " active" : "")}
                             style={{ backgroundColor: t.background, color: t.foreground }}
-                            onClick={() => setActiveTheme(name)}
+                            onClick={() => selectTheme(name)}
                         >
                             <div className="theme-card-name">{t["display:name"] ?? name}</div>
                             <ThemeSwatches theme={t} />

@@ -40,6 +40,7 @@ import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { getBlockingCommand } from "./shellblocking";
+import { uiThemeOverrideAtom } from "@/app/uitheme";
 import { computeTheme, DefaultTermTheme, isLikelyOnSameHost, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
@@ -250,7 +251,8 @@ export class TermViewModel implements ViewModel {
             const fullConfig = get(atoms.fullConfigAtom);
             const themeName = get(this.termThemeNameAtom);
             const termTransparency = get(this.termTransparencyAtom);
-            const [_, bgcolor] = computeTheme(fullConfig, themeName, termTransparency);
+            const uiOverride = get(uiThemeOverrideAtom);
+            const [_, bgcolor] = computeTheme(fullConfig, themeName, termTransparency, uiOverride);
             if (bgcolor != null) {
                 return { bg: bgcolor };
             }

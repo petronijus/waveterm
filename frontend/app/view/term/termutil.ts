@@ -34,7 +34,8 @@ function applyTransparencyToColor(hexColor: string, transparency: number): strin
 export function computeTheme(
     fullConfig: FullConfigType,
     themeName: string,
-    termTransparency: number
+    termTransparency: number,
+    uiThemeOverride?: UIThemeType | null
 ): [TermThemeType, string] {
     let theme: TermThemeType = fullConfig?.termthemes?.[themeName];
     if (theme == null) {
@@ -42,9 +43,11 @@ export function computeTheme(
     }
     const themeCopy = { ...theme };
     // Overlay the active UI theme's base colors so the terminal follows the app
-    // theme (like VS Code): the UI theme drives foreground/background/cursor while
-    // the terminal theme keeps providing the ANSI 16-color palette for command output.
-    const uiTheme = getActiveUITheme(fullConfig);
+    // theme (like VS Code): the UI theme drives foreground/background/cursor/
+    // selection while the terminal theme keeps providing the ANSI 16-color palette
+    // for command output. uiThemeOverride (the editor's live draft) wins so edits
+    // preview on the terminal before saving.
+    const uiTheme = uiThemeOverride ?? getActiveUITheme(fullConfig);
     if (uiTheme != null) {
         if (uiTheme.foreground) {
             themeCopy.foreground = uiTheme.foreground;
@@ -55,6 +58,9 @@ export function computeTheme(
         }
         if (uiTheme.accent) {
             themeCopy.cursor = uiTheme.accent;
+        }
+        if (uiTheme.highlightBg) {
+            themeCopy.selectionBackground = uiTheme.highlightBg;
         }
     }
     if (termTransparency != null && termTransparency > 0) {

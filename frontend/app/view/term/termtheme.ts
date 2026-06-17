@@ -4,6 +4,7 @@
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { computeTheme } from "@/app/view/term/termutil";
 import { TermWrap } from "@/app/view/term/termwrap";
+import { uiThemeOverrideAtom } from "@/app/uitheme";
 import { atoms } from "@/store/global";
 import { useAtomValue } from "jotai";
 import { useEffect } from "react";
@@ -18,7 +19,8 @@ const TermThemeUpdater = ({ blockId, model, termRef }: TermThemeProps) => {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const blockTermTheme = useAtomValue(model.termThemeNameAtom);
     const transparency = useAtomValue(model.termTransparencyAtom);
-    const [theme, _] = computeTheme(fullConfig, blockTermTheme, transparency);
+    const uiOverride = useAtomValue(uiThemeOverrideAtom);
+    const [theme, _] = computeTheme(fullConfig, blockTermTheme, transparency, uiOverride);
     useEffect(() => {
         if (termRef.current?.terminal) {
             termRef.current.terminal.options.theme = theme;

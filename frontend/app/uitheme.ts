@@ -7,10 +7,16 @@
 // This is the UI-color analog of TermThemeUpdater (which only themes xterm).
 
 import { atoms } from "@/store/global";
-import { useAtomValue } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { useEffect } from "react";
 
 const DefaultUITheme = "dracula";
+
+// Live-preview override: while the theme editor is open and editing, it sets this
+// to the draft theme. Everything that themes off the active UI theme (the CSS-var
+// applier AND the terminal via computeTheme) reads the override first, so edits
+// preview instantly across the whole app — including xterm — before saving.
+export const uiThemeOverrideAtom = atom(null as UIThemeType | null);
 
 // Cache the last-applied (saved) theme so we can re-apply it synchronously on the
 // next launch, before the config arrives over the websocket — eliminates the
@@ -150,13 +156,16 @@ export function getActiveUITheme(fullConfig: FullConfigType): UIThemeType | null
 // UIThemeUpdater: side-effect-only component, mount once near the app root.
 export const UIThemeUpdater = () => {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
-    const theme = getActiveUITheme(fullConfig);
+    const override = useAtomValue(uiThemeOverrideAtom);
+    const saved = getActiveUITheme(fullConfig);
+    const theme = override ?? saved;
     useEffect(() => {
         applyUITheme(theme);
-        // cache the saved theme for a synchronous re-apply on next launch (no FOUC)
+        // cache only the *saved* theme (not a live-edit preview) for a synchronous
+        // re-apply on next launch (no FOUC)
         try {
-            if (theme != null) {
-                localStorage.setItem(CACHE_KEY, JSON.stringify(theme));
+            if (override == null && saved != null) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(saved));
             }
         } catch {
             // ignore (private mode / quota)
