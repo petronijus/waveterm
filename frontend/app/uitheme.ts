@@ -58,6 +58,10 @@ const MANAGED_VARS = [
     "--keybinding-bg-color",
     "--keybinding-border-color",
     "--scrollbar-thumb-color",
+    "--button-grey-bg",
+    "--button-grey-hover-bg",
+    "--button-grey-border-color",
+    "--button-grey-outlined-color",
     // tailwind token set (frontend/tailwindsetup.css) — a parallel palette used by
     // many tailwind-classed components (widget bar, launcher, …); must be themed too
     "--color-background",
@@ -206,6 +210,13 @@ export function applyUITheme(theme: UIThemeType | null) {
     set("--keybinding-bg-color", withAlpha(border, 0.1));
     set("--keybinding-border-color", withAlpha(border, 0.18));
     set("--scrollbar-thumb-color", withAlpha(border, 0.15));
+
+    // grey/ghost buttons (e.g. the tab close ×) were white-alpha based → invisible
+    // on light themes. Drive them from the theme foreground/border instead.
+    set("--button-grey-bg", withAlpha(border, 0.06));
+    set("--button-grey-hover-bg", withAlpha(border, 0.12));
+    set("--button-grey-border-color", withAlpha(border, 0.12));
+    set("--button-grey-outlined-color", withAlpha(theme.foreground, 0.6));
 
     set("--modal-bg-color", theme.modalBg ?? bg);
     set("--error-color", theme.error);
