@@ -11,7 +11,7 @@ const GetMoreButton = memo(({ variant, showClose = true }: { variant: "yellow" |
     const hoverBg = isYellow ? "hover:bg-yellow-700/60" : "hover:bg-red-700/60";
     const borderColor = isYellow ? "border-yellow-700/50" : "border-red-700/50";
     const textColor = isYellow ? "text-yellow-200" : "text-red-200";
-    const iconColor = isYellow ? "text-yellow-400" : "text-red-400";
+    const iconColor = isYellow ? "text-yellow-400" : "text-error";
     const iconHoverBg =
         showClose && isYellow
             ? "hover:has-[.close:hover]:bg-yellow-900/30"
@@ -123,11 +123,11 @@ const AIRateLimitStripComponent = memo(() => {
         return (
             <div>
                 <div className="bg-red-900/30 border-b border-red-700/50 px-2 py-1.5 flex items-center gap-2 text-[11px] text-red-200">
-                    <i className="fa fa-check text-red-400"></i>
+                    <i className="fa fa-check text-error"></i>
                     <span>
                         {totalLimit}/{totalLimit} Reqs
                     </span>
-                    <span className="text-red-400">•</span>
+                    <span className="text-error">•</span>
                     <span className="font-medium">Limit Reached</span>
                     <div className="flex-1"></div>
                     <span className="text-red-300/80">Resets in {timeRemaining}</span>
