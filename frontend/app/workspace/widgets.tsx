@@ -210,7 +210,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
                                 const appMeta = app.manifest?.appmeta;
                                 const displayName = app.appid.replace(/^local\//, "");
                                 const icon = appMeta?.icon || "cube";
-                                const iconColor = appMeta?.iconcolor || "white";
+                                const iconColor = appMeta?.iconcolor || "var(--secondary-text-color)";
 
                                 return (
                                     <div

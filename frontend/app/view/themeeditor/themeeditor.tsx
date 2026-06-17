@@ -14,20 +14,37 @@ import "./themeeditor.scss";
 
 const DefaultUITheme = "dracula";
 
-// Editable color fields (UIThemeType keys) with display labels, in editor order.
-const FIELDS: { key: keyof UIThemeType; label: string }[] = [
-    { key: "background", label: "Background" },
-    { key: "foreground", label: "Foreground" },
-    { key: "accent", label: "Accent" },
-    { key: "secondaryText", label: "Secondary Text" },
-    { key: "greyText", label: "Muted Text" },
-    { key: "border", label: "Border" },
-    { key: "modalBg", label: "Modal Background" },
-    { key: "highlightBg", label: "Highlight" },
-    { key: "link", label: "Link" },
-    { key: "error", label: "Error" },
-    { key: "warning", label: "Warning" },
-    { key: "success", label: "Success" },
+// Editable color fields grouped into sections: text colors vs element/surface
+// colors vs accent/status, so it's clear what each color drives.
+type FieldDef = { key: keyof UIThemeType; label: string };
+const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
+    {
+        title: "Text",
+        fields: [
+            { key: "foreground", label: "Text" },
+            { key: "secondaryText", label: "Secondary Text" },
+            { key: "greyText", label: "Muted Text" },
+            { key: "link", label: "Link" },
+        ],
+    },
+    {
+        title: "Surfaces",
+        fields: [
+            { key: "background", label: "Background" },
+            { key: "border", label: "Border" },
+            { key: "modalBg", label: "Modal Background" },
+        ],
+    },
+    {
+        title: "Accent & Status",
+        fields: [
+            { key: "accent", label: "Accent" },
+            { key: "highlightBg", label: "Highlight / Selection" },
+            { key: "error", label: "Error" },
+            { key: "warning", label: "Warning" },
+            { key: "success", label: "Success" },
+        ],
+    },
 ];
 
 class ThemeEditorViewModel implements ViewModel {
@@ -252,14 +269,21 @@ export function ThemeEditorView() {
                 {draft == null ? (
                     <div className="theme-editor-empty">No theme selected.</div>
                 ) : (
-                    <div className="theme-editor-fields">
-                        {FIELDS.map((f) => (
-                            <ColorRow
-                                key={f.key}
-                                label={f.label}
-                                value={draft[f.key] as string}
-                                onChange={(v) => updateField(f.key, v)}
-                            />
+                    <div className="theme-editor-groups">
+                        {FIELD_GROUPS.map((group) => (
+                            <div key={group.title} className="theme-editor-group">
+                                <div className="theme-editor-group-title">{group.title}</div>
+                                <div className="theme-editor-fields">
+                                    {group.fields.map((f) => (
+                                        <ColorRow
+                                            key={f.key}
+                                            label={f.label}
+                                            value={draft[f.key] as string}
+                                            onChange={(v) => updateField(f.key, v)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                     </div>
                 )}

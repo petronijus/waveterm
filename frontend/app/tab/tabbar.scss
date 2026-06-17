@@ -12,7 +12,7 @@
     -webkit-app-region: drag;
     height: max(33px, calc(33px * var(--zoomfactor-inv)));
     backdrop-filter: blur(20px);
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--tabbar-bg-color, rgba(0, 0, 0, 0.35));
     flex-shrink: 0;
 
     button {

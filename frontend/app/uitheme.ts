@@ -29,6 +29,7 @@ const MANAGED_VARS = [
     "--block-bg-solid-color",
     "--block-bg-color",
     "--panel-bg-color",
+    "--tabbar-bg-color",
     "--main-text-color",
     "--secondary-text-color",
     "--grey-text-color",
@@ -57,6 +58,26 @@ const MANAGED_VARS = [
     "--keybinding-bg-color",
     "--keybinding-border-color",
     "--scrollbar-thumb-color",
+    // tailwind token set (frontend/tailwindsetup.css) — a parallel palette used by
+    // many tailwind-classed components (widget bar, launcher, …); must be themed too
+    "--color-background",
+    "--color-foreground",
+    "--color-white",
+    "--color-primary",
+    "--color-muted-foreground",
+    "--color-secondary",
+    "--color-muted",
+    "--color-error",
+    "--color-warning",
+    "--color-success",
+    "--color-panel",
+    "--color-hover",
+    "--color-border",
+    "--color-modalbg",
+    "--color-accentbg",
+    "--color-hoverbg",
+    "--color-highlightbg",
+    "--color-accenthover",
 ];
 
 // Parse "#rgb" / "#rrggbb" (or pass through rgb()/rgba()) into an rgba() string.
@@ -155,6 +176,9 @@ export function applyUITheme(theme: UIThemeType | null) {
     set("--block-bg-solid-color", panel);
     set("--block-bg-color", withAlpha(panel, 0.85));
     set("--panel-bg-color", panel);
+    // tab bar: translucent elevated surface (was a hardcoded black overlay, which
+    // stayed dark on light themes)
+    set("--tabbar-bg-color", withAlpha(panel, 0.6));
 
     set("--main-text-color", theme.foreground);
     set("--secondary-text-color", theme.secondaryText);
@@ -187,6 +211,27 @@ export function applyUITheme(theme: UIThemeType | null) {
     set("--error-color", theme.error);
     set("--warning-color", theme.warning);
     set("--success-color", theme.success);
+
+    // Tailwind token palette (parallel to the --*-color vars above). Components
+    // styled with tailwind classes (text-secondary, bg-hoverbg, text-white, …) read
+    // these, so they must be themed too — otherwise e.g. the sidebar/widget-bar
+    // icons stay light-on-light in light themes.
+    set("--color-background", bg);
+    set("--color-foreground", theme.foreground);
+    set("--color-white", theme.foreground); // "white" is used as primary text; follow fg
+    set("--color-primary", theme.foreground);
+    set("--color-secondary", theme.secondaryText);
+    set("--color-muted-foreground", theme.secondaryText);
+    set("--color-muted", theme.greyText);
+    set("--color-error", theme.error);
+    set("--color-warning", theme.warning);
+    set("--color-success", theme.success);
+    set("--color-panel", withAlpha(panel, 0.5));
+    set("--color-modalbg", theme.modalBg ?? bg);
+    set("--color-border", withAlpha(border, 0.16));
+    set("--color-hover", withAlpha(border, 0.1));
+    set("--color-hoverbg", withAlpha(border, 0.2));
+    set("--color-highlightbg", withAlpha(theme.highlightBg ?? accent, 0.3));
 }
 
 // Resolve the active UI theme from the full config (settings key app:theme).
