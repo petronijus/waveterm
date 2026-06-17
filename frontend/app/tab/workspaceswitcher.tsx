@@ -228,14 +228,14 @@ const WorkspaceSwitcherItem = ({
                     className="menu-group-title-wrapper"
                     style={
                         {
-                            "--workspace-color": workspace.color,
+                            "--workspace-color": "var(--accent-color)",
                         } as CSSProperties
                     }
                 >
                     <ExpandableMenuItemLeftElement>
                         <i
                             className={clsx("left-icon", makeIconClass(workspace.icon, true))}
-                            style={{ color: workspace.color }}
+                            style={{ color: "var(--accent-color)" }}
                         />
                     </ExpandableMenuItemLeftElement>
                     <div className="label">{workspace.name}</div>
