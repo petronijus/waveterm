@@ -4,7 +4,7 @@
 export const DefaultTermTheme = "default-dark";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { getActiveUITheme } from "@/app/uitheme";
+import { elevate, getActiveUITheme } from "@/app/uitheme";
 import * as TermTypes from "@xterm/xterm";
 import base64 from "base64-js";
 import { colord } from "colord";
@@ -54,7 +54,9 @@ export function computeTheme(
             themeCopy.cmdtext = uiTheme.foreground;
         }
         if (uiTheme.background) {
-            themeCopy.background = uiTheme.background;
+            // the terminal is a panel — use the elevated panel surface, matching
+            // the other blocks (slightly lighter dark / darker light than app bg)
+            themeCopy.background = elevate(uiTheme.background);
         }
         if (uiTheme.accent) {
             themeCopy.cursor = uiTheme.accent;

@@ -118,7 +118,7 @@ function parseRgb(color: string): { r: number; g: number; b: number } | null {
 // Derive the panel/block background from the app background: keep them decoupled
 // so panels read as a distinct surface — a bit LIGHTER than a dark background and
 // a bit DARKER than a light one (subtle elevation, like VS Code editor vs sidebar).
-function elevate(color: string, amount = 0.06): string {
+export function elevate(color: string, amount = 0.06): string {
     const rgb = parseRgb(color);
     if (rgb == null) return color;
     const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
