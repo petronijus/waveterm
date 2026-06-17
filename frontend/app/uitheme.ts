@@ -62,6 +62,8 @@ const MANAGED_VARS = [
     "--button-grey-hover-bg",
     "--button-grey-border-color",
     "--button-grey-outlined-color",
+    "--sysinfo-cpu-color",
+    "--sysinfo-mem-color",
     // tailwind token set (frontend/tailwindsetup.css) — a parallel palette used by
     // many tailwind-classed components (widget bar, launcher, …); must be themed too
     "--color-background",
@@ -217,6 +219,10 @@ export function applyUITheme(theme: UIThemeType | null) {
     set("--button-grey-hover-bg", withAlpha(border, 0.12));
     set("--button-grey-border-color", withAlpha(border, 0.12));
     set("--button-grey-outlined-color", withAlpha(theme.foreground, 0.6));
+
+    // sysinfo (CPU/Mem) graph line colors — were fixed in theme.scss; theme them
+    set("--sysinfo-cpu-color", accent);
+    set("--sysinfo-mem-color", theme.link);
 
     set("--modal-bg-color", theme.modalBg ?? bg);
     set("--error-color", theme.error);
