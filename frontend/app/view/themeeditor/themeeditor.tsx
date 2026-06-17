@@ -22,7 +22,6 @@ const FIELDS: { key: keyof UIThemeType; label: string }[] = [
     { key: "secondaryText", label: "Secondary Text" },
     { key: "greyText", label: "Muted Text" },
     { key: "border", label: "Border" },
-    { key: "panelBg", label: "Panel Background" },
     { key: "modalBg", label: "Modal Background" },
     { key: "highlightBg", label: "Highlight" },
     { key: "link", label: "Link" },

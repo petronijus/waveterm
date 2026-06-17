@@ -89,6 +89,45 @@ function withAlpha(color: string, alpha: number): string {
     return color;
 }
 
+function parseRgb(color: string): { r: number; g: number; b: number } | null {
+    if (color == null) return null;
+    const c = color.trim();
+    if (c.startsWith("#")) {
+        const body = c.slice(1);
+        if (body.length === 3) {
+            return {
+                r: parseInt(body[0] + body[0], 16),
+                g: parseInt(body[1] + body[1], 16),
+                b: parseInt(body[2] + body[2], 16),
+            };
+        }
+        if (body.length === 6) {
+            return {
+                r: parseInt(body.slice(0, 2), 16),
+                g: parseInt(body.slice(2, 4), 16),
+                b: parseInt(body.slice(4, 6), 16),
+            };
+        }
+        return null;
+    }
+    const m = c.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+    return null;
+}
+
+// Derive the panel/block background from the app background: keep them decoupled
+// so panels read as a distinct surface — a bit LIGHTER than a dark background and
+// a bit DARKER than a light one (subtle elevation, like VS Code editor vs sidebar).
+function elevate(color: string, amount = 0.06): string {
+    const rgb = parseRgb(color);
+    if (rgb == null) return color;
+    const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+    const isDark = luminance < 0.5;
+    const target = isDark ? 255 : 0; // lighten dark themes, darken light themes
+    const mix = (ch: number) => Math.round(ch + (target - ch) * amount);
+    return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`;
+}
+
 export function applyUITheme(theme: UIThemeType | null) {
     const root = document.documentElement;
     if (theme == null) {
@@ -108,10 +147,14 @@ export function applyUITheme(theme: UIThemeType | null) {
     const border = theme.border;
     const bg = theme.background;
 
+    // Panels/blocks are decoupled from the app background: always derived a touch
+    // lighter (dark themes) or darker (light themes) so they read as a distinct
+    // surface and track the background automatically as it's edited.
+    const panel = elevate(bg);
     set("--main-bg-color", bg);
-    set("--block-bg-solid-color", bg);
-    set("--block-bg-color", withAlpha(bg, 0.62));
-    set("--panel-bg-color", withAlpha(theme.panelBg ?? bg, 0.7));
+    set("--block-bg-solid-color", panel);
+    set("--block-bg-color", withAlpha(panel, 0.85));
+    set("--panel-bg-color", panel);
 
     set("--main-text-color", theme.foreground);
     set("--secondary-text-color", theme.secondaryText);
