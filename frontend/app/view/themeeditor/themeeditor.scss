@@ -158,6 +158,28 @@
         }
     }
 
+    .theme-flags {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+
+        .theme-flag-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .theme-flag-label {
+                flex: 1 1 auto;
+                font-size: 12px;
+                padding: 4px 6px;
+                color: var(--main-text-color);
+                background-color: var(--panel-bg-color);
+                border: 1px solid var(--form-element-border-color);
+                border-radius: 4px;
+            }
+        }
+    }
+
     .theme-name-input {
         font-size: 12px;
         padding: 5px 8px;

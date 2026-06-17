@@ -82,6 +82,68 @@ function saveTheme(name: string, theme: UIThemeType) {
     );
 }
 
+function saveFlag(id: string, flag: TabFlagType | null) {
+    fireAndForget(() =>
+        RpcApi.SetFlagCommand(TabRpcClient, {
+            flagid: id,
+            metamaptype: (flag as any) ?? null,
+        })
+    );
+}
+
+// Finder-tags style flag manager: list of named, colored flags with inline label
+// + color editing, delete, and add. Tabs pick one of these via the tab menu.
+function FlagsEditor() {
+    const fullConfig = useAtomValue(atoms.fullConfigAtom);
+    const flags = (fullConfig?.flags ?? {}) as { [k: string]: TabFlagType };
+    const keys = Object.keys(flags).sort(
+        (a, b) => (flags[a]["display:order"] ?? 0) - (flags[b]["display:order"] ?? 0)
+    );
+    const addFlag = () => {
+        const order = keys.reduce((mx, k) => Math.max(mx, flags[k]["display:order"] ?? 0), 0) + 1;
+        let id = "flag-" + order;
+        while (flags[id] != null) id = id + "x";
+        saveFlag(id, { label: "New Flag", color: "#888888", "display:order": order });
+    };
+    const update = (id: string, patch: Partial<TabFlagType>) => {
+        saveFlag(id, { ...flags[id], ...patch });
+    };
+    return (
+        <div className="theme-editor-group">
+            <div className="theme-editor-group-title">Tab Flags</div>
+            <div className="theme-flags">
+                {keys.map((id) => {
+                    const f = flags[id];
+                    const hex = /^#[0-9a-fA-F]{6}$/.test(f.color ?? "") ? f.color : "#000000";
+                    return (
+                        <div key={id} className="theme-flag-row">
+                            <input
+                                type="color"
+                                className="theme-color-swatch"
+                                value={hex}
+                                onChange={(e) => update(id, { color: e.target.value })}
+                            />
+                            <input
+                                type="text"
+                                className="theme-flag-label"
+                                value={f.label ?? ""}
+                                placeholder="Label"
+                                onChange={(e) => update(id, { label: e.target.value })}
+                            />
+                            <button className="theme-btn" title="Delete flag" onClick={() => saveFlag(id, null)}>
+                                <i className="fa fa-solid fa-trash" />
+                            </button>
+                        </div>
+                    );
+                })}
+                <button className="theme-btn" onClick={addFlag}>
+                    <i className="fa fa-solid fa-plus" /> Add Flag
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // A small color row: native swatch + hex text input. Editing fires onChange live.
 function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
     const hex = /^#[0-9a-fA-F]{6}$/.test(value ?? "") ? value : "#000000";
@@ -285,6 +347,7 @@ export function ThemeEditorView() {
                                 </div>
                             </div>
                         ))}
+                        <FlagsEditor />
                     </div>
                 )}
             </div>

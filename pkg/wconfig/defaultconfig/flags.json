@@ -1,0 +1,6 @@
+{
+    "red": { "label": "Red", "color": "#FF453A", "display:order": 1 },
+    "yellow": { "label": "Yellow", "color": "#FFD60A", "display:order": 2 },
+    "green": { "label": "Green", "color": "#58C142", "display:order": 3 },
+    "blue": { "label": "Blue", "color": "#429DFF", "display:order": 4 }
+}

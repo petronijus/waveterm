@@ -5,6 +5,7 @@ import backgroundsJson from "../../../pkg/wconfig/defaultconfig/backgrounds.json
 import mimetypesJson from "../../../pkg/wconfig/defaultconfig/mimetypes.json";
 import presetsJson from "../../../pkg/wconfig/defaultconfig/presets.json";
 import settingsJson from "../../../pkg/wconfig/defaultconfig/settings.json";
+import flagsJson from "../../../pkg/wconfig/defaultconfig/flags.json";
 import termthemesJson from "../../../pkg/wconfig/defaultconfig/termthemes.json";
 import uithemesJson from "../../../pkg/wconfig/defaultconfig/uithemes.json";
 import waveaiJson from "../../../pkg/wconfig/defaultconfig/waveai.json";
@@ -18,9 +19,12 @@ export const DefaultFullConfig: FullConfigType = {
     presets: presetsJson as unknown as { [key: string]: MetaType },
     termthemes: termthemesJson as unknown as { [key: string]: TermThemeType },
     uithemes: uithemesJson as unknown as { [key: string]: UIThemeType },
+    flags: flagsJson as unknown as { [key: string]: TabFlagType },
     connections: {},
     bookmarks: {},
     waveai: waveaiJson as unknown as { [key: string]: AIModeConfigType },
     backgrounds: backgroundsJson as { [key: string]: BackgroundConfigType },
     configerrors: [],
+    version: "",
+    buildtime: "",
 };

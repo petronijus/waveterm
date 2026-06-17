@@ -92,6 +92,7 @@ type MetaTSType struct {
 	SysinfoType string `json:"sysinfo:type,omitempty"`
 
 	// for tabs
+	TabFlag             string  `json:"tab:flag,omitempty"`
 	TabFlagColor        string  `json:"tab:flagcolor,omitempty"`
 	TabBackground       string  `json:"tab:background,omitempty"`
 	BgClear             bool    `json:"bg:*,omitempty"`

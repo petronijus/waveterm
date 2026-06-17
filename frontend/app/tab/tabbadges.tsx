@@ -22,7 +22,7 @@ export function TabBadges({ badges, flagColor, className }: TabBadgesProps) {
         if (!flagColor) {
             return base;
         }
-        const flagBadge: Badge = { icon: "flag", color: flagColor, priority: 0, badgeid: flagBadgeId };
+        const flagBadge: Badge = { icon: "circle", color: flagColor, priority: 0, badgeid: flagBadgeId };
         return sortBadgesForTab([...base, flagBadge]);
     }, [badges, flagColor, flagBadgeId]);
     if (!allBadges[0]) {

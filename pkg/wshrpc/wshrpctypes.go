@@ -77,6 +77,7 @@ type WshRpcInterface interface {
 	SetConfigCommand(ctx context.Context, data MetaSettingsType) error
 	SetConnectionsConfigCommand(ctx context.Context, data ConnConfigRequest) error
 	SetUIThemeCommand(ctx context.Context, data UIThemeRequest) error
+	SetFlagCommand(ctx context.Context, data FlagRequest) error
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
@@ -419,6 +420,13 @@ type ConnConfigRequest struct {
 // themes / overrides.
 type UIThemeRequest struct {
 	ThemeName   string              `json:"themename"`
+	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
+}
+
+// FlagRequest writes (or, when MetaMapType is nil, deletes) a named tab flag in
+// the user's flags.json — used by the Flags editor.
+type FlagRequest struct {
+	FlagId      string              `json:"flagid"`
 	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
 }
 

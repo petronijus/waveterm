@@ -848,6 +848,12 @@ func SetConnectionsConfigCommand(w *wshutil.WshRpc, data wshrpc.ConnConfigReques
 	return err
 }
 
+// command "setflag", wshserver.SetFlagCommand
+func SetFlagCommand(w *wshutil.WshRpc, data wshrpc.FlagRequest, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "setflag", data, opts)
+	return err
+}
+
 // command "setmeta", wshserver.SetMetaCommand
 func SetMetaCommand(w *wshutil.WshRpc, data wshrpc.CommandSetMetaData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setmeta", data, opts)

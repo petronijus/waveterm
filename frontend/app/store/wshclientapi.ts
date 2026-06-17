@@ -852,6 +852,12 @@ export class RpcApiType {
         return client.wshRpcCall("setconnectionsconfig", data, opts);
     }
 
+    // command "setflag" [call]
+    SetFlagCommand(client: WshClient, data: FlagRequest, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setflag", data, opts);
+        return client.wshRpcCall("setflag", data, opts);
+    }
+
     // command "setmeta" [call]
     SetMetaCommand(client: WshClient, data: CommandSetMetaData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setmeta", data, opts);

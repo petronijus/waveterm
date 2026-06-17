@@ -1002,6 +1002,12 @@ declare global {
         append?: boolean;
     };
 
+    // wshrpc.FlagRequest
+    type FlagRequest = {
+        flagid: string;
+        metamaptype: MetaType;
+    };
+
     // wshrpc.FocusedBlockData
     type FocusedBlockData = {
         blockid: string;
@@ -1025,6 +1031,7 @@ declare global {
         backgrounds: {[key: string]: BackgroundConfigType};
         termthemes: {[key: string]: TermThemeType};
         uithemes: {[key: string]: UIThemeType};
+        flags: {[key: string]: TabFlagType};
         connections: {[key: string]: ConnKeywords};
         bookmarks: {[key: string]: WebBookmark};
         waveai: {[key: string]: AIModeConfigType};
@@ -1163,6 +1170,7 @@ declare global {
         "graph:numpoints"?: number;
         "graph:metrics"?: string[];
         "sysinfo:type"?: string;
+        "tab:flag"?: string;
         "tab:flagcolor"?: string;
         "tab:background"?: string;
         "bg:*"?: boolean;
@@ -1692,6 +1700,13 @@ declare global {
         name: string;
         layoutstate: string;
         blockids: string[];
+    };
+
+    // wconfig.TabFlagType
+    type TabFlagType = {
+        label: string;
+        color: string;
+        "display:order": number;
     };
 
     // waveobj.TermSize

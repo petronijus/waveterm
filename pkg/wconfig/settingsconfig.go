@@ -26,6 +26,7 @@ import (
 const SettingsFile = "settings.json"
 const ConnectionsFile = "connections.json"
 const UIThemesFile = "uithemes.json"
+const FlagsFile = "flags.json"
 const ProfilesFile = "profiles.json"
 
 var configWriteLock sync.Mutex
@@ -389,6 +390,15 @@ type UIThemeType struct {
 	Success        string  `json:"success"`        // --success-color
 }
 
+// TabFlagType is a user-defined, named + colored tab flag (like macOS Finder tags).
+// Tabs store the chosen flag's color in meta "tab:flagcolor"; the label is only
+// used for picking/managing flags in the UI.
+type TabFlagType struct {
+	Label        string  `json:"label"`
+	Color        string  `json:"color"`
+	DisplayOrder float64 `json:"display:order"`
+}
+
 type FullConfigType struct {
 	Settings       SettingsType                    `json:"settings" merge:"meta"`
 	MimeTypes      map[string]MimeTypeConfigType   `json:"mimetypes"`
@@ -398,6 +408,7 @@ type FullConfigType struct {
 	Backgrounds    map[string]BackgroundConfigType `json:"backgrounds"`
 	TermThemes     map[string]TermThemeType        `json:"termthemes"`
 	UIThemes       map[string]UIThemeType          `json:"uithemes"`
+	Flags          map[string]TabFlagType          `json:"flags"`
 	Connections    map[string]ConnKeywords         `json:"connections"`
 	Bookmarks      map[string]WebBookmark          `json:"bookmarks"`
 	WaveAIModes    map[string]AIModeConfigType     `json:"waveai"`
@@ -948,6 +959,27 @@ func SetUIThemeValue(themeName string, themeData waveobj.MetaMapType) error {
 		m[themeName] = themeData
 	}
 	return WriteWaveHomeConfigFile(UIThemesFile, m)
+}
+
+// SetFlagValue writes (or, when flagData is nil, deletes) a named tab flag in the
+// user's flags.json. Used by the Flags editor to persist custom flags.
+func SetFlagValue(flagId string, flagData waveobj.MetaMapType) error {
+	if flagId == "" {
+		return fmt.Errorf("flagId cannot be empty")
+	}
+	m, cerrs := ReadWaveHomeConfigFile(FlagsFile)
+	if len(cerrs) > 0 {
+		return fmt.Errorf("error reading config file: %v", cerrs[0])
+	}
+	if m == nil {
+		m = make(waveobj.MetaMapType)
+	}
+	if flagData == nil {
+		delete(m, flagId)
+	} else {
+		m[flagId] = flagData
+	}
+	return WriteWaveHomeConfigFile(FlagsFile, m)
 }
 
 func MigratePresetsBackgrounds() {

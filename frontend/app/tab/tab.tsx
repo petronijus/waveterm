@@ -239,7 +239,12 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
 
-    const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
+    // Resolve the flag color: prefer the referenced flag id (so editing a flag's
+    // color in the Themes editor updates flagged tabs live), fall back to the
+    // legacy literal tab:flagcolor.
+    const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
+    const flagId = tabData?.meta?.["tab:flag"];
+    const rawFlagColor = (flagId ? fullConfig?.flags?.[flagId]?.color : null) ?? tabData?.meta?.["tab:flagcolor"];
     let flagColor: string | null = null;
     if (rawFlagColor) {
         try {

@@ -563,6 +563,10 @@ func (ws *WshServer) SetUIThemeCommand(ctx context.Context, data wshrpc.UIThemeR
 	return wconfig.SetUIThemeValue(data.ThemeName, data.MetaMapType)
 }
 
+func (ws *WshServer) SetFlagCommand(ctx context.Context, data wshrpc.FlagRequest) error {
+	return wconfig.SetFlagValue(data.FlagId, data.MetaMapType)
+}
+
 func (ws *WshServer) GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error) {
 	watcher := wconfig.GetWatcher()
 	return watcher.GetFullConfig(), nil
