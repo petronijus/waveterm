@@ -122,6 +122,7 @@ export class TermWrap {
     // before showing the spinner — avoids false positives.
     cmdActivityActiveSince: number = 0; // start of the current continuous-output stretch
     cmdActivityLastOutputTs: number = 0; // timestamp of the last output chunk
+    cmdActivitySuppressUntil: number = 0; // ignore output activity until this ts (after a resize)
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
@@ -622,6 +623,9 @@ export class TermWrap {
         const oldCols = this.terminal.cols;
         this.fitAddon.fit();
         if (oldRows !== this.terminal.rows || oldCols !== this.terminal.cols) {
+            // a real resize (e.g. tab-switch) makes the shell/TUI repaint; don't let
+            // that one-off output burst be mistaken for command activity
+            this.cmdActivitySuppressUntil = Date.now() + 1200;
             const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
             console.log(
                 "[termwrap] resize",

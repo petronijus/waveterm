@@ -170,7 +170,26 @@ function markCommandActivity(termWrap: TermWrap, blockId: string): void {
     if (!termWrap.cmdActivityRunning) {
         return;
     }
+    // Only badge tabs you're NOT looking at. On the active+focused tab you can see
+    // the terminal directly, so no spinner is needed there — and crucially, terminal
+    // resizes (the repaint bursts behind the tab-switch "blink") only happen to the
+    // visible tab, so never spinning the active tab removes the blink at the source.
+    if (isTermTabActive(termWrap)) {
+        if (termWrap.cmdActivityVisible) {
+            termWrap.cmdActivityVisible = false;
+            hideActivityBadge(termWrap, blockId);
+        }
+        if (termWrap.cmdActivityIdleTimeout != null) {
+            clearTimeout(termWrap.cmdActivityIdleTimeout);
+            termWrap.cmdActivityIdleTimeout = null;
+        }
+        termWrap.cmdActivityActiveSince = 0;
+        return;
+    }
     const now = Date.now();
+    if (now < termWrap.cmdActivitySuppressUntil) {
+        return; // output right after a resize is a repaint, not command activity
+    }
     if (now - termWrap.cmdActivityStartTs < CmdActivityDelayMs) {
         return; // quick command / first burst — don't flash
     }
@@ -184,22 +203,25 @@ function markCommandActivity(termWrap: TermWrap, blockId: string): void {
         termWrap.cmdActivityEverShown = true;
         setActivityBadge(termWrap, blockId, "spinner+spin", "var(--accent-color)", true);
     }
-    if (termWrap.cmdActivityIdleTimeout != null) {
-        clearTimeout(termWrap.cmdActivityIdleTimeout);
+    // Only run the idle timer while the spinner is actually showing. Once we've gone
+    // idle/"done", stray repaint bursts must NOT re-arm it (that re-decided show/hide
+    // on every tab-switch and made the checkmark flicker). The spinner only comes back
+    // when sustained output resumes (the block above), which is real new work.
+    if (termWrap.cmdActivityVisible) {
+        if (termWrap.cmdActivityIdleTimeout != null) {
+            clearTimeout(termWrap.cmdActivityIdleTimeout);
+        }
+        termWrap.cmdActivityIdleTimeout = setTimeout(() => {
+            termWrap.cmdActivityIdleTimeout = null;
+            termWrap.cmdActivityActiveSince = 0; // stretch ended
+            termWrap.cmdActivityVisible = false;
+            if (isTermTabActive(termWrap)) {
+                hideActivityBadge(termWrap, blockId); // you're watching — just stop spinning
+            } else {
+                showDoneBadge(termWrap, blockId, null); // away — "done, come look"
+            }
+        }, CmdActivityIdleMs);
     }
-    termWrap.cmdActivityIdleTimeout = setTimeout(() => {
-        termWrap.cmdActivityIdleTimeout = null;
-        termWrap.cmdActivityActiveSince = 0; // stretch ended
-        if (!termWrap.cmdActivityVisible) {
-            return; // was just a burst, never showed — nothing to do
-        }
-        termWrap.cmdActivityVisible = false;
-        if (isTermTabActive(termWrap)) {
-            hideActivityBadge(termWrap, blockId); // you're watching — just stop spinning
-        } else {
-            showDoneBadge(termWrap, blockId, null); // away — "done, come look"
-        }
-    }, CmdActivityIdleMs);
 }
 
 function finishCommandActivity(termWrap: TermWrap, blockId: string, exitcode: number | null): void {
