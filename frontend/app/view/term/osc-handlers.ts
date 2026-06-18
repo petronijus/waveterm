@@ -1,9 +1,12 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { clearBadgeById, setBadge } from "@/app/store/badge";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { v7 as uuidv7 } from "uuid";
 import {
+    atoms,
     getApi,
     getBlockMetaKeyAtom,
     getBlockTermDurableAtom,
@@ -95,6 +98,144 @@ export function isClaudeCodeCommand(decodedCmd: string): boolean {
     return ClaudeCodeRegex.test(normalizeCmd(decodedCmd));
 }
 
+// Tab "working / done" activity badge, driven by shell-integration command
+// lifecycle (OSC 16162 C → D/A) PLUS live PTY output. Generic — works for any
+// command, not just one tool. The spinner shows only while a command is running
+// AND actively producing output, so a long-running foreground app that's idle
+// (e.g. Claude waiting for input) stops spinning until it works again.
+const CmdActivityDelayMs = 1200; // ignore the first burst so quick commands don't flash
+const CmdActivityIdleMs = 2500; // output quiet this long ⇒ "done thinking" / idle
+const CmdActivitySustainMs = 700; // output must flow this long continuously before we call it "working"
+const CmdActivityGapMs = 1000; // a quiet gap longer than this ends the continuous stretch
+const CmdActivityPriority = 5;
+
+function ensureActivityBadgeId(termWrap: TermWrap): string {
+    if (termWrap.cmdActivityBadgeId == null) {
+        termWrap.cmdActivityBadgeId = uuidv7();
+    }
+    return termWrap.cmdActivityBadgeId;
+}
+
+// Is the user currently looking at this terminal's tab? (active tab + window focused)
+function isTermTabActive(termWrap: TermWrap): boolean {
+    return globalStore.get(atoms.staticTabId) === termWrap.tabId && !!globalStore.get(atoms.documentHasFocus);
+}
+
+// Transition our activity badge: clear our previous state (shares one badgeid) then set the new one.
+function setActivityBadge(termWrap: TermWrap, blockId: string, icon: string, color: string, pidlinked: boolean): void {
+    const id = ensureActivityBadgeId(termWrap);
+    clearBadgeById(blockId, id);
+    setBadge(blockId, { badgeid: id, icon, color, priority: CmdActivityPriority, pidlinked });
+}
+
+function hideActivityBadge(termWrap: TermWrap, blockId: string): void {
+    if (termWrap.cmdActivityBadgeId != null) {
+        clearBadgeById(blockId, termWrap.cmdActivityBadgeId);
+    }
+}
+
+// "done — come look" badge: green check on success, red x on failure. pidlinked=false
+// so it clears as soon as you focus the tab.
+function showDoneBadge(termWrap: TermWrap, blockId: string, exitcode: number | null): void {
+    const ok = exitcode == null || exitcode === 0;
+    setActivityBadge(
+        termWrap,
+        blockId,
+        ok ? "circle-check" : "circle-xmark",
+        ok ? "var(--success-color)" : "var(--error-color)",
+        false
+    );
+}
+
+function startCommandActivity(termWrap: TermWrap, blockId: string): void {
+    hideActivityBadge(termWrap, blockId); // drop any leftover done/pending from the previous command
+    if (termWrap.cmdActivityIdleTimeout != null) {
+        clearTimeout(termWrap.cmdActivityIdleTimeout);
+        termWrap.cmdActivityIdleTimeout = null;
+    }
+    termWrap.cmdActivityRunning = true;
+    termWrap.cmdActivityStartTs = Date.now();
+    termWrap.cmdActivityVisible = false;
+    termWrap.cmdActivityEverShown = false;
+    termWrap.cmdActivityActiveSince = 0;
+    termWrap.cmdActivityLastOutputTs = 0;
+}
+
+// Called on each live PTY output chunk. We only call it "working" once output has
+// flowed CONTINUOUSLY for CmdActivitySustainMs — a one-off redraw burst (terminal
+// resize on tab-switch, a TUI repaint) is a single cluster and never qualifies, so
+// it no longer produces a phantom spinner/checkmark. When sustained output then
+// goes quiet, the command is "done thinking": away ⇒ pending "done" badge, watching ⇒ just stop.
+function markCommandActivity(termWrap: TermWrap, blockId: string): void {
+    if (!termWrap.cmdActivityRunning) {
+        return;
+    }
+    const now = Date.now();
+    if (now - termWrap.cmdActivityStartTs < CmdActivityDelayMs) {
+        return; // quick command / first burst — don't flash
+    }
+    // start a new continuous stretch if this is the first chunk or there was a quiet gap
+    if (termWrap.cmdActivityActiveSince === 0 || now - termWrap.cmdActivityLastOutputTs > CmdActivityGapMs) {
+        termWrap.cmdActivityActiveSince = now;
+    }
+    termWrap.cmdActivityLastOutputTs = now;
+    if (!termWrap.cmdActivityVisible && now - termWrap.cmdActivityActiveSince >= CmdActivitySustainMs) {
+        termWrap.cmdActivityVisible = true;
+        termWrap.cmdActivityEverShown = true;
+        setActivityBadge(termWrap, blockId, "spinner+spin", "var(--accent-color)", true);
+    }
+    if (termWrap.cmdActivityIdleTimeout != null) {
+        clearTimeout(termWrap.cmdActivityIdleTimeout);
+    }
+    termWrap.cmdActivityIdleTimeout = setTimeout(() => {
+        termWrap.cmdActivityIdleTimeout = null;
+        termWrap.cmdActivityActiveSince = 0; // stretch ended
+        if (!termWrap.cmdActivityVisible) {
+            return; // was just a burst, never showed — nothing to do
+        }
+        termWrap.cmdActivityVisible = false;
+        if (isTermTabActive(termWrap)) {
+            hideActivityBadge(termWrap, blockId); // you're watching — just stop spinning
+        } else {
+            showDoneBadge(termWrap, blockId, null); // away — "done, come look"
+        }
+    }, CmdActivityIdleMs);
+}
+
+function finishCommandActivity(termWrap: TermWrap, blockId: string, exitcode: number | null): void {
+    if (!termWrap.cmdActivityRunning) {
+        return; // already finalized (e.g. D fired, then A)
+    }
+    termWrap.cmdActivityRunning = false;
+    if (termWrap.cmdActivityIdleTimeout != null) {
+        clearTimeout(termWrap.cmdActivityIdleTimeout);
+        termWrap.cmdActivityIdleTimeout = null;
+    }
+    if (!termWrap.cmdActivityEverShown) {
+        return; // never worked visibly — quick/silent command, no badge
+    }
+    termWrap.cmdActivityVisible = false;
+    termWrap.cmdActivityEverShown = false;
+    if (isTermTabActive(termWrap)) {
+        hideActivityBadge(termWrap, blockId); // you watched it finish
+    } else {
+        showDoneBadge(termWrap, blockId, exitcode); // away — leave the result
+    }
+}
+
+function cancelCommandActivity(termWrap: TermWrap, blockId: string): void {
+    if (termWrap.cmdActivityIdleTimeout != null) {
+        clearTimeout(termWrap.cmdActivityIdleTimeout);
+        termWrap.cmdActivityIdleTimeout = null;
+    }
+    hideActivityBadge(termWrap, blockId);
+    termWrap.cmdActivityRunning = false;
+    termWrap.cmdActivityVisible = false;
+    termWrap.cmdActivityEverShown = false;
+}
+
+export { markCommandActivity };
+
 function handleShellIntegrationCommandStart(
     termWrap: TermWrap,
     blockId: string,
@@ -103,6 +244,7 @@ function handleShellIntegrationCommandStart(
 ): void {
     rtInfo["shell:state"] = "running-command";
     globalStore.set(termWrap.shellIntegrationStatusAtom, "running-command");
+    startCommandActivity(termWrap, blockId);
     const connName = globalStore.get(getBlockMetaKeyAtom(blockId, "connection")) ?? "";
     const isRemote = isSshConnName(connName);
     const isWsl = isWslConnName(connName);
@@ -309,6 +451,8 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            // finalize activity badge if "D" didn't fire (no-op if it already did)
+            finishCommandActivity(termWrap, blockId, null);
             const marker = terminal.registerMarker(0);
             if (marker) {
                 termWrap.promptMarkers.push(marker);
@@ -347,6 +491,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             break;
         case "D":
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            finishCommandActivity(termWrap, blockId, cmd.data.exitcode ?? null);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
             } else {
@@ -361,6 +506,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
         case "R":
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            cancelCommandActivity(termWrap, blockId);
             if (terminal.buffer.active.type === "alternate") {
                 terminal.write("\x1b[?1049l");
             }

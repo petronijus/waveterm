@@ -34,6 +34,7 @@ import {
     handleOsc52Command,
     handleOsc7Command,
     isClaudeCodeCommand,
+    markCommandActivity,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
 import {
@@ -108,6 +109,19 @@ export class TermWrap {
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
+    // command activity badge (tab "working"/"done" indicator). Activity-driven:
+    // the spinner shows only while a command is running AND producing output (so a
+    // long-but-idle foreground app like Claude waiting for input doesn't keep spinning).
+    cmdActivityBadgeId: string = null;
+    cmdActivityRunning: boolean = false; // between command start (C) and end (D/A)
+    cmdActivityStartTs: number = 0; // when the current command started
+    cmdActivityVisible: boolean = false; // spinner currently shown
+    cmdActivityEverShown: boolean = false; // spinner shown at least once this command
+    cmdActivityIdleTimeout: ReturnType<typeof setTimeout> | null = null;
+    // require SUSTAINED output (not a one-off redraw burst from a resize/tab-switch)
+    // before showing the spinner — avoids false positives.
+    cmdActivityActiveSince: number = 0; // start of the current continuous-output stretch
+    cmdActivityLastOutputTs: number = 0; // timestamp of the last output chunk
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
@@ -515,6 +529,7 @@ export class TermWrap {
             const decodedData = base64ToArray(msg.data64);
             if (this.loaded) {
                 this.doTerminalWrite(decodedData, null);
+                markCommandActivity(this, this.blockId); // live output ⇒ "working" tab spinner
             } else {
                 this.heldData.push(decodedData);
             }
