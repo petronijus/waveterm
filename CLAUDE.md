@@ -27,6 +27,10 @@ git config user.name petronijus
   each focused on a single task so it stays a clean, rebaseable series.
 - **`release`** — integration branch (`main` + merged task branches). **Builds & releases come
   from `release`**, and new task branches are cut from `release`.
+- **`feat/dev-channel`** — build-only variant that rebrands the app as a side-by-side
+  **"Wave (Dev)"** install (own identity + data dir + single-instance lock; apps launcher / dev
+  widgets on by default). **Never merge into `release`** — it would rebrand the prod build. Keep
+  it rebased on `release`; build from it for a dev install that runs next to a stock Wave.
 
 ## Workflow — one task = one branch = one merge
 
