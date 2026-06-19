@@ -12,6 +12,40 @@ in [ROADMAP.md](./ROADMAP.md).
 
 Staying current = rebase topic branches onto `main`, not merge.
 
+## Development workflow (per task)
+
+One branch per task, branched off `release`, merged back when the task is done:
+
+```sh
+# start a task
+git checkout release
+git pull            # if release is on the remote
+git checkout -b feat/<task>      # e.g. feat/tab-notifications
+
+# … work, committing as you go …
+
+# finish a task → fold it into the integration branch
+git checkout release
+git merge feat/<task>            # fast-forward if release didn't move
+git push origin release feat/<task>
+```
+
+- Build & release always from `release` (see [BUILDING.md](./BUILDING.md)).
+- Never commit on `main` — it only mirrors upstream. If you accidentally push fork
+  commits to `main`, reset it: `git push origin --force-with-lease <upstream-commit>:main`.
+- Keep each `feat/*` branch focused on one task so it stays a clean, rebaseable series.
+- Set your commit identity per machine before committing (this is a personal fork):
+  `git config user.email <your-personal-email>`.
+
+## Syncing with upstream
+
+```sh
+git fetch upstream
+git checkout main && git merge --ff-only upstream/main && git push origin main
+# then rebase each topic branch and rebuild release
+git checkout feat/<task> && git rebase main
+```
+
 ## Done
 
 - **SSH backport** — curated cherry-picks from `whoisjeremylam/waveterm-remote`: hardened SSH
