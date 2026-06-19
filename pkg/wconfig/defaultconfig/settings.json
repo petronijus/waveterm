@@ -1,4 +1,5 @@
 {
+    "feature:waveappbuilder": true,
     "ai:preset": "ai@global",
     "ai:model": "gpt-5-mini",
     "ai:maxtokens": 4000,

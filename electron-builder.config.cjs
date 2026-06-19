@@ -18,7 +18,7 @@ const macShouldNotarize = !!process.env.APPLE_TEAM_ID && !!process.env.APPLE_ID;
 const config = {
     appId: pkg.build.appId,
     productName: pkg.productName,
-    executableName: pkg.productName,
+    executableName: "WaveDev",
     artifactName: "${productName}-${platform}-${arch}-${version}.${ext}",
     generateUpdatesFilesForAllChannels: true,
     npmRebuild: false,
@@ -105,7 +105,7 @@ const config = {
         afterInstall: "build/deb-postinstall.tpl",
     },
     win: {
-        target: ["nsis", "msi", "zip"],
+        target: ["nsis", "zip"],
         signtoolOptions: windowsShouldSign && {
             signingHashAlgorithms: ["sha256"],
             publisherName: "Command Line Inc",
