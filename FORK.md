@@ -66,9 +66,11 @@ git checkout feat/<task> && git rebase main
 - **Native OS notifications** — fire a system notification when a long command (≥ a configurable
   threshold, default 30 s) finishes while the window is unfocused; clicking it focuses the window
   and switches to that tab. Bursts of finishes coalesce into one summary notification. Opt-in
-  (`notify:commanddone`), built on the activity detection above. Inherits its shell-integration
-  limitation: the very first command in a fresh terminal isn't detected (bash-preexec doesn't fire
-  `preexec` for it), so it doesn't notify — every command after the first does.
+  (`notify:commanddone`), toggled from a visual settings panel in Wave Config → General (shown
+  side-by-side with the raw `settings.json`, kept in sync live). Built on the activity detection
+  above. Inherits its shell-integration limitation: the very first command in a fresh terminal
+  isn't detected (bash-preexec doesn't fire `preexec` for it), so it doesn't notify — every command
+  after the first does.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
   Linux & Windows builds run on local machines — no hosted CI).
 

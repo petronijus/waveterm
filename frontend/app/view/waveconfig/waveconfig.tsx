@@ -230,7 +230,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     )}
                                 </div>
                             </div>
-                            {selectedFile.visualComponent && selectedFile.hasJsonView && (
+                            {selectedFile.visualComponent && selectedFile.hasJsonView && !selectedFile.splitView && (
                                 <div className="flex gap-0 border-b border-border">
                                     <button
                                         onClick={() => {
@@ -288,6 +288,28 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     <div className="flex items-center justify-center h-full text-muted-foreground">
                                         Loading...
                                     </div>
+                                ) : selectedFile.visualComponent && selectedFile.hasJsonView && selectedFile.splitView ? (
+                                    (() => {
+                                        const VisualComponent = selectedFile.visualComponent;
+                                        return (
+                                            <div className="flex flex-col @w600:flex-row h-full min-h-0">
+                                                <div className="@w600:w-[360px] @w600:h-full @w600:border-r border-b @w600:border-b-0 border-border overflow-y-auto shrink-0">
+                                                    <VisualComponent model={model} />
+                                                </div>
+                                                <div className="flex-1 min-h-0 min-w-0">
+                                                    <CodeEditor
+                                                        blockId={blockId}
+                                                        text={fileContent}
+                                                        fileName={`WAVECONFIGPATH/${selectedFile.path}`}
+                                                        language={selectedFile.language}
+                                                        readonly={false}
+                                                        onChange={handleContentChange}
+                                                        onMount={handleEditorMount}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })()
                                 ) : selectedFile.visualComponent &&
                                   (!selectedFile.hasJsonView || activeTab === "visual") ? (
                                     (() => {

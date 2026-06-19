@@ -7,6 +7,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ThemeEditorView } from "@/app/view/themeeditor/themeeditor";
+import { GeneralSettingsView } from "@/app/view/waveconfig/generalsettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
@@ -29,6 +30,8 @@ export type ConfigFile = {
     isSecrets?: boolean;
     hasJsonView?: boolean;
     visualComponent?: React.ComponentType<{ model: WaveConfigViewModel }>;
+    // render the visual editor and the raw JSON side-by-side (instead of as Visual/Raw tabs)
+    splitView?: boolean;
 };
 
 export const SecretNameRegex = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -64,6 +67,8 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             language: "json",
             docsUrl: "https://docs.waveterm.dev/config",
             hasJsonView: true,
+            visualComponent: GeneralSettingsView,
+            splitView: true,
         },
         {
             name: "Connections",
@@ -406,6 +411,31 @@ export class WaveConfigViewModel implements ViewModel {
             }
         } catch (err) {
             globalStore.set(this.validationErrorAtom, `Invalid JSON: ${err.message || String(err)}`);
+        }
+    }
+
+    // Re-read the current file from disk into the editor without the loading flash —
+    // used by the split-view visual editor so the raw JSON reflects a toggle live.
+    // Skips when there are unsaved manual edits so we never clobber them.
+    async refreshContentFromDisk() {
+        const selectedFile = globalStore.get(this.selectedFileAtom);
+        if (!selectedFile || selectedFile.isSecrets) {
+            return;
+        }
+        if (globalStore.get(this.hasEditedAtom)) {
+            return;
+        }
+        try {
+            const fullPath = `${this.configDir}/${selectedFile.path}`;
+            const fileData = await this.env.rpc.FileReadCommand(TabRpcClient, {
+                info: { path: fullPath },
+            });
+            const content = fileData?.data64 ? base64ToString(fileData.data64) : "";
+            const display = content.trim() === "" ? "{\n\n}" : content;
+            globalStore.set(this.originalContentAtom, display);
+            globalStore.set(this.fileContentAtom, display);
+        } catch {
+            // keep showing the current content on read failure
         }
     }
 
