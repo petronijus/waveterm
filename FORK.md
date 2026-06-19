@@ -60,16 +60,17 @@ git checkout feat/<task> && git rebase main
   assign one per tab (shown as a colored dot). Editing a flag's color updates flagged tabs live.
 - **Light-mode polish** — themed the tab bar, tab close button, sidebar/widget icons, AI panel,
   popovers, workspace accent, and CPU/Mem graphs.
+- **Tab activity indicator** — shows in the tab when a terminal is *working* (a long-running
+  foreground command) vs *done*, generically — not tied to one specific tool. Built on the
+  existing tab badge system; detection via shell-integration / command lifecycle.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
   Linux & Windows builds run on local machines — no hosted CI).
 
 ## Planned
 
-- **Tab activity indicator** — show in the tab when a terminal is *working* (a long-running
-  foreground command) vs *done*, generically — not tied to one specific tool. Built on the
-  existing tab badge system; detection via shell-integration / command lifecycle.
 - **Native OS notifications** — fire a system notification when a long command finishes, mainly
   when the window is unfocused. Builds on the activity detection above. Opt-in, throttled.
+  *(Design in progress — see [HANDOVER.md](./HANDOVER.md).)*
 - **Sync** — sync tabs, settings, and window layout between machines.
 - **Bookmarks in the Files view** — bookmark/favorite files & folders in the file browser for
   quick access.
