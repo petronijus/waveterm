@@ -316,6 +316,15 @@
         "telemetry:enabled": {
           "type": "boolean"
         },
+        "notify:*": {
+          "type": "boolean"
+        },
+        "notify:commanddone": {
+          "type": "boolean"
+        },
+        "notify:commanddonethresholdms": {
+          "type": "integer"
+        },
         "conn:*": {
           "type": "boolean"
         },

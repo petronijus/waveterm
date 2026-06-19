@@ -1489,6 +1489,9 @@ declare global {
         "window:zoom"?: number;
         "telemetry:*"?: boolean;
         "telemetry:enabled"?: boolean;
+        "notify:*"?: boolean;
+        "notify:commanddone"?: boolean;
+        "notify:commanddonethresholdms"?: number;
         "conn:*"?: boolean;
         "conn:askbeforewshinstall"?: boolean;
         "conn:wshenabled"?: boolean;
@@ -2116,6 +2119,8 @@ declare global {
         title?: string;
         body?: string;
         silent?: boolean;
+        windowid?: string;
+        tabid?: string;
     };
 
     // waveobj.WaveObj

@@ -117,6 +117,10 @@ const (
 	ConfigKey_TelemetryClear                 = "telemetry:*"
 	ConfigKey_TelemetryEnabled               = "telemetry:enabled"
 
+	ConfigKey_NotifyClear                    = "notify:*"
+	ConfigKey_NotifyCommandDone              = "notify:commanddone"
+	ConfigKey_NotifyCommandDoneThresholdMs   = "notify:commanddonethresholdms"
+
 	ConfigKey_ConnClear                      = "conn:*"
 	ConfigKey_ConnAskBeforeWshInstall        = "conn:askbeforewshinstall"
 	ConfigKey_ConnWshEnabled                 = "conn:wshenabled"

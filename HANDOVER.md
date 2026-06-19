@@ -11,11 +11,11 @@ to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow l
 
 ## Active work in progress
 
-- **Native OS notifications** (planned feature in FORK.md) — **design phase**. The approach is
-  decided (frontend-driven, on the existing command-activity detection that powers the tab
-  activity indicator); next steps are finishing the design decisions, then a spec, then
-  implementation on a `feat/native-notifications` branch cut from `release`. No code branch yet.
-  Full design notes are kept privately. Resume from there before writing code.
+- **Native OS notifications** — **implemented** on branch `feat/native-notifications` and verified
+  working on Linux (notification fires, click focuses window + tab). Opt-in via
+  `notify:commanddone`; threshold `notify:commanddonethresholdms` (default 30 s). Known limitation:
+  the very first command in a fresh terminal isn't detected (bash-preexec shell-integration quirk,
+  shared with the tab activity indicator). Not yet merged to `release`. Detailed notes are private.
 
 ## Build / release status per OS
 

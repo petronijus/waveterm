@@ -32,11 +32,26 @@ export class ElectronWshClientType extends WshClient {
     }
 
     async handle_notify(rh: RpcResponseHelper, notificationOptions: WaveNotificationOptions) {
-        new Notification({
+        const notification = new Notification({
             title: notificationOptions.title,
             body: notificationOptions.body,
             silent: notificationOptions.silent,
-        }).show();
+        });
+        if (notificationOptions.windowid) {
+            notification.on("click", () => {
+                void (async () => {
+                    try {
+                        const ww = await focusWaveWindowById(notificationOptions.windowid);
+                        if (ww != null && notificationOptions.tabid) {
+                            await ww.setActiveTab(notificationOptions.tabid, true);
+                        }
+                    } catch (e) {
+                        console.log("error handling notification click", e);
+                    }
+                })();
+            });
+        }
+        notification.show();
     }
 
     async handle_getupdatechannel(rh: RpcResponseHelper): Promise<string> {
@@ -45,19 +60,7 @@ export class ElectronWshClientType extends WshClient {
 
     async handle_focuswindow(rh: RpcResponseHelper, windowId: string) {
         console.log(`focuswindow ${windowId}`);
-        const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
-        let ww = getWaveWindowById(windowId);
-        if (ww == null) {
-            const window = await WindowService.GetWindow(windowId);
-            if (window == null) {
-                throw new Error(`window ${windowId} not found`);
-            }
-            ww = await createBrowserWindow(window, fullConfig, {
-                unamePlatform,
-                isPrimaryStartupWindow: false,
-            });
-        }
-        ww.focus();
+        await focusWaveWindowById(windowId);
     }
 
     async handle_electronencrypt(
@@ -119,6 +122,24 @@ export class ElectronWshClientType extends WshClient {
     //         workspaceMenu.submenu = Menu.buildFromTemplate(updatedWorkspaceMenu);
     //     });
     // }
+}
+
+// Focus the wave window with this id, recreating it if it has been closed. Returns the window.
+async function focusWaveWindowById(windowId: string) {
+    let ww = getWaveWindowById(windowId);
+    if (ww == null) {
+        const window = await WindowService.GetWindow(windowId);
+        if (window == null) {
+            throw new Error(`window ${windowId} not found`);
+        }
+        const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+        ww = await createBrowserWindow(window, fullConfig, {
+            unamePlatform,
+            isPrimaryStartupWindow: false,
+        });
+    }
+    ww.focus();
+    return ww;
 }
 
 export let ElectronWshClient: ElectronWshClientType;

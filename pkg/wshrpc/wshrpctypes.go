@@ -475,6 +475,9 @@ type WaveNotificationOptions struct {
 	Title  string `json:"title,omitempty"`
 	Body   string `json:"body,omitempty"`
 	Silent bool   `json:"silent,omitempty"`
+	// when set, clicking the notification focuses this window and switches to TabId
+	WindowId string `json:"windowid,omitempty"`
+	TabId    string `json:"tabid,omitempty"`
 }
 
 type VDomUrlRequestData struct {

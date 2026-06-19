@@ -63,14 +63,17 @@ git checkout feat/<task> && git rebase main
 - **Tab activity indicator** — shows in the tab when a terminal is *working* (a long-running
   foreground command) vs *done*, generically — not tied to one specific tool. Built on the
   existing tab badge system; detection via shell-integration / command lifecycle.
+- **Native OS notifications** — fire a system notification when a long command (≥ a configurable
+  threshold, default 30 s) finishes while the window is unfocused; clicking it focuses the window
+  and switches to that tab. Bursts of finishes coalesce into one summary notification. Opt-in
+  (`notify:commanddone`), built on the activity detection above. Inherits its shell-integration
+  limitation: the very first command in a fresh terminal isn't detected (bash-preexec doesn't fire
+  `preexec` for it), so it doesn't notify — every command after the first does.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
   Linux & Windows builds run on local machines — no hosted CI).
 
 ## Planned
 
-- **Native OS notifications** — fire a system notification when a long command finishes, mainly
-  when the window is unfocused. Builds on the activity detection above. Opt-in, throttled.
-  *(Design in progress — see [HANDOVER.md](./HANDOVER.md).)*
 - **Sync** — sync tabs, settings, and window layout between machines.
 - **Bookmarks in the Files view** — bookmark/favorite files & folders in the file browser for
   quick access.

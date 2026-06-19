@@ -170,6 +170,10 @@ type SettingsType struct {
 	TelemetryClear   bool `json:"telemetry:*,omitempty"`
 	TelemetryEnabled bool `json:"telemetry:enabled,omitempty"`
 
+	NotifyClear                 bool  `json:"notify:*,omitempty"`
+	NotifyCommandDone           bool  `json:"notify:commanddone,omitempty"`
+	NotifyCommandDoneThresholdMs *int `json:"notify:commanddonethresholdms,omitempty"`
+
 	ConnClear                bool    `json:"conn:*,omitempty"`
 	ConnAskBeforeWshInstall  *bool   `json:"conn:askbeforewshinstall,omitempty"`
 	ConnWshEnabled           bool    `json:"conn:wshenabled,omitempty"`

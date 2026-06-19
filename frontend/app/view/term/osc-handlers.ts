@@ -17,6 +17,7 @@ import {
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
 import debug from "debug";
+import { maybeNotifyCommandDone } from "./notify-commanddone";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -233,6 +234,9 @@ function finishCommandActivity(termWrap: TermWrap, blockId: string, exitcode: nu
         clearTimeout(termWrap.cmdActivityIdleTimeout);
         termWrap.cmdActivityIdleTimeout = null;
     }
+    // Notification is duration-gated, not output-gated, so a long *silent* command
+    // (e.g. `sleep 60`) still notifies even though it never showed a spinner.
+    maybeNotifyCommandDone(termWrap);
     if (!termWrap.cmdActivityEverShown) {
         return; // never worked visibly — quick/silent command, no badge
     }

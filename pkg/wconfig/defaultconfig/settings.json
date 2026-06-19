@@ -31,6 +31,8 @@
     "window:confirmclose": true,
     "window:savelastwindow": true,
     "telemetry:enabled": true,
+    "notify:commanddone": false,
+    "notify:commanddonethresholdms": 30000,
     "term:bellsound": false,
     "term:bellindicator": true,
     "term:osc52": "always",
