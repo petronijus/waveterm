@@ -27,12 +27,12 @@ if (isDevVite) {
 }
 
 const waveDirNamePrefix = "waveterm";
-const waveDirNameSuffix = isDev ? "dev" : "";
+const waveDirNameSuffix = "dev"; // pj fork: packaged dev build uses the waveterm-dev data dir so it coexists with official Wave
 const waveDirName = `${waveDirNamePrefix}${waveDirNameSuffix ? `-${waveDirNameSuffix}` : ""}`;
 
 const paths = envPaths("waveterm", { suffix: waveDirNameSuffix });
 
-app.setName(isDev ? "Wave (Dev)" : "Wave");
+app.setName("Wave (Dev)"); // pj fork: distinct app name → separate single-instance lock + userData, coexists with official Wave
 const unamePlatform = process.platform;
 const unameArch: string = process.arch;
 keyutil.setKeyUtilPlatform(unamePlatform);
