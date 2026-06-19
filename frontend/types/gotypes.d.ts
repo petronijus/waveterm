@@ -1492,6 +1492,12 @@ declare global {
         "notify:*"?: boolean;
         "notify:commanddone"?: boolean;
         "notify:commanddonethresholdms"?: number;
+        "sync:*"?: boolean;
+        "sync:enabled"?: boolean;
+        "sync:webdavurl"?: string;
+        "sync:webdavuser"?: string;
+        "sync:folder"?: string;
+        "sync:intervalms"?: number;
         "conn:*"?: boolean;
         "conn:askbeforewshinstall"?: boolean;
         "conn:wshenabled"?: boolean;

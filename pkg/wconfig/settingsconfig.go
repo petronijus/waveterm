@@ -174,6 +174,13 @@ type SettingsType struct {
 	NotifyCommandDone           bool  `json:"notify:commanddone,omitempty"`
 	NotifyCommandDoneThresholdMs *int `json:"notify:commanddonethresholdms,omitempty"`
 
+	SyncClear      bool   `json:"sync:*,omitempty"`
+	SyncEnabled    bool   `json:"sync:enabled,omitempty"`
+	SyncWebDAVURL  string `json:"sync:webdavurl,omitempty"`
+	SyncWebDAVUser string `json:"sync:webdavuser,omitempty"`
+	SyncFolder     string `json:"sync:folder,omitempty"`
+	SyncIntervalMs *int   `json:"sync:intervalms,omitempty"`
+
 	ConnClear                bool    `json:"conn:*,omitempty"`
 	ConnAskBeforeWshInstall  *bool   `json:"conn:askbeforewshinstall,omitempty"`
 	ConnWshEnabled           bool    `json:"conn:wshenabled,omitempty"`

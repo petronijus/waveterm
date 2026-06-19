@@ -46,6 +46,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
 	"github.com/wavetermdev/waveterm/pkg/wslconn"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
+	"github.com/wavetermdev/waveterm/pkg/wsync"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -580,6 +581,19 @@ func main() {
 		log.Printf("error initializing badge store: %v\n", err)
 		return
 	}
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("startSyncScheduler", recover())
+		}()
+		ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelFn()
+		clientData, err := wcore.GetClientData(ctx)
+		if err != nil {
+			log.Printf("wsync: not starting scheduler: %v\n", err)
+			return
+		}
+		wsync.GetScheduler().Start(clientData.InstallId)
+	}()
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("GetSystemSummary", recover())

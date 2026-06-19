@@ -121,6 +121,13 @@ const (
 	ConfigKey_NotifyCommandDone              = "notify:commanddone"
 	ConfigKey_NotifyCommandDoneThresholdMs   = "notify:commanddonethresholdms"
 
+	ConfigKey_SyncClear                      = "sync:*"
+	ConfigKey_SyncEnabled                    = "sync:enabled"
+	ConfigKey_SyncWebDAVURL                  = "sync:webdavurl"
+	ConfigKey_SyncWebDAVUser                 = "sync:webdavuser"
+	ConfigKey_SyncFolder                     = "sync:folder"
+	ConfigKey_SyncIntervalMs                 = "sync:intervalms"
+
 	ConfigKey_ConnClear                      = "conn:*"
 	ConfigKey_ConnAskBeforeWshInstall        = "conn:askbeforewshinstall"
 	ConfigKey_ConnWshEnabled                 = "conn:wshenabled"

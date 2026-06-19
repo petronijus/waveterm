@@ -325,6 +325,24 @@
         "notify:commanddonethresholdms": {
           "type": "integer"
         },
+        "sync:*": {
+          "type": "boolean"
+        },
+        "sync:enabled": {
+          "type": "boolean"
+        },
+        "sync:webdavurl": {
+          "type": "string"
+        },
+        "sync:webdavuser": {
+          "type": "string"
+        },
+        "sync:folder": {
+          "type": "string"
+        },
+        "sync:intervalms": {
+          "type": "integer"
+        },
         "conn:*": {
           "type": "boolean"
         },
