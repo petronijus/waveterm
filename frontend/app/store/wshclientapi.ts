@@ -936,6 +936,18 @@ export class RpcApiType {
         return client.wshRpcStream("streamtest", null, opts);
     }
 
+    // command "syncnow" [call]
+    SyncNowCommand(client: WshClient, opts?: RpcOpts): Promise<SyncStatusData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "syncnow", null, opts);
+        return client.wshRpcCall("syncnow", null, opts);
+    }
+
+    // command "syncstatus" [call]
+    SyncStatusCommand(client: WshClient, opts?: RpcOpts): Promise<SyncStatusData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "syncstatus", null, opts);
+        return client.wshRpcCall("syncstatus", null, opts);
+    }
+
     // command "termgetscrollbacklines" [call]
     TermGetScrollbackLinesCommand(client: WshClient, data: CommandTermGetScrollbackLinesData, opts?: RpcOpts): Promise<CommandTermGetScrollbackLinesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termgetscrollbacklines", data, opts);

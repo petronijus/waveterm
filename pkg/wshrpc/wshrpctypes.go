@@ -78,6 +78,8 @@ type WshRpcInterface interface {
 	SetConnectionsConfigCommand(ctx context.Context, data ConnConfigRequest) error
 	SetUIThemeCommand(ctx context.Context, data UIThemeRequest) error
 	SetFlagCommand(ctx context.Context, data FlagRequest) error
+	SyncNowCommand(ctx context.Context) (SyncStatusData, error)
+	SyncStatusCommand(ctx context.Context) (SyncStatusData, error)
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
@@ -478,6 +480,13 @@ type WaveNotificationOptions struct {
 	// when set, clicking the notification focuses this window and switches to TabId
 	WindowId string `json:"windowid,omitempty"`
 	TabId    string `json:"tabid,omitempty"`
+}
+
+type SyncStatusData struct {
+	Enabled    bool   `json:"enabled"`
+	Configured bool   `json:"configured"`
+	LastSyncTs int64  `json:"lastsyncts,omitempty"`
+	LastError  string `json:"lasterror,omitempty"`
 }
 
 type VDomUrlRequestData struct {

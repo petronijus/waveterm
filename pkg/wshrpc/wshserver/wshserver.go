@@ -57,6 +57,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wsl"
 	"github.com/wavetermdev/waveterm/pkg/wslconn"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
+	"github.com/wavetermdev/waveterm/pkg/wsync"
 	"github.com/wavetermdev/waveterm/tsunami/build"
 )
 
@@ -565,6 +566,23 @@ func (ws *WshServer) SetUIThemeCommand(ctx context.Context, data wshrpc.UIThemeR
 
 func (ws *WshServer) SetFlagCommand(ctx context.Context, data wshrpc.FlagRequest) error {
 	return wconfig.SetFlagValue(data.FlagId, data.MetaMapType)
+}
+
+func syncStatusToData(st wsync.SyncStatus) wshrpc.SyncStatusData {
+	return wshrpc.SyncStatusData{
+		Enabled:    st.Enabled,
+		Configured: st.Configured,
+		LastSyncTs: st.LastSyncTs,
+		LastError:  st.LastError,
+	}
+}
+
+func (ws *WshServer) SyncNowCommand(ctx context.Context) (wshrpc.SyncStatusData, error) {
+	return syncStatusToData(wsync.GetScheduler().SyncNow(ctx)), nil
+}
+
+func (ws *WshServer) SyncStatusCommand(ctx context.Context) (wshrpc.SyncStatusData, error) {
+	return syncStatusToData(wsync.GetScheduler().GetStatus()), nil
 }
 
 func (ws *WshServer) GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error) {

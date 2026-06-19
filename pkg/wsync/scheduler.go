@@ -26,12 +26,23 @@ const (
 	syncRoundTimeout      = 2 * time.Minute
 )
 
+// SyncStatus is a snapshot of the scheduler's last activity, for the UI.
+type SyncStatus struct {
+	Enabled    bool   `json:"enabled"`
+	Configured bool   `json:"configured"`
+	LastSyncTs int64  `json:"lastsyncts,omitempty"`
+	LastError  string `json:"lasterror,omitempty"`
+}
+
 // Scheduler drives SyncOnce on a timer plus on-demand triggers. One per process.
 type Scheduler struct {
-	lock      sync.Mutex
-	installId string
-	started   bool
-	trigger   chan struct{}
+	lock       sync.Mutex
+	installId  string
+	started    bool
+	trigger    chan struct{}
+	runLock    sync.Mutex // serializes sync rounds (timer vs manual)
+	statusLock sync.Mutex
+	status     SyncStatus
 }
 
 var globalScheduler = &Scheduler{trigger: make(chan struct{}, 1)}
@@ -76,28 +87,60 @@ func (s *Scheduler) run() {
 				}
 			}
 		}
-		interval := s.runOnce()
+		ctx, cancel := context.WithTimeout(context.Background(), syncRoundTimeout)
+		interval := s.doSync(ctx)
+		cancel()
 		timer.Reset(interval)
 	}
 }
 
-// runOnce loads config, runs a sync round if enabled+configured, and returns the
-// delay until the next tick (always returned so the loop keeps ticking even when
-// sync is off — a later config change then takes effect).
-func (s *Scheduler) runOnce() time.Duration {
+// GetStatus returns the last recorded sync status.
+func (s *Scheduler) GetStatus() SyncStatus {
+	s.statusLock.Lock()
+	defer s.statusLock.Unlock()
+	return s.status
+}
+
+func (s *Scheduler) setStatus(st SyncStatus) {
+	s.statusLock.Lock()
+	defer s.statusLock.Unlock()
+	s.status = st
+}
+
+// SyncNow runs one sync round on demand (serialized against the timer) and returns
+// the resulting status — used by the "Sync now" command.
+func (s *Scheduler) SyncNow(ctx context.Context) SyncStatus {
+	s.doSync(ctx)
+	return s.GetStatus()
+}
+
+// doSync loads config, runs a sync round if enabled+configured, records status, and
+// returns the delay until the next tick (always returned so the loop keeps ticking
+// even when sync is off — a later config change then takes effect). The runLock
+// ensures a manual SyncNow and the timer never run a round concurrently.
+func (s *Scheduler) doSync(ctx context.Context) time.Duration {
+	s.runLock.Lock()
+	defer s.runLock.Unlock()
 	cfg, enabled, interval, err := loadSyncConfig()
+	st := SyncStatus{Enabled: enabled, LastSyncTs: s.GetStatus().LastSyncTs}
 	if err != nil {
+		st.LastError = err.Error()
+		s.setStatus(st)
 		log.Printf("wsync: %v\n", err)
 		return interval
 	}
 	if !enabled {
+		s.setStatus(st)
 		return interval
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), syncRoundTimeout)
-	defer cancel()
+	st.Configured = true
 	if err := SyncOnce(ctx, MakeWebDAVClient(cfg), s.installId); err != nil {
+		st.LastError = err.Error()
 		log.Printf("wsync: round failed: %v\n", err)
+	} else {
+		st.LastSyncTs = time.Now().UnixMilli()
 	}
+	s.setStatus(st)
 	return interval
 }
 

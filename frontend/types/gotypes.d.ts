@@ -1567,6 +1567,14 @@ declare global {
         "url:url"?: string;
     };
 
+    // wshrpc.SyncStatusData
+    type SyncStatusData = {
+        enabled: boolean;
+        configured: boolean;
+        lastsyncts?: number;
+        lasterror?: string;
+    };
+
     // telemetrydata.TEvent
     type TEvent = {
         uuid?: string;
