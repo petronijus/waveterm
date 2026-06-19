@@ -559,7 +559,7 @@ const Widgets = memo(() => {
                         </div>
                     </>
                 )}
-                {env.isDev() ? (
+                {env.isDev() || featureWaveAppBuilder ? (
                     <div
                         className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
                         title="Running Wave Dev Build"
@@ -598,7 +598,7 @@ const Widgets = memo(() => {
                     </div>
                     <div className="text-xxs mt-0.5 w-full px-0.5 text-center">settings</div>
                 </div>
-                {env.isDev() ? (
+                {env.isDev() || featureWaveAppBuilder ? (
                     <div className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-lg">
                         <div>
                             <i className={makeIconClass("cube", true)}></i>
@@ -606,7 +606,7 @@ const Widgets = memo(() => {
                         <div className="text-xxs mt-0.5 w-full px-0.5 text-center">apps</div>
                     </div>
                 ) : null}
-                {env.isDev() ? (
+                {env.isDev() || featureWaveAppBuilder ? (
                     <div
                         className="flex justify-center items-center w-full py-1 text-accent text-[30px]"
                         title="Running Wave Dev Build"
