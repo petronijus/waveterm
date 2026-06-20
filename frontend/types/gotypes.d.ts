@@ -981,6 +981,8 @@ declare global {
         reconnectnextattempt?: number;
         reconnecterror?: string;
         forwardingrules?: string[];
+        canautoreconnect: boolean;
+        forwardingrules?: string[];
     };
 
     // wshrpc.CpuDataRequest
