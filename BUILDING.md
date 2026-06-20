@@ -41,9 +41,49 @@ task package     # builds an installer for the CURRENT platform → ./make
 
 | OS | toolchain notes | artifacts in `./make` |
 |----|-----------------|------------------------|
-| **macOS** | Xcode CLT. Signing optional — with no cert it's unsigned (right-click → Open on first launch). | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
+| **macOS** | Xcode CLT. **See "macOS notes" below** — if a signing cert is in your keychain, a bare `task package` auto-signs and *fails*; build unsigned. | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
 | **Linux** | system build deps for electron-builder targets (e.g. `rpm`, `fakeroot`, `snapcraft` for snap; AppImage/deb work out of the box on most distros) | `*.deb` / `*.AppImage` / `*.snap` |
 | **Windows** | Node/Go/Zig/Task on PATH; a recent MSVC / Build Tools if any native module needs rebuild. **See "Windows notes" below — a bare `task package` can ship a broken installer.** | `*.exe` (NSIS) + `*.zip` |
+
+### macOS notes
+
+- **Build unsigned when a signing cert is present.** electron-builder auto-discovers any
+  `Apple Development`/`Developer ID` identity from the login keychain and signs with it. A
+  bare `Apple Development` cert can't add a secure timestamp, so `codesign --timestamp`
+  fails and the whole package aborts (`A timestamp was expected but was not found`,
+  electron-builder exits 201). Disable signing to get the intended unsigned dev build:
+  ```sh
+  CSC_IDENTITY_AUTO_DISCOVERY=false task package
+  ```
+  An unsigned app is right-click → Open on first launch. (On a machine with *no* cert in
+  the keychain, a plain `task package` is already unsigned and works — the env var is just
+  harmless there, so prefer always passing it.)
+
+## Two channels side by side — "Wave" and "Wave (Dev)"
+
+The fork ships as two coexisting installs (see [CLAUDE.md](./CLAUDE.md) for the branch model):
+
+- **"Wave"** — your stable/work install, built from `release`.
+- **"Wave (Dev)"** — your testing install, built from `feat/dev-channel` (= `release` + a
+  rebrand: `productName "Wave (Dev)"`, appId `dev.commandline.waveterm-dev`, own data dir
+  `waveterm-dev`, own single-instance lock, apps launcher on by default). Distinct identity +
+  data dir → it runs next to a stock Wave and won't touch its settings.
+
+Keep the dev channel current and build it:
+
+```sh
+git checkout feat/dev-channel && git rebase release   # carry the rebrand on top of latest release
+git push --force-with-lease origin feat/dev-channel   # rebase rewrites history → force-with-lease
+CSC_IDENTITY_AUTO_DISCOVERY=false task package         # → "Wave (Dev)-darwin-…" artifacts
+```
+
+> ⚠️ **`task package` runs `clean` first (`rm -rf make`).** Building the second channel wipes
+> the first channel's artifacts from `./make`. Copy them aside before the second build:
+> ```sh
+> mkdir -p artifacts/release && cp -p "make/Wave-darwin-"*.{dmg,zip} artifacts/release/
+> ```
+> The two channels' artifacts are named differently (`Wave-darwin-…` vs `Wave (Dev)-darwin-…`),
+> so once both are in `./make` together they don't collide — only the `clean` step is the hazard.
 
 ### Windows notes (hard-won)
 
