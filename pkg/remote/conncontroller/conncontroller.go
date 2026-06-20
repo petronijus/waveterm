@@ -1036,8 +1036,7 @@ func (conn *SSHConn) canAutoReconnectLocked() bool {
 		return true
 	}
 	// Check if the connection requires interactive auth
-	config := wconfig.GetWatcher().GetFullConfig()
-	connConfig, ok := config.Connections[conn.Opts.String()]
+	connConfig, ok := conn.getConnectionConfig()
 	if !ok {
 		return false // unknown connection, assume interactive auth needed
 	}
