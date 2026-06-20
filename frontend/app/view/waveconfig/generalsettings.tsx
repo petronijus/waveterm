@@ -78,6 +78,9 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
     const notifyEnabled = useAtomValue(getSettingsKeyAtom("notify:commanddone")) ?? false;
     const thresholdMs = useAtomValue(getSettingsKeyAtom("notify:commanddonethresholdms")) ?? DefaultThresholdMs;
     const syncEnabled = useAtomValue(getSettingsKeyAtom("sync:enabled")) ?? false;
+    const syncFolderPath = useAtomValue(getSettingsKeyAtom("sync:folderpath")) ?? "";
+
+    const [syncMode, setSyncMode] = useState<"folder" | "webdav">(syncFolderPath ? "folder" : "webdav");
 
     const [secondsDraft, setSecondsDraft] = useState(String(Math.round(thresholdMs / 1000)));
     useEffect(() => {
@@ -119,6 +122,15 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                 setSyncing(false);
             }
         });
+    };
+
+    // Switching to WebDAV clears the folder path, since a non-empty path makes the
+    // backend prefer the local-folder transport regardless of the WebDAV fields.
+    const selectSyncMode = (mode: "folder" | "webdav") => {
+        setSyncMode(mode);
+        if (mode === "webdav" && syncFolderPath) {
+            setConfigKey("sync:folderpath", "");
+        }
     };
 
     return (
@@ -168,8 +180,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     label="Sync settings & workspaces between machines"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
-                    Syncs config, workspaces, tabs and layout via a shared WebDAV folder (e.g.
-                    Nextcloud). Set the app-password in Secrets as <code>sync:webdavpassword</code>.
+                    Syncs config, workspaces, tabs and layout across your machines.
                 </p>
                 <div
                     className={cn(
@@ -177,14 +188,67 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                         !syncEnabled && "opacity-50 pointer-events-none"
                     )}
                 >
-                    <TextRow
-                        label="WebDAV URL"
-                        settingKey="sync:webdavurl"
-                        placeholder="https://host/remote.php/dav/files/<user>"
-                        onCommit={setConfigKey}
-                    />
-                    <TextRow label="WebDAV user" settingKey="sync:webdavuser" onCommit={setConfigKey} />
-                    <TextRow label="Folder" settingKey="sync:folder" placeholder="waveterm-sync" onCommit={setConfigKey} />
+                    <div className="flex items-center gap-1 p-0.5 rounded bg-hoverbg w-fit">
+                        <button
+                            onClick={() => selectSyncMode("folder")}
+                            className={cn(
+                                "px-3 py-1 rounded text-sm transition-colors cursor-pointer",
+                                syncMode === "folder"
+                                    ? "bg-accent/80 text-primary"
+                                    : "text-muted-foreground hover:text-primary"
+                            )}
+                        >
+                            Cloud folder
+                        </button>
+                        <button
+                            onClick={() => selectSyncMode("webdav")}
+                            className={cn(
+                                "px-3 py-1 rounded text-sm transition-colors cursor-pointer",
+                                syncMode === "webdav"
+                                    ? "bg-accent/80 text-primary"
+                                    : "text-muted-foreground hover:text-primary"
+                            )}
+                        >
+                            WebDAV
+                        </button>
+                    </div>
+
+                    {syncMode === "folder" ? (
+                        <>
+                            <p className="text-xs text-muted-foreground ml-0.5">
+                                Point Wave at a folder inside a Nextcloud / Dropbox / Drive
+                                desktop-client sync root — that client moves the files between
+                                machines, so no account or password is needed here.
+                            </p>
+                            <TextRow
+                                label="Folder path"
+                                settingKey="sync:folderpath"
+                                placeholder="~/Nextcloud/waveterm-sync"
+                                onCommit={setConfigKey}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-xs text-muted-foreground ml-0.5">
+                                Talk to a WebDAV server (e.g. Nextcloud) directly over HTTPS — no
+                                desktop client required. Set the app-password in Secrets as{" "}
+                                <code>sync:webdavpassword</code>.
+                            </p>
+                            <TextRow
+                                label="WebDAV URL"
+                                settingKey="sync:webdavurl"
+                                placeholder="https://host/remote.php/dav/files/<user>"
+                                onCommit={setConfigKey}
+                            />
+                            <TextRow label="WebDAV user" settingKey="sync:webdavuser" onCommit={setConfigKey} />
+                            <TextRow
+                                label="Folder"
+                                settingKey="sync:folder"
+                                placeholder="waveterm-sync"
+                                onCommit={setConfigKey}
+                            />
+                        </>
+                    )}
                     <TextRow
                         label="Interval"
                         settingKey="sync:intervalms"

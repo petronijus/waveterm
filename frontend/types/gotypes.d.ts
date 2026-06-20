@@ -1494,6 +1494,7 @@ declare global {
         "notify:commanddonethresholdms"?: number;
         "sync:*"?: boolean;
         "sync:enabled"?: boolean;
+        "sync:folderpath"?: string;
         "sync:webdavurl"?: string;
         "sync:webdavuser"?: string;
         "sync:folder"?: string;

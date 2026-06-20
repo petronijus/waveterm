@@ -123,6 +123,7 @@ const (
 
 	ConfigKey_SyncClear                      = "sync:*"
 	ConfigKey_SyncEnabled                    = "sync:enabled"
+	ConfigKey_SyncFolderPath                 = "sync:folderpath"
 	ConfigKey_SyncWebDAVURL                  = "sync:webdavurl"
 	ConfigKey_SyncWebDAVUser                 = "sync:webdavuser"
 	ConfigKey_SyncFolder                     = "sync:folder"

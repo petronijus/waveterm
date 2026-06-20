@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,7 +122,7 @@ func (s *Scheduler) SyncNow(ctx context.Context) SyncStatus {
 func (s *Scheduler) doSync(ctx context.Context) time.Duration {
 	s.runLock.Lock()
 	defer s.runLock.Unlock()
-	cfg, enabled, interval, err := loadSyncConfig()
+	store, enabled, interval, err := loadSyncConfig()
 	st := SyncStatus{Enabled: enabled, LastSyncTs: s.GetStatus().LastSyncTs}
 	if err != nil {
 		st.LastError = err.Error()
@@ -134,7 +135,7 @@ func (s *Scheduler) doSync(ctx context.Context) time.Duration {
 		return interval
 	}
 	st.Configured = true
-	if err := SyncOnce(ctx, MakeWebDAVClient(cfg), s.installId); err != nil {
+	if err := SyncOnce(ctx, store, s.installId); err != nil {
 		st.LastError = err.Error()
 		log.Printf("wsync: round failed: %v\n", err)
 	} else {
@@ -144,31 +145,37 @@ func (s *Scheduler) doSync(ctx context.Context) time.Duration {
 	return interval
 }
 
-// loadSyncConfig builds the WebDAV config from settings + the secret store and
-// reports whether sync is enabled and fully configured. The poll interval is
-// returned even when disabled so the loop keeps a sane cadence.
-func loadSyncConfig() (WebDAVConfig, bool, time.Duration, error) {
+// loadSyncConfig picks and builds the storage transport from settings and reports
+// whether sync is enabled and fully configured. A non-empty sync:folderpath selects
+// the credential-free local-folder backend (a Nextcloud/Drive desktop-client folder);
+// otherwise it falls back to the direct WebDAV backend, which needs url + user + the
+// app-password from the secret store. The poll interval is returned even when
+// disabled so the loop keeps a sane cadence.
+func loadSyncConfig() (Transport, bool, time.Duration, error) {
 	settings := wconfig.GetWatcher().GetFullConfig().Settings
 	interval := time.Duration(DefaultSyncIntervalMs) * time.Millisecond
 	if settings.SyncIntervalMs != nil && *settings.SyncIntervalMs >= MinSyncIntervalMs {
 		interval = time.Duration(*settings.SyncIntervalMs) * time.Millisecond
 	}
 	if !settings.SyncEnabled {
-		return WebDAVConfig{}, false, interval, nil
+		return nil, false, interval, nil
+	}
+	if strings.TrimSpace(settings.SyncFolderPath) != "" {
+		return MakeLocalFolderTransport(settings.SyncFolderPath), true, interval, nil
 	}
 	folder := settings.SyncFolder
 	if folder == "" {
 		folder = DefaultSyncFolder
 	}
 	if settings.SyncWebDAVURL == "" || settings.SyncWebDAVUser == "" {
-		return WebDAVConfig{}, false, interval, fmt.Errorf("sync enabled but sync:webdavurl/sync:webdavuser not set")
+		return nil, false, interval, fmt.Errorf("sync enabled but neither sync:folderpath nor sync:webdavurl/sync:webdavuser is set")
 	}
 	pw, ok, err := secretstore.GetSecret(SecretName_WebDAVPassword)
 	if err != nil {
-		return WebDAVConfig{}, false, interval, fmt.Errorf("reading webdav password secret: %w", err)
+		return nil, false, interval, fmt.Errorf("reading webdav password secret: %w", err)
 	}
 	if !ok || pw == "" {
-		return WebDAVConfig{}, false, interval, fmt.Errorf("sync enabled but secret %q not set", SecretName_WebDAVPassword)
+		return nil, false, interval, fmt.Errorf("sync enabled but secret %q not set", SecretName_WebDAVPassword)
 	}
 	cfg := WebDAVConfig{
 		BaseURL:  settings.SyncWebDAVURL,
@@ -176,5 +183,5 @@ func loadSyncConfig() (WebDAVConfig, bool, time.Duration, error) {
 		User:     settings.SyncWebDAVUser,
 		Password: pw,
 	}
-	return cfg, true, interval, nil
+	return MakeWebDAVClient(cfg), true, interval, nil
 }

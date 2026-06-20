@@ -23,11 +23,11 @@ import (
 // system from ping-ponging: next round, items a peer owns compare equal to the
 // snapshot and keep the peer's stamp, so we never re-claim a change we merely
 // received.
-func SyncOnce(ctx context.Context, dav *WebDAVClient, installId string) error {
+func SyncOnce(ctx context.Context, store Transport, installId string) error {
 	if installId == "" {
 		return fmt.Errorf("wsync: empty installId")
 	}
-	if err := dav.EnsureFolder(ctx); err != nil {
+	if err := store.EnsureFolder(ctx); err != nil {
 		return fmt.Errorf("ensuring sync folder: %w", err)
 	}
 
@@ -47,12 +47,12 @@ func SyncOnce(ctx context.Context, dav *WebDAVClient, installId string) error {
 	if err != nil {
 		return err
 	}
-	if err := dav.Put(ctx, StateFileName(installId), ourBytes); err != nil {
+	if err := store.Put(ctx, StateFileName(installId), ourBytes); err != nil {
 		return fmt.Errorf("publishing our state: %w", err)
 	}
 
 	states := []InstallState{ourState}
-	names, err := dav.ListStateFiles(ctx)
+	names, err := store.ListStateFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("listing peer states: %w", err)
 	}
@@ -60,7 +60,7 @@ func SyncOnce(ctx context.Context, dav *WebDAVClient, installId string) error {
 		if name == StateFileName(installId) {
 			continue
 		}
-		data, ok, err := dav.Get(ctx, name)
+		data, ok, err := store.Get(ctx, name)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", name, err)
 		}

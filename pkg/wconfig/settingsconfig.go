@@ -176,6 +176,7 @@ type SettingsType struct {
 
 	SyncClear      bool   `json:"sync:*,omitempty"`
 	SyncEnabled    bool   `json:"sync:enabled,omitempty"`
+	SyncFolderPath string `json:"sync:folderpath,omitempty"`
 	SyncWebDAVURL  string `json:"sync:webdavurl,omitempty"`
 	SyncWebDAVUser string `json:"sync:webdavuser,omitempty"`
 	SyncFolder     string `json:"sync:folder,omitempty"`

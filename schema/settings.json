@@ -331,6 +331,9 @@
         "sync:enabled": {
           "type": "boolean"
         },
+        "sync:folderpath": {
+          "type": "string"
+        },
         "sync:webdavurl": {
           "type": "string"
         },
