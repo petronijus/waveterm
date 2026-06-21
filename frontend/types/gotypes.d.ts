@@ -1634,6 +1634,7 @@ declare global {
         "notify:*"?: boolean;
         "notify:commanddone"?: boolean;
         "notify:commanddonethresholdms"?: number;
+        "notify:claudewaiting"?: boolean;
         "sync:*"?: boolean;
         "sync:enabled"?: boolean;
         "sync:folderpath"?: string;

@@ -35,6 +35,7 @@ import {
     handleOsc7Command,
     isClaudeCodeCommand,
     markCommandActivity,
+    markCommandWaiting,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
 import {
@@ -123,6 +124,8 @@ export class TermWrap {
     cmdActivityActiveSince: number = 0; // start of the current continuous-output stretch
     cmdActivityLastOutputTs: number = 0; // timestamp of the last output chunk
     cmdActivitySuppressUntil: number = 0; // ignore output activity until this ts (after a resize)
+    cmdActivityWaiting: boolean = false; // bell-driven "waiting for your input" state (Claude turn done)
+    cmdActivityStretchBytes: number = 0; // bytes seen in the current output stretch (to tell repaints from work)
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
@@ -314,6 +317,9 @@ export class TermWrap {
                 if (bellIndicatorEnabled) {
                     setBadge(this.blockId, { icon: "bell", color: "#fbbf24", priority: 1 });
                 }
+                // Claude Code rings the bell when it finishes a turn and is waiting for
+                // input — flip the tab activity indicator out of "working" into "waiting".
+                markCommandWaiting(this, this.blockId);
                 return true;
             })
         );
@@ -530,7 +536,7 @@ export class TermWrap {
             const decodedData = base64ToArray(msg.data64);
             if (this.loaded) {
                 this.doTerminalWrite(decodedData, null);
-                markCommandActivity(this, this.blockId); // live output ⇒ "working" tab spinner
+                markCommandActivity(this, this.blockId, decodedData.length); // live output ⇒ "working" tab spinner
             } else {
                 this.heldData.push(decodedData);
             }

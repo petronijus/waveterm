@@ -76,6 +76,7 @@ function formatSyncTime(ts: number): string {
 // it so the file view reflects the change live.
 export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel }) => {
     const notifyEnabled = useAtomValue(getSettingsKeyAtom("notify:commanddone")) ?? false;
+    const claudeWaitingEnabled = useAtomValue(getSettingsKeyAtom("notify:claudewaiting")) ?? false;
     const thresholdMs = useAtomValue(getSettingsKeyAtom("notify:commanddonethresholdms")) ?? DefaultThresholdMs;
     const syncEnabled = useAtomValue(getSettingsKeyAtom("sync:enabled")) ?? false;
     const syncFolderPath = useAtomValue(getSettingsKeyAtom("sync:folderpath")) ?? "";
@@ -169,6 +170,16 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     />
                     <span className="text-sm text-muted-foreground">seconds</span>
                 </div>
+                <Toggle
+                    id="notify-claudewaiting"
+                    checked={claudeWaitingEnabled}
+                    onChange={(v) => setConfigKey("notify:claudewaiting", v)}
+                    label="Notify when Claude is waiting for input"
+                />
+                <p className="text-xs text-muted-foreground ml-0.5">
+                    When Claude Code finishes a turn and waits for your reply (and the Wave window is
+                    unfocused), send a notification and mark the tab as "waiting" instead of "working".
+                </p>
             </section>
 
             <section className="flex flex-col gap-2">

@@ -325,6 +325,9 @@
         "notify:commanddonethresholdms": {
           "type": "integer"
         },
+        "notify:claudewaiting": {
+          "type": "boolean"
+        },
         "sync:*": {
           "type": "boolean"
         },

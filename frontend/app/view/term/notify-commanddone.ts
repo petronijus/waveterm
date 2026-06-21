@@ -113,3 +113,36 @@ export function maybeNotifyCommandDone(termWrap: TermWrap): void {
     const message = globalStore.get(termWrap.lastCommandAtom) || "Command finished";
     queue({ windowId, tabId: termWrap.tabId, tabName, message });
 }
+
+// Called from markCommandWaiting when Claude Code rings the bell to signal "your
+// turn" while the window is unfocused. Unlike the command-done path this is not a
+// command finishing, so it isn't coalesced or duration-gated — markCommandWaiting
+// already fires it only on the transition into the waiting state. Opt-in via
+// notify:claudewaiting. Clicking the notification jumps to the originating tab.
+export function maybeNotifyClaudeWaiting(termWrap: TermWrap): void {
+    if (!globalStore.get(getSettingsKeyAtom("notify:claudewaiting"))) {
+        return;
+    }
+    if (globalStore.get(atoms.documentHasFocus)) {
+        return; // window focused — you're already here
+    }
+    const windowId = globalStore.get(atoms.uiContext)?.windowid;
+    if (!windowId) {
+        return;
+    }
+    const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", termWrap.tabId));
+    const tabName = tab?.name || "Terminal";
+    fireAndForget(() =>
+        RpcApi.NotifyCommand(
+            TabRpcClient,
+            {
+                title: "Claude is waiting for you",
+                body: tabName,
+                silent: false,
+                windowid: windowId,
+                tabid: termWrap.tabId,
+            },
+            { route: "electron" }
+        )
+    );
+}

@@ -17,7 +17,7 @@ import {
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
 import debug from "debug";
-import { maybeNotifyCommandDone } from "./notify-commanddone";
+import { maybeNotifyClaudeWaiting, maybeNotifyCommandDone } from "./notify-commanddone";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -108,6 +108,7 @@ const CmdActivityDelayMs = 1200; // ignore the first burst so quick commands don
 const CmdActivityIdleMs = 2500; // output quiet this long ⇒ "done thinking" / idle
 const CmdActivitySustainMs = 700; // output must flow this long continuously before we call it "working"
 const CmdActivityGapMs = 1000; // a quiet gap longer than this ends the continuous stretch
+const CmdActivityWorkBytes = 512; // after a "waiting" bell, a stretch must carry at least this many bytes to count as real work again (so the idle TUI's cursor/box repaints don't re-trigger the spinner; real claude output streams far more)
 const CmdActivityPriority = 5;
 
 function ensureActivityBadgeId(termWrap: TermWrap): string {
@@ -160,6 +161,8 @@ function startCommandActivity(termWrap: TermWrap, blockId: string): void {
     termWrap.cmdActivityEverShown = false;
     termWrap.cmdActivityActiveSince = 0;
     termWrap.cmdActivityLastOutputTs = 0;
+    termWrap.cmdActivityWaiting = false;
+    termWrap.cmdActivityStretchBytes = 0;
 }
 
 // Called on each live PTY output chunk. We only call it "working" once output has
@@ -167,7 +170,7 @@ function startCommandActivity(termWrap: TermWrap, blockId: string): void {
 // resize on tab-switch, a TUI repaint) is a single cluster and never qualifies, so
 // it no longer produces a phantom spinner/checkmark. When sustained output then
 // goes quiet, the command is "done thinking": away ⇒ pending "done" badge, watching ⇒ just stop.
-function markCommandActivity(termWrap: TermWrap, blockId: string): void {
+function markCommandActivity(termWrap: TermWrap, blockId: string, outputLen: number = 0): void {
     if (!termWrap.cmdActivityRunning) {
         return;
     }
@@ -197,9 +200,17 @@ function markCommandActivity(termWrap: TermWrap, blockId: string): void {
     // start a new continuous stretch if this is the first chunk or there was a quiet gap
     if (termWrap.cmdActivityActiveSince === 0 || now - termWrap.cmdActivityLastOutputTs > CmdActivityGapMs) {
         termWrap.cmdActivityActiveSince = now;
+        termWrap.cmdActivityStretchBytes = 0;
     }
     termWrap.cmdActivityLastOutputTs = now;
-    if (!termWrap.cmdActivityVisible && now - termWrap.cmdActivityActiveSince >= CmdActivitySustainMs) {
+    termWrap.cmdActivityStretchBytes += outputLen;
+    // While we're in the bell-driven "waiting for you" state, a claude TUI keeps
+    // repainting its idle prompt — small bursts that must NOT look like work. Only a
+    // stretch carrying real volume (CmdActivityWorkBytes) counts as work resuming and
+    // flips us back to the spinner. Outside the waiting state this gate is a no-op.
+    const workVolumeOk = !termWrap.cmdActivityWaiting || termWrap.cmdActivityStretchBytes >= CmdActivityWorkBytes;
+    if (!termWrap.cmdActivityVisible && workVolumeOk && now - termWrap.cmdActivityActiveSince >= CmdActivitySustainMs) {
+        termWrap.cmdActivityWaiting = false;
         termWrap.cmdActivityVisible = true;
         termWrap.cmdActivityEverShown = true;
         setActivityBadge(termWrap, blockId, "spinner+spin", "var(--accent-color)", true);
@@ -234,6 +245,10 @@ function finishCommandActivity(termWrap: TermWrap, blockId: string, exitcode: nu
         clearTimeout(termWrap.cmdActivityIdleTimeout);
         termWrap.cmdActivityIdleTimeout = null;
     }
+    if (termWrap.cmdActivityWaiting) {
+        termWrap.cmdActivityWaiting = false;
+        hideActivityBadge(termWrap, blockId); // the "waiting for you" state ended with the command
+    }
     // Notification is duration-gated, not output-gated, so a long *silent* command
     // (e.g. `sleep 60`) still notifies even though it never showed a spinner.
     maybeNotifyCommandDone(termWrap);
@@ -258,9 +273,43 @@ function cancelCommandActivity(termWrap: TermWrap, blockId: string): void {
     termWrap.cmdActivityRunning = false;
     termWrap.cmdActivityVisible = false;
     termWrap.cmdActivityEverShown = false;
+    termWrap.cmdActivityWaiting = false;
+    termWrap.cmdActivityStretchBytes = 0;
 }
 
-export { markCommandActivity };
+// Called on terminal BEL. Claude Code rings the bell when it finishes a turn and is
+// waiting for your input — but its TUI keeps repainting, so the output-idle heuristic
+// never sees it stop and the tab would keep "working". Treat the bell (while a claude
+// command is active) as a distinct "waiting for you" state: drop the spinner, show a
+// calm badge on background tabs, and optionally fire an OS notification. The spinner
+// only returns when real output volume resumes (see markCommandActivity).
+function markCommandWaiting(termWrap: TermWrap, blockId: string): void {
+    if (!termWrap.cmdActivityRunning) {
+        return; // no command active — a bare-shell bell, not "claude waiting"
+    }
+    if (!globalStore.get(termWrap.claudeCodeActiveAtom)) {
+        return; // scoped to Claude Code's "your turn" bell, not arbitrary program bells
+    }
+    if (termWrap.cmdActivityIdleTimeout != null) {
+        clearTimeout(termWrap.cmdActivityIdleTimeout);
+        termWrap.cmdActivityIdleTimeout = null;
+    }
+    const wasWaiting = termWrap.cmdActivityWaiting;
+    termWrap.cmdActivityWaiting = true;
+    termWrap.cmdActivityVisible = false;
+    termWrap.cmdActivityActiveSince = 0;
+    termWrap.cmdActivityStretchBytes = 0;
+    if (isTermTabActive(termWrap)) {
+        hideActivityBadge(termWrap, blockId); // you're looking at it — no badge needed
+    } else {
+        setActivityBadge(termWrap, blockId, "comment-dots", "#fbbf24", false);
+    }
+    if (!wasWaiting) {
+        maybeNotifyClaudeWaiting(termWrap); // only on entering the state, not on every repeated bell
+    }
+}
+
+export { markCommandActivity, markCommandWaiting };
 
 function handleShellIntegrationCommandStart(
     termWrap: TermWrap,
