@@ -70,5 +70,18 @@ export function addOpenMenuItems(menu: ContextMenuItem[], conn: string, finfo: F
             fireAndForget(() => createBlock(termBlockDef));
         },
     });
+    menu.push({
+        label: "Open Git Here",
+        click: () => {
+            const gitBlockDef: BlockDef = {
+                meta: {
+                    view: "git",
+                    "cmd:cwd": finfo.isdir ? finfo.path : finfo.dir,
+                    connection: conn,
+                },
+            };
+            fireAndForget(() => createBlock(gitBlockDef));
+        },
+    });
     return menu;
 }
