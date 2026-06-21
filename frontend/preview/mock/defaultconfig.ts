@@ -21,6 +21,7 @@ export const DefaultFullConfig: FullConfigType = {
     uithemes: uithemesJson as unknown as { [key: string]: UIThemeType },
     flags: flagsJson as unknown as { [key: string]: TabFlagType },
     connections: {},
+    projects: {},
     bookmarks: {},
     waveai: waveaiJson as unknown as { [key: string]: AIModeConfigType },
     backgrounds: backgroundsJson as { [key: string]: BackgroundConfigType },

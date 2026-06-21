@@ -5,8 +5,9 @@ import { BlockNodeModel } from "@/app/block/blocktypes";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
+import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { getOverrideConfigAtom, refocusNode } from "@/store/global";
+import { atoms, getOverrideConfigAtom, refocusNode } from "@/store/global";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
@@ -116,6 +117,26 @@ function iconForFile(mimeType: string): string {
     }
 }
 
+function projectNameFromPath(p: string): string {
+    if (p === "~" || isBlank(p)) {
+        return "home";
+    }
+    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
+    const last = parts[parts.length - 1];
+    return last || p;
+}
+
+function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
+    if (projects[base] == null) {
+        return base;
+    }
+    let i = 2;
+    while (projects[`${base} (${i})`] != null) {
+        i++;
+    }
+    return `${base} (${i})`;
+}
+
 export class PreviewModel implements ViewModel {
     viewType: string;
     blockId: string;
@@ -143,6 +164,7 @@ export class PreviewModel implements ViewModel {
     loadableFileInfo: Atom<Loadable<FileInfo>>;
     connection: Atom<Promise<string>>;
     connectionImmediate: Atom<string>;
+    isCurrentDirBookmarked: Atom<boolean>;
     statFile: Atom<Promise<FileInfo>>;
     fullFile: Atom<Promise<FileData>>;
     fileMimeType: Atom<Promise<string>>;
@@ -334,6 +356,7 @@ export class PreviewModel implements ViewModel {
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             if (mimeType == "directory") {
                 const showHiddenFiles = get(this.showHiddenFiles);
+                const bookmarked = get(this.isCurrentDirBookmarked);
                 return [
                     {
                         elemtype: "iconbutton",
@@ -347,6 +370,12 @@ export class PreviewModel implements ViewModel {
                         elemtype: "iconbutton",
                         icon: "arrows-rotate",
                         click: () => this.refreshCallback?.(),
+                    },
+                    {
+                        elemtype: "iconbutton",
+                        icon: bookmarked ? "star" : "regular@star",
+                        title: bookmarked ? "Remove project bookmark" : "Bookmark folder as project",
+                        click: () => fireAndForget(() => this.toggleProjectBookmark()),
                     },
                 ] as IconButtonDecl[];
             } else if (!isCeView && isMarkdownLike(mimeType)) {
@@ -400,6 +429,14 @@ export class PreviewModel implements ViewModel {
         });
         this.connectionImmediate = atom<string>((get) => {
             return get(this.blockAtom)?.meta?.connection;
+        });
+        this.isCurrentDirBookmarked = atom<boolean>((get) => {
+            const projects = get(atoms.fullConfigAtom)?.projects ?? {};
+            const curPath = get(this.metaFilePath);
+            const curConn = get(this.connectionImmediate) || "local";
+            return Object.values(projects).some(
+                (p) => p?.path === curPath && (p?.connection || "local") === curConn
+            );
         });
         this.statFile = atom<Promise<FileInfo>>(async (get) => {
             const fileName = get(this.metaFilePath);
@@ -493,6 +530,34 @@ export class PreviewModel implements ViewModel {
 
     markdownShowTocToggle() {
         globalStore.set(this.markdownShowToc, !globalStore.get(this.markdownShowToc));
+    }
+
+    // Bookmark (or un-bookmark) the currently shown directory as a "project".
+    // Name defaults to the folder basename; the connection is recorded so the
+    // project stays meaningful when picked from another machine.
+    async toggleProjectBookmark() {
+        const path = globalStore.get(this.metaFilePath);
+        if (isBlank(path)) {
+            return;
+        }
+        const conn = globalStore.get(this.connectionImmediate) || "";
+        const connKey = conn || "local";
+        const projects = globalStore.get(atoms.fullConfigAtom)?.projects ?? {};
+        const existing = Object.entries(projects).find(
+            ([, p]) => p?.path === path && (p?.connection || "local") === connKey
+        );
+        if (existing) {
+            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name: existing[0], metamaptype: null });
+            return;
+        }
+        const name = uniqueProjectName(projectNameFromPath(path), projects);
+        const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
+        const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
+        const meta: ProjectConfigType = { path, "display:order": nextOrder };
+        if (conn) {
+            meta.connection = conn;
+        }
+        await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
     }
 
     get viewComponent(): ViewComponent {

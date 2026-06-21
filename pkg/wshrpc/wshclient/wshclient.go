@@ -938,6 +938,12 @@ func SetPeerInfoCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) er
 	return err
 }
 
+// command "setprojectsconfig", wshserver.SetProjectsConfigCommand
+func SetProjectsConfigCommand(w *wshutil.WshRpc, data wshrpc.ProjectConfigRequest, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "setprojectsconfig", data, opts)
+	return err
+}
+
 // command "setrtinfo", wshserver.SetRTInfoCommand
 func SetRTInfoCommand(w *wshutil.WshRpc, data wshrpc.CommandSetRTInfoData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setrtinfo", data, opts)

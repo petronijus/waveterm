@@ -76,6 +76,7 @@ type WshRpcInterface interface {
 	TestMultiArgCommand(ctx context.Context, arg1 string, arg2 int, arg3 bool) (string, error)
 	SetConfigCommand(ctx context.Context, data MetaSettingsType) error
 	SetConnectionsConfigCommand(ctx context.Context, data ConnConfigRequest) error
+	SetProjectsConfigCommand(ctx context.Context, data ProjectConfigRequest) error
 	SetUIThemeCommand(ctx context.Context, data UIThemeRequest) error
 	SetFlagCommand(ctx context.Context, data FlagRequest) error
 	SyncNowCommand(ctx context.Context) (SyncStatusData, error)
@@ -415,6 +416,13 @@ func (m MetaSettingsType) MarshalJSON() ([]byte, error) {
 
 type ConnConfigRequest struct {
 	Host        string              `json:"host"`
+	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
+}
+
+// ProjectConfigRequest writes (or, when MetaMapType is nil, deletes) a single
+// project (folder bookmark) entry in the user's projects.json.
+type ProjectConfigRequest struct {
+	Name        string              `json:"name"`
 	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
 }
 

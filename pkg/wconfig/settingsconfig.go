@@ -27,6 +27,7 @@ const SettingsFile = "settings.json"
 const ConnectionsFile = "connections.json"
 const UIThemesFile = "uithemes.json"
 const FlagsFile = "flags.json"
+const ProjectsFile = "projects.json"
 const ProfilesFile = "profiles.json"
 
 var configWriteLock sync.Mutex
@@ -298,6 +299,16 @@ type WebBookmark struct {
 	DisplayOrder float64 `json:"display:order,omitempty"`
 }
 
+// ProjectConfigType is a bookmarked folder ("project"). The map key in
+// projects.json is the display name. Connection records which machine the folder
+// lives on (empty/"local" = local), so projects stay meaningful across machines.
+type ProjectConfigType struct {
+	Path         string  `json:"path"`
+	Connection   string  `json:"connection,omitempty"`
+	Icon         string  `json:"icon,omitempty"`
+	DisplayOrder float64 `json:"display:order,omitempty"`
+}
+
 // Wave AI panel mode configuration (NEW)
 type AIModeConfigType struct {
 	DisplayName        string   `json:"display:name"`
@@ -422,6 +433,7 @@ type FullConfigType struct {
 	UIThemes       map[string]UIThemeType          `json:"uithemes"`
 	Flags          map[string]TabFlagType          `json:"flags"`
 	Connections    map[string]ConnKeywords         `json:"connections"`
+	Projects       map[string]ProjectConfigType    `json:"projects"`
 	Bookmarks      map[string]WebBookmark          `json:"bookmarks"`
 	WaveAIModes    map[string]AIModeConfigType     `json:"waveai"`
 	ConfigErrors   []ConfigError                   `json:"configerrors" configfile:"-"`
@@ -949,6 +961,28 @@ func SetConnectionsConfigValue(connName string, toMerge waveobj.MetaMapType) err
 	}
 	m[connName] = connData
 	return WriteWaveHomeConfigFile(ConnectionsFile, m)
+}
+
+// SetProjectsConfigValue writes (or, when projectData is nil, deletes) a single
+// project (folder bookmark) entry in the user's projects.json. The star button in
+// the Files view and the Projects settings editor both persist through this.
+func SetProjectsConfigValue(projectName string, projectData waveobj.MetaMapType) error {
+	if projectName == "" {
+		return fmt.Errorf("projectName cannot be empty")
+	}
+	m, cerrs := ReadWaveHomeConfigFile(ProjectsFile)
+	if len(cerrs) > 0 {
+		return fmt.Errorf("error reading config file: %v", cerrs[0])
+	}
+	if m == nil {
+		m = make(waveobj.MetaMapType)
+	}
+	if projectData == nil {
+		delete(m, projectName)
+	} else {
+		m[projectName] = projectData
+	}
+	return WriteWaveHomeConfigFile(ProjectsFile, m)
 }
 
 // SetUIThemeValue writes (or, when themeData is nil, deletes) a UI theme entry in

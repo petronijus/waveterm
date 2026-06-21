@@ -7,6 +7,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ThemeEditorView } from "@/app/view/themeeditor/themeeditor";
+import { ConnectionsProjectsView } from "@/app/view/waveconfig/connectionsprojects";
 import { GeneralSettingsView } from "@/app/view/waveconfig/generalsettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
@@ -71,12 +72,14 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             splitView: true,
         },
         {
-            name: "Connections",
+            name: "Connections & Projects",
             path: "connections.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/connections",
-            description: isWindows ? "SSH hosts and WSL distros" : "SSH hosts",
+            description: isWindows ? "SSH hosts, WSL distros & folder bookmarks" : "SSH hosts & folder bookmarks",
             hasJsonView: true,
+            visualComponent: ConnectionsProjectsView,
+            splitView: true,
         },
         {
             name: "Sidebar Widgets",

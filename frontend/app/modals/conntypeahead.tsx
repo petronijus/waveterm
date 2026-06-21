@@ -238,8 +238,8 @@ function getConnectionsEditItem(
         status: "disconnected",
         icon: "gear",
         iconColor: "var(--grey-text-color)",
-        value: "Edit Connections",
-        label: "Edit Connections",
+        value: "Edit Connections & Projects",
+        label: "Edit Connections & Projects",
         onSelect: () => {
             util.fireAndForget(async () => {
                 globalStore.set(changeConnModalAtom, false);
@@ -254,6 +254,35 @@ function getConnectionsEditItem(
         },
     };
     return connectionsEditItem;
+}
+
+// Bookmarked folders ("projects"). Picking one switches the block to the
+// project's connection and navigates it to that folder.
+function getProjectSuggestions(
+    fullConfig: FullConfigType,
+    connSelected: string,
+    onPick: (project: ProjectConfigType) => void
+): SuggestionConnectionScope | null {
+    const projects = fullConfig?.projects ?? {};
+    const filter = connSelected.toLowerCase();
+    const items = Object.entries(projects)
+        .filter(([name]) => name.toLowerCase().includes(filter))
+        .sort((a, b) => (a[1]?.["display:order"] ?? 0) - (b[1]?.["display:order"] ?? 0))
+        .map(
+            ([name, project]) =>
+                ({
+                    status: "connected" as ConnStatusType,
+                    icon: project?.icon || "folder",
+                    iconColor: "var(--grey-text-color)",
+                    value: name,
+                    label: name,
+                    onSelect: () => onPick(project),
+                }) as SuggestionConnectionItem
+        );
+    if (items.length === 0) {
+        return null;
+    }
+    return { headerText: "Projects", items };
 }
 
 function getNewConnectionSuggestionItem(
@@ -375,6 +404,30 @@ const ChangeConnectionBlockModal = React.memo(
             [blockId, blockData]
         );
 
+        const pickProject = React.useCallback(
+            (project: ProjectConfigType) => {
+                util.fireAndForget(async () => {
+                    const connName = project.connection || null;
+                    await RpcApi.SetMetaCommand(TabRpcClient, {
+                        oref: WOS.makeORef("block", blockId),
+                        meta: { connection: connName, file: project.path, "cmd:cwd": project.path },
+                    });
+                    globalStore.set(changeConnModalAtom, false);
+                    globalRefocusWithTimeout(10);
+                    try {
+                        await RpcApi.ConnEnsureCommand(
+                            TabRpcClient,
+                            { connname: connName, logblockid: blockId },
+                            { timeout: 60000 }
+                        );
+                    } catch (e) {
+                        console.log("error connecting to project", blockId, project.path, e);
+                    }
+                });
+            },
+            [blockId, changeConnModalAtom]
+        );
+
         const reconnectSuggestionItem = getReconnectItem(connStatus, connSelected, blockId, changeConnModalAtom);
         const localSuggestions = getLocalSuggestions(
             localName,
@@ -394,6 +447,7 @@ const ChangeConnectionBlockModal = React.memo(
             fullConfig,
             filterOutNowsh
         );
+        const projectSuggestions = getProjectSuggestions(fullConfig, connSelected, pickProject);
         const connectionsEditItem = getConnectionsEditItem(changeConnModalAtom, connSelected);
         const disconnectItem = getDisconnectItem(connection, connStatusMap, changeConnModalAtom);
         const newConnectionSuggestionItem = getNewConnectionSuggestionItem(
@@ -409,6 +463,7 @@ const ChangeConnectionBlockModal = React.memo(
             ...(reconnectSuggestionItem ? [reconnectSuggestionItem] : []),
             ...(localSuggestions ? [localSuggestions] : []),
             ...(remoteSuggestions ? [remoteSuggestions] : []),
+            ...(projectSuggestions ? [projectSuggestions] : []),
             ...(disconnectItem ? [disconnectItem] : []),
             ...(connectionsEditItem ? [connectionsEditItem] : []),
             ...(newConnectionSuggestionItem ? [newConnectionSuggestionItem] : []),

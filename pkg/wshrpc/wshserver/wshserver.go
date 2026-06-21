@@ -560,6 +560,10 @@ func (ws *WshServer) SetConnectionsConfigCommand(ctx context.Context, data wshrp
 	return wconfig.SetConnectionsConfigValue(data.Host, data.MetaMapType)
 }
 
+func (ws *WshServer) SetProjectsConfigCommand(ctx context.Context, data wshrpc.ProjectConfigRequest) error {
+	return wconfig.SetProjectsConfigValue(data.Name, data.MetaMapType)
+}
+
 func (ws *WshServer) SetUIThemeCommand(ctx context.Context, data wshrpc.UIThemeRequest) error {
 	return wconfig.SetUIThemeValue(data.ThemeName, data.MetaMapType)
 }

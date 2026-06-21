@@ -942,6 +942,12 @@ export class RpcApiType {
         return client.wshRpcCall("setpeerinfo", data, opts);
     }
 
+    // command "setprojectsconfig" [call]
+    SetProjectsConfigCommand(client: WshClient, data: ProjectConfigRequest, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setprojectsconfig", data, opts);
+        return client.wshRpcCall("setprojectsconfig", data, opts);
+    }
+
     // command "setrtinfo" [call]
     SetRTInfoCommand(client: WshClient, data: CommandSetRTInfoData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setrtinfo", data, opts);

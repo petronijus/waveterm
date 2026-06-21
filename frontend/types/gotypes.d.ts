@@ -1095,6 +1095,7 @@ declare global {
         uithemes: {[key: string]: UIThemeType};
         flags: {[key: string]: TabFlagType};
         connections: {[key: string]: ConnKeywords};
+        projects: {[key: string]: ProjectConfigType};
         bookmarks: {[key: string]: WebBookmark};
         waveai: {[key: string]: AIModeConfigType};
         configerrors: ConfigError[];
@@ -1460,6 +1461,20 @@ declare global {
         memfree?: number;
         numcpu?: number;
         cpusum?: number;
+    };
+
+    // wshrpc.ProjectConfigRequest
+    type ProjectConfigRequest = {
+        name: string;
+        metamaptype: MetaType;
+    };
+
+    // wconfig.ProjectConfigType
+    type ProjectConfigType = {
+        path: string;
+        connection?: string;
+        icon?: string;
+        "display:order"?: number;
     };
 
     // uctypes.RateLimitInfo
