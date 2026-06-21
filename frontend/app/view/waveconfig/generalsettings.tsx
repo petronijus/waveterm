@@ -188,6 +188,26 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
     return (
         <div className="flex flex-col gap-6 p-6">
             <section className="flex flex-col gap-2">
+                <h2 className="text-base font-semibold">Terminal</h2>
+                <TextRow
+                    label="Font size"
+                    settingKey="term:fontsize"
+                    isNumber={true}
+                    placeholder="12"
+                    fromDisplay={(s) => {
+                        const n = parseInt(s, 10);
+                        if (isNaN(n)) {
+                            return null;
+                        }
+                        return Math.max(4, Math.min(64, n));
+                    }}
+                    onCommit={setConfigKey}
+                />
+                <p className="text-xs text-muted-foreground ml-0.5">
+                    Default font size (px) for terminal blocks. Individual blocks can still override it.
+                </p>
+            </section>
+            <section className="flex flex-col gap-2">
                 <h2 className="text-base font-semibold">Notifications</h2>
                 {/* Toggle defaults to centered; -ml-[5px] cancels its internal label
                     padding so the switch lines up flush-left under the headline. */}
