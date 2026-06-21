@@ -115,14 +115,12 @@ export function maybeNotifyCommandDone(termWrap: TermWrap): void {
 }
 
 // Called from markCommandWaiting when an AI agent (Claude / Gemini / Codex) signals
-// "your turn" (terminal bell or OSC 9) while the window is unfocused. Unlike the
-// command-done path this is not a command finishing, so it isn't coalesced or
-// duration-gated — markCommandWaiting already fires it only on the transition into the
-// waiting state. Opt-in via notify:agentwaiting. Clicking it jumps to the tab.
+// "your turn" (terminal bell or OSC 9) while the window is unfocused. Always on (no
+// setting) — it's a high-signal, low-frequency event. Unlike the command-done path
+// this is not a command finishing, so it isn't coalesced or duration-gated;
+// markCommandWaiting already fires it only on the transition into the waiting state.
+// Clicking it jumps to the tab.
 export function maybeNotifyAgentWaiting(termWrap: TermWrap): void {
-    if (!globalStore.get(getSettingsKeyAtom("notify:agentwaiting"))) {
-        return;
-    }
     if (globalStore.get(atoms.documentHasFocus)) {
         return; // window focused — you're already here
     }
