@@ -351,6 +351,11 @@ function parseUnifiedDiff(diff: string): DiffRow[] {
     const rows: DiffRow[] = [];
     let oldNo = 0;
     let newNo = 0;
+    // Everything before the first @@ is the diff/index/mode header. Once we're inside a
+    // hunk, classify by the leading char only — never by header-looking prefixes — so a
+    // file line that itself starts with "+++", "---", "@@" or "diff " isn't mistaken for
+    // a header and dropped.
+    let inHunk = false;
     const lines = diff.split("\n");
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
@@ -360,22 +365,14 @@ function parseUnifiedDiff(diff: string): DiffRow[] {
                 oldNo = parseInt(m[1], 10);
                 newNo = parseInt(m[2], 10);
             }
+            inHunk = true;
             continue;
         }
-        if (
-            raw.startsWith("diff ") ||
-            raw.startsWith("index ") ||
-            raw.startsWith("--- ") ||
-            raw.startsWith("+++ ") ||
-            raw.startsWith("\\") || // "\ No newline at end of file"
-            raw.startsWith("old mode ") ||
-            raw.startsWith("new mode ") ||
-            raw.startsWith("similarity ") ||
-            raw.startsWith("rename ") ||
-            raw.startsWith("new file ") ||
-            raw.startsWith("deleted file ")
-        ) {
-            continue;
+        if (!inHunk) {
+            continue; // pre-hunk header lines
+        }
+        if (raw.startsWith("\\")) {
+            continue; // "\ No newline at end of file"
         }
         if (raw === "" && i === lines.length - 1) {
             continue; // trailing element from split() on the final newline
