@@ -214,22 +214,29 @@ ConnectionsGui.displayName = "ConnectionsGui";
 
 export const ConnectionsProjectsView = memo(({ model }: { model: WaveConfigViewModel }) => {
     return (
-        <div className="flex flex-col h-full min-h-0">
-            <div className="flex-1 min-h-0 border-b border-border">
-                <SettingsSplit
-                    autoSaveId="waveconfig-projects-split"
-                    left={<ProjectsGui model={model} />}
-                    right={<JsonPane model={model} filePath="projects.json" />}
-                />
-            </div>
-            <div className="flex-1 min-h-0">
-                <SettingsSplit
-                    autoSaveId="waveconfig-connections-split"
-                    left={<ConnectionsGui />}
-                    right={<JsonPane model={model} filePath="connections.json" />}
-                />
-            </div>
-        </div>
+        <SettingsSplit
+            autoSaveId="waveconfig-connproj-split"
+            left={
+                <div className="flex flex-col h-full min-h-0">
+                    <div className="flex-1 min-h-0 border-b border-border">
+                        <ProjectsGui model={model} />
+                    </div>
+                    <div className="flex-1 min-h-0">
+                        <ConnectionsGui />
+                    </div>
+                </div>
+            }
+            right={
+                <div className="flex flex-col h-full min-h-0">
+                    <div className="flex-1 min-h-0 border-b border-border">
+                        <JsonPane model={model} filePath="projects.json" />
+                    </div>
+                    <div className="flex-1 min-h-0">
+                        <JsonPane model={model} filePath="connections.json" />
+                    </div>
+                </div>
+            }
+        />
     );
 });
 ConnectionsProjectsView.displayName = "ConnectionsProjectsView";
