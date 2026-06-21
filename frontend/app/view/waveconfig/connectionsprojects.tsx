@@ -8,6 +8,7 @@ import { atoms, createBlock, getApi } from "@/store/global";
 import { base64ToString, cn, fireAndForget, stringToBase64 } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { SettingsSplit } from "./settingssplit";
 import type { WaveConfigViewModel } from "./waveconfig-model";
 
 function projectNameFromPath(p: string): string {
@@ -214,17 +215,19 @@ ConnectionsGui.displayName = "ConnectionsGui";
 export const ConnectionsProjectsView = memo(({ model }: { model: WaveConfigViewModel }) => {
     return (
         <div className="flex flex-col h-full min-h-0">
-            <div className="flex flex-row flex-1 min-h-0 border-b border-border">
-                <div className="w-[360px] shrink-0 border-r border-border">
-                    <ProjectsGui model={model} />
-                </div>
-                <JsonPane model={model} filePath="projects.json" />
+            <div className="flex-1 min-h-0 border-b border-border">
+                <SettingsSplit
+                    autoSaveId="waveconfig-projects-split"
+                    left={<ProjectsGui model={model} />}
+                    right={<JsonPane model={model} filePath="projects.json" />}
+                />
             </div>
-            <div className="flex flex-row flex-1 min-h-0">
-                <div className="w-[360px] shrink-0 border-r border-border">
-                    <ConnectionsGui />
-                </div>
-                <JsonPane model={model} filePath="connections.json" />
+            <div className="flex-1 min-h-0">
+                <SettingsSplit
+                    autoSaveId="waveconfig-connections-split"
+                    left={<ConnectionsGui />}
+                    right={<JsonPane model={model} filePath="connections.json" />}
+                />
             </div>
         </div>
     );

@@ -6,6 +6,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
 import type { ConfigFile, WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { SettingsSplit } from "@/app/view/waveconfig/settingssplit";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed, keydownWrapper } from "@/util/keyutil";
@@ -292,22 +293,27 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     (() => {
                                         const VisualComponent = selectedFile.visualComponent;
                                         return (
-                                            <div className="flex flex-col @w600:flex-row h-full min-h-0">
-                                                <div className="@w600:w-[360px] @w600:h-full @w600:border-r border-b @w600:border-b-0 border-border overflow-y-auto shrink-0">
-                                                    <VisualComponent model={model} />
-                                                </div>
-                                                <div className="flex-1 min-h-0 min-w-0">
-                                                    <CodeEditor
-                                                        blockId={blockId}
-                                                        text={fileContent}
-                                                        fileName={`WAVECONFIGPATH/${selectedFile.path}`}
-                                                        language={selectedFile.language}
-                                                        readonly={false}
-                                                        onChange={handleContentChange}
-                                                        onMount={handleEditorMount}
-                                                    />
-                                                </div>
-                                            </div>
+                                            <SettingsSplit
+                                                autoSaveId="waveconfig-general-split"
+                                                left={
+                                                    <div className="h-full overflow-y-auto">
+                                                        <VisualComponent model={model} />
+                                                    </div>
+                                                }
+                                                right={
+                                                    <div className="h-full w-full min-h-0 min-w-0">
+                                                        <CodeEditor
+                                                            blockId={blockId}
+                                                            text={fileContent}
+                                                            fileName={`WAVECONFIGPATH/${selectedFile.path}`}
+                                                            language={selectedFile.language}
+                                                            readonly={false}
+                                                            onChange={handleContentChange}
+                                                            onMount={handleEditorMount}
+                                                        />
+                                                    </div>
+                                                }
+                                            />
                                         );
                                     })()
                                 ) : selectedFile.visualComponent &&

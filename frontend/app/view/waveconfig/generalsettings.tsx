@@ -189,11 +189,14 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
         <div className="flex flex-col gap-6 p-6">
             <section className="flex flex-col gap-2">
                 <h2 className="text-base font-semibold">Notifications</h2>
+                {/* Toggle defaults to centered; -ml-[5px] cancels its internal label
+                    padding so the switch lines up flush-left under the headline. */}
                 <Toggle
                     id="notify-commanddone"
                     checked={notifyEnabled}
                     onChange={(v) => setConfigKey("notify:commanddone", v)}
                     label="Notify when a command finishes"
+                    className="!justify-start -ml-[5px]"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
                     Sends a system notification when a foreground command finishes while the Wave
@@ -230,6 +233,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     checked={syncEnabled}
                     onChange={(v) => setConfigKey("sync:enabled", v)}
                     label="Sync settings & workspaces between machines"
+                    className="!justify-start -ml-[5px]"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
                     Syncs config, workspaces, tabs and layout across your machines.
