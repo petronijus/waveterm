@@ -52,7 +52,6 @@ export class GitViewModel implements ViewModel {
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
     cwdSource: jotai.Atom<string>;
-    viewText: jotai.Atom<HeaderElem[]>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
 
     disposed = false;
@@ -108,41 +107,6 @@ export class GitViewModel implements ViewModel {
                 return file;
             }
             return "~";
-        });
-
-        this.viewText = jotai.atom((get) => {
-            const repoInfo = get(this.repoInfoAtom);
-            const status = get(this.statusAtom);
-            const elems: HeaderElem[] = [];
-            if (!repoInfo?.isrepo) {
-                return elems;
-            }
-            const children: HeaderElem[] = [];
-            const branchLabel = status?.detached
-                ? `(detached ${status?.head ?? ""})`
-                : (status?.branch ?? "…");
-            children.push({
-                elemtype: "textbutton",
-                text: branchLabel,
-                className:
-                    "git-branch-button border border-border rounded px-2 py-0.5 text-secondary hover:text-primary hover:bg-white/5 transition-colors cursor-pointer",
-                title: "Switch branch",
-                onClick: () => this.toggleBranchSwitcher(),
-            });
-            if (status?.ahead > 0 || status?.behind > 0) {
-                const parts: string[] = [];
-                if (status?.ahead > 0) parts.push(`↑${status.ahead}`);
-                if (status?.behind > 0) parts.push(`↓${status.behind}`);
-                children.push({ elemtype: "text", text: parts.join(" "), className: "text-secondary text-xs" });
-            }
-            const changeCount = status?.files?.length ?? 0;
-            children.push({
-                elemtype: "text",
-                text: changeCount === 0 ? "✓ clean" : `${changeCount} ${changeCount === 1 ? "change" : "changes"}`,
-                className: changeCount === 0 ? "text-success text-xs" : "text-warning text-xs",
-            });
-            elems.push({ elemtype: "div", className: "flex items-center gap-2", children });
-            return elems;
         });
 
         this.endIconButtons = jotai.atom((get) => {
