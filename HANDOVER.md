@@ -41,7 +41,7 @@ Built per-OS (no hosted CI) — see BUILDING.md.
 |----|------------------|--------------------|-------|
 | **macOS** | yes | `release` @ 2026-06-21, **signed** (Apple Dev cert, Team ID on file) | Wave + Wave (Dev) built & installed; notifications confirmed working on the **signed** Wave (Dev). |
 | **Linux** | build on first use | — | next: build + test agent-waiting (unsigned OK) |
-| **Windows** | build on first use | — | not yet built (mind the `task package` gotcha in BUILDING.md) |
+| **Windows** | yes | `release` @ 2026-06-21, signed (cert auto-found in the Windows store) | Wave + Wave (Dev) built & installed side-by-side. Built `nsis`+`zip` only (MSI skipped); two-step backend build (`task --force build:backend` before electron-builder) avoids the wavesrv-drop gotcha — see BUILDING.md. |
 
 ## Per-machine reminders
 
