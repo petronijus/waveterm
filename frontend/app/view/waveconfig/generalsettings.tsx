@@ -3,7 +3,7 @@
 
 import { Input } from "@/app/element/input";
 import { Toggle } from "@/app/element/toggle";
-import { getSettingsKeyAtom } from "@/app/store/global";
+import { getApi, getSettingsKeyAtom } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { cn, fireAndForget } from "@/util/util";
@@ -56,6 +56,58 @@ const TextRow = memo(({ label, settingKey, placeholder, isNumber, toDisplay, fro
     );
 });
 TextRow.displayName = "TextRow";
+
+// Like TextRow, but with a "Browse…" button that opens the native folder picker.
+// The text input stays editable so a path can still be pasted or typed by hand.
+type FolderRowProps = {
+    label: string;
+    settingKey: keyof SettingsType;
+    placeholder?: string;
+    onCommit: (key: keyof SettingsType, value: any) => void;
+};
+
+const FolderRow = memo(({ label, settingKey, placeholder, onCommit }: FolderRowProps) => {
+    const value = useAtomValue(getSettingsKeyAtom(settingKey));
+    const display = value == null ? "" : String(value);
+    const [draft, setDraft] = useState(display);
+    useEffect(() => setDraft(display), [display]);
+
+    const browse = () => {
+        fireAndForget(async () => {
+            const picked = await getApi().selectDirectory(draft || placeholder);
+            if (!picked) {
+                return;
+            }
+            setDraft(picked);
+            onCommit(settingKey, picked);
+        });
+    };
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="text-sm w-36 shrink-0">{label}</span>
+            <Input
+                className="flex-1"
+                value={draft}
+                placeholder={placeholder}
+                onChange={setDraft}
+                onBlur={() => onCommit(settingKey, draft)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                        onCommit(settingKey, draft);
+                    }
+                }}
+            />
+            <button
+                onClick={browse}
+                className="px-3 py-1 rounded text-sm border border-border hover:bg-hoverbg transition-colors cursor-pointer shrink-0"
+            >
+                Browse…
+            </button>
+        </div>
+    );
+});
+FolderRow.displayName = "FolderRow";
 
 function formatSyncTime(ts: number): string {
     if (!ts) {
@@ -220,7 +272,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                                 desktop-client sync root — that client moves the files between
                                 machines, so no account or password is needed here.
                             </p>
-                            <TextRow
+                            <FolderRow
                                 label="Folder path"
                                 settingKey="sync:folderpath"
                                 placeholder="~/Nextcloud/waveterm-sync"

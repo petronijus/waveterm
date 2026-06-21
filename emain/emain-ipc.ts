@@ -5,6 +5,7 @@ import * as electron from "electron";
 import { FastAverageColor } from "fast-average-color";
 import fs from "fs";
 import * as child_process from "node:child_process";
+import os from "os";
 import * as path from "path";
 import { PNG } from "pngjs";
 import { Readable } from "stream";
@@ -529,5 +530,32 @@ export function initIpcHandlers() {
             console.error("error saving scrollback file", err);
             return false;
         }
+    });
+
+    electron.ipcMain.handle("select-directory", async (event, defaultPath?: string) => {
+        const ww = electron.BrowserWindow.fromWebContents(event.sender);
+        if (ww == null) {
+            return "";
+        }
+        const home = os.homedir();
+        const expanded = defaultPath?.startsWith("~") ? path.join(home, defaultPath.slice(1)) : defaultPath;
+        const result = await electron.dialog.showOpenDialog(ww, {
+            title: "Select Sync Folder",
+            defaultPath: expanded || home,
+            properties: ["openDirectory", "createDirectory"],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return "";
+        }
+        const selected = result.filePaths[0];
+        // Sync settings are shared across machines, so collapse the home prefix back to
+        // "~" to keep the stored path portable.
+        if (selected === home) {
+            return "~";
+        }
+        if (selected.startsWith(home + path.sep)) {
+            return "~" + selected.slice(home.length);
+        }
+        return selected;
     });
 }

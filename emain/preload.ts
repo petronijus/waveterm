@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld("api", {
     doRefresh: () => ipcRenderer.send("do-refresh"),
     getPathForFile: (file: File): string => webUtils.getPathForFile(file),
     saveTextFile: (fileName: string, content: string) => ipcRenderer.invoke("save-text-file", fileName, content),
+    selectDirectory: (defaultPath?: string) => ipcRenderer.invoke("select-directory", defaultPath),
     setIsActive: () => ipcRenderer.invoke("set-is-active"),
 });
 
