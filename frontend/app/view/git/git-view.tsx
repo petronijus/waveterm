@@ -82,15 +82,14 @@ const FileRow = React.memo(function FileRow({
 }) {
     const s = statusLetter(file);
     return (
-        <div className="git-file-row group flex items-center gap-2 px-3 py-1 text-xs hover:bg-white/5">
+        <div
+            className="git-file-row group flex items-center gap-2 px-3 py-1 text-xs hover:bg-white/5 cursor-pointer"
+            onDoubleClick={() => onDiff(file)}
+        >
             <span className={cn("w-3 text-center font-mono font-bold", s.color)} title={s.title}>
                 {s.letter}
             </span>
-            <span
-                className="flex-1 truncate cursor-pointer hover:text-primary"
-                title={file.path}
-                onClick={() => onDiff(file)}
-            >
+            <span className="flex-1 truncate hover:text-primary" title={`${file.path} — double-click to view changes`}>
                 {file.origpath ? `${file.origpath} → ${file.path}` : file.path}
             </span>
             {file.binary ? (
@@ -340,20 +339,92 @@ const BranchSwitcher = React.memo(function BranchSwitcher({
 });
 BranchSwitcher.displayName = "BranchSwitcher";
 
-function diffLineClass(line: string): string {
-    if (line.startsWith("+") && !line.startsWith("+++")) return "text-success";
-    if (line.startsWith("-") && !line.startsWith("---")) return "text-error";
-    if (line.startsWith("@@")) return "text-accent";
-    if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("+++") || line.startsWith("---"))
-        return "text-secondary";
-    return "text-primary";
+type DiffRow =
+    | { kind: "context"; oldNo: number; newNo: number; text: string }
+    | { kind: "add"; newNo: number; text: string }
+    | { kind: "del"; oldNo: number; text: string };
+
+// Parse a (full-context) unified diff into renderable rows with line numbers,
+// dropping the diff/hunk headers so the panel shows the whole file content with
+// +/- markers rather than just the changed hunks.
+function parseUnifiedDiff(diff: string): DiffRow[] {
+    const rows: DiffRow[] = [];
+    let oldNo = 0;
+    let newNo = 0;
+    const lines = diff.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        if (raw.startsWith("@@")) {
+            const m = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+            if (m) {
+                oldNo = parseInt(m[1], 10);
+                newNo = parseInt(m[2], 10);
+            }
+            continue;
+        }
+        if (
+            raw.startsWith("diff ") ||
+            raw.startsWith("index ") ||
+            raw.startsWith("--- ") ||
+            raw.startsWith("+++ ") ||
+            raw.startsWith("\\") || // "\ No newline at end of file"
+            raw.startsWith("old mode ") ||
+            raw.startsWith("new mode ") ||
+            raw.startsWith("similarity ") ||
+            raw.startsWith("rename ") ||
+            raw.startsWith("new file ") ||
+            raw.startsWith("deleted file ")
+        ) {
+            continue;
+        }
+        if (raw === "" && i === lines.length - 1) {
+            continue; // trailing element from split() on the final newline
+        }
+        const tag = raw[0];
+        const text = raw.slice(1);
+        if (tag === "+") {
+            rows.push({ kind: "add", newNo, text });
+            newNo++;
+        } else if (tag === "-") {
+            rows.push({ kind: "del", oldNo, text });
+            oldNo++;
+        } else {
+            rows.push({ kind: "context", oldNo, newNo, text });
+            oldNo++;
+            newNo++;
+        }
+    }
+    return rows;
 }
+
+const DiffLine = React.memo(function DiffLine({ row }: { row: DiffRow }) {
+    const isAdd = row.kind === "add";
+    const isDel = row.kind === "del";
+    const lineNo = row.kind === "del" ? row.oldNo : row.newNo;
+    return (
+        <div className={cn("flex whitespace-pre", isAdd && "bg-success/10", isDel && "bg-error/10")}>
+            <span className="w-10 shrink-0 select-none pr-2 text-right text-secondary/50">{lineNo}</span>
+            <span
+                className={cn(
+                    "w-3 shrink-0 select-none text-center",
+                    isAdd ? "text-success" : isDel ? "text-error" : "text-secondary/40"
+                )}
+            >
+                {isAdd ? "+" : isDel ? "-" : ""}
+            </span>
+            <span className={cn("flex-1", isAdd ? "text-success" : isDel ? "text-error" : "text-primary")}>
+                {row.text || " "}
+            </span>
+        </div>
+    );
+});
+DiffLine.displayName = "DiffLine";
 
 const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel }) {
     const diff = jotai.useAtomValue(model.diffAtom);
     const loading = jotai.useAtomValue(model.diffLoadingAtom);
+    const rows = React.useMemo(() => (diff?.diff ? parseUnifiedDiff(diff.diff) : []), [diff?.diff]);
     if (diff == null) return null;
-    const lines = (diff.diff ?? "").split("\n");
     return (
         <div className="absolute inset-0 z-10 flex flex-col bg-panel">
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs bg-panel">
@@ -371,19 +442,17 @@ const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel
             </div>
             <div className="flex-1 overflow-auto">
                 {loading ? (
-                    <div className="p-3 text-xs text-secondary">Loading diff…</div>
+                    <div className="p-3 text-xs text-secondary">Loading…</div>
                 ) : diff.binary ? (
                     <div className="p-3 text-xs text-secondary italic">Binary file — no text diff</div>
-                ) : lines.length === 0 || (lines.length === 1 && lines[0] === "") ? (
-                    <div className="p-3 text-xs text-secondary italic">No diff</div>
+                ) : rows.length === 0 ? (
+                    <div className="p-3 text-xs text-secondary italic">No changes</div>
                 ) : (
-                    <pre className="text-[11px] font-mono leading-relaxed p-2 whitespace-pre">
-                        {lines.map((line, i) => (
-                            <div key={i} className={diffLineClass(line)}>
-                                {line || " "}
-                            </div>
+                    <div className="text-[11px] font-mono leading-relaxed py-1">
+                        {rows.map((r, i) => (
+                            <DiffLine key={i} row={r} />
                         ))}
-                    </pre>
+                    </div>
                 )}
             </div>
         </div>

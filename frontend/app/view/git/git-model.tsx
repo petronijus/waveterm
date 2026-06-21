@@ -426,7 +426,7 @@ export class GitViewModel implements ViewModel {
         try {
             const diff = await this.env.rpc.RemoteGitDiffCommand(
                 TabRpcClient,
-                { gitroot: root, path: file.path, staged },
+                { gitroot: root, path: file.path, staged, fullcontext: true },
                 { route: this.getRoute() }
             );
             if (!this.disposed) {

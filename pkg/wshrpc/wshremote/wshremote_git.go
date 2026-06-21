@@ -429,6 +429,11 @@ func (impl *ServerImpl) RemoteGitDiffCommand(ctx context.Context, data wshrpc.Co
 	if data.Staged {
 		args = append(args, "--cached")
 	}
+	if data.FullContext {
+		// a huge context count makes the single hunk span the whole file, so the
+		// frontend can render the full file with +/- lines instead of just hunks
+		args = append(args, "--unified=1000000")
+	}
 	args = append(args, "--", data.Path)
 	stdout, stderr, err := runGit(ctx, data.GitRoot, args...)
 	if err != nil {

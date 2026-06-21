@@ -438,6 +438,7 @@ declare global {
         gitroot: string;
         path: string;
         staged?: boolean;
+        fullcontext?: boolean;
     };
 
     // wshrpc.CommandGitFilesData

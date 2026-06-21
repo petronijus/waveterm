@@ -81,9 +81,10 @@ type CommandGitStashData struct {
 }
 
 type CommandGitDiffData struct {
-	GitRoot string `json:"gitroot"`
-	Path    string `json:"path"`             // repo-relative file
-	Staged  bool   `json:"staged,omitempty"` // diff the staged version
+	GitRoot     string `json:"gitroot"`
+	Path        string `json:"path"`                  // repo-relative file
+	Staged      bool   `json:"staged,omitempty"`      // diff the staged version
+	FullContext bool   `json:"fullcontext,omitempty"` // emit the whole file as context (for a full-file view)
 }
 
 type GitRepoInfo struct {
