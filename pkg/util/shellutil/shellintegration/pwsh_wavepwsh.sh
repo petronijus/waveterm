@@ -45,8 +45,9 @@ if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
                     [Console]::Write("`e]16162;C`a")
                 }
             }
-            if ($_waveterm_prev_add_to_history) {
-                return (& $_waveterm_prev_add_to_history $line)
+            if ($null -ne $_waveterm_prev_add_to_history) {
+                # the getter hands back a Func[string,object], so call it via .Invoke
+                return $_waveterm_prev_add_to_history.Invoke($line)
             }
             return $true
         }).GetNewClosure()
