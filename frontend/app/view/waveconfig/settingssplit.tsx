@@ -18,13 +18,17 @@ interface SettingsSplitProps {
 // (right), used by the settings views. The divider position is remembered via
 // autoSaveId so it survives reopening the block.
 export const SettingsSplit = memo(
-    ({ autoSaveId, left, right, defaultLeftPct = 45, minLeftPct = 25, minRightPct = 30 }: SettingsSplitProps) => {
+    ({ autoSaveId, left, right, defaultLeftPct = 40, minLeftPct = 25, minRightPct = 30 }: SettingsSplitProps) => {
         return (
             <PanelGroup direction="horizontal" autoSaveId={autoSaveId} className="h-full w-full">
                 <Panel defaultSize={defaultLeftPct} minSize={minLeftPct} className="min-w-0">
                     {left}
                 </Panel>
-                <PanelResizeHandle className="w-1 shrink-0 bg-border transition-colors hover:bg-accent/60 cursor-col-resize data-[resize-handle-state=drag]:bg-accent" />
+                {/* A wide, transparent grab strip with a thin centered hairline: at rest it
+                    looks like the plain 1px divider, and only highlights while hovered/dragged. */}
+                <PanelResizeHandle className="group relative w-[7px] shrink-0 cursor-col-resize">
+                    <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-accent group-hover:w-0.5 group-data-[resize-handle-state=drag]:bg-accent group-data-[resize-handle-state=drag]:w-0.5" />
+                </PanelResizeHandle>
                 <Panel minSize={minRightPct} className="min-w-0">
                     {right}
                 </Panel>
