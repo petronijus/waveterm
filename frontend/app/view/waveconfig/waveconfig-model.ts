@@ -77,9 +77,8 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             language: "json",
             docsUrl: "https://docs.waveterm.dev/connections",
             description: isWindows ? "SSH hosts, WSL distros & folder bookmarks" : "SSH hosts & folder bookmarks",
-            hasJsonView: true,
+            hasJsonView: false,
             visualComponent: ConnectionsProjectsView,
-            splitView: true,
         },
         {
             name: "Sidebar Widgets",

@@ -360,6 +360,12 @@ export class PreviewModel implements ViewModel {
                 return [
                     {
                         elemtype: "iconbutton",
+                        icon: bookmarked ? "star" : "regular@star",
+                        title: bookmarked ? "Remove project bookmark" : "Bookmark folder as project",
+                        click: () => fireAndForget(() => this.toggleProjectBookmark()),
+                    },
+                    {
+                        elemtype: "iconbutton",
                         icon: showHiddenFiles ? "eye" : "eye-slash",
                         title: showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
                         click: () => {
@@ -370,12 +376,6 @@ export class PreviewModel implements ViewModel {
                         elemtype: "iconbutton",
                         icon: "arrows-rotate",
                         click: () => this.refreshCallback?.(),
-                    },
-                    {
-                        elemtype: "iconbutton",
-                        icon: bookmarked ? "star" : "regular@star",
-                        title: bookmarked ? "Remove project bookmark" : "Bookmark folder as project",
-                        click: () => fireAndForget(() => this.toggleProjectBookmark()),
                     },
                 ] as IconButtonDecl[];
             } else if (!isCeView && isMarkdownLike(mimeType)) {
