@@ -738,6 +738,78 @@ export class RpcApiType {
         return client.wshRpcCall("remotegetinfo", null, opts);
     }
 
+    // command "remotegitbranches" [call]
+    RemoteGitBranchesCommand(client: WshClient, data: CommandGitRootData, opts?: RpcOpts): Promise<GitBranchList> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitbranches", data, opts);
+        return client.wshRpcCall("remotegitbranches", data, opts);
+    }
+
+    // command "remotegitcheckout" [call]
+    RemoteGitCheckoutCommand(client: WshClient, data: CommandGitCheckoutData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitcheckout", data, opts);
+        return client.wshRpcCall("remotegitcheckout", data, opts);
+    }
+
+    // command "remotegitcommit" [call]
+    RemoteGitCommitCommand(client: WshClient, data: CommandGitCommitData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitcommit", data, opts);
+        return client.wshRpcCall("remotegitcommit", data, opts);
+    }
+
+    // command "remotegitdiff" [call]
+    RemoteGitDiffCommand(client: WshClient, data: CommandGitDiffData, opts?: RpcOpts): Promise<GitDiff> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitdiff", data, opts);
+        return client.wshRpcCall("remotegitdiff", data, opts);
+    }
+
+    // command "remotegitdiscard" [call]
+    RemoteGitDiscardCommand(client: WshClient, data: CommandGitFilesData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitdiscard", data, opts);
+        return client.wshRpcCall("remotegitdiscard", data, opts);
+    }
+
+    // command "remotegitlog" [call]
+    RemoteGitLogCommand(client: WshClient, data: CommandGitLogData, opts?: RpcOpts): Promise<GitLog> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitlog", data, opts);
+        return client.wshRpcCall("remotegitlog", data, opts);
+    }
+
+    // command "remotegitrepoinfo" [call]
+    RemoteGitRepoInfoCommand(client: WshClient, data: CommandGitPathData, opts?: RpcOpts): Promise<GitRepoInfo> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitrepoinfo", data, opts);
+        return client.wshRpcCall("remotegitrepoinfo", data, opts);
+    }
+
+    // command "remotegitstage" [call]
+    RemoteGitStageCommand(client: WshClient, data: CommandGitFilesData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitstage", data, opts);
+        return client.wshRpcCall("remotegitstage", data, opts);
+    }
+
+    // command "remotegitstash" [call]
+    RemoteGitStashCommand(client: WshClient, data: CommandGitStashData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitstash", data, opts);
+        return client.wshRpcCall("remotegitstash", data, opts);
+    }
+
+    // command "remotegitstatus" [call]
+    RemoteGitStatusCommand(client: WshClient, data: CommandGitRootData, opts?: RpcOpts): Promise<GitStatus> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitstatus", data, opts);
+        return client.wshRpcCall("remotegitstatus", data, opts);
+    }
+
+    // command "remotegitsync" [call]
+    RemoteGitSyncCommand(client: WshClient, data: CommandGitSyncData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitsync", data, opts);
+        return client.wshRpcCall("remotegitsync", data, opts);
+    }
+
+    // command "remotegitunstage" [call]
+    RemoteGitUnstageCommand(client: WshClient, data: CommandGitFilesData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitunstage", data, opts);
+        return client.wshRpcCall("remotegitunstage", data, opts);
+    }
+
     // command "remoteinstallrcfiles" [call]
     RemoteInstallRcFilesCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remoteinstallrcfiles", null, opts);

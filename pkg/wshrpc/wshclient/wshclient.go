@@ -736,6 +736,78 @@ func RemoteGetInfoCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (wshrpc.Remot
 	return resp, err
 }
 
+// command "remotegitbranches", wshserver.RemoteGitBranchesCommand
+func RemoteGitBranchesCommand(w *wshutil.WshRpc, data wshrpc.CommandGitRootData, opts *wshrpc.RpcOpts) (*wshrpc.GitBranchList, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitBranchList](w, "remotegitbranches", data, opts)
+	return resp, err
+}
+
+// command "remotegitcheckout", wshserver.RemoteGitCheckoutCommand
+func RemoteGitCheckoutCommand(w *wshutil.WshRpc, data wshrpc.CommandGitCheckoutData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitcheckout", data, opts)
+	return resp, err
+}
+
+// command "remotegitcommit", wshserver.RemoteGitCommitCommand
+func RemoteGitCommitCommand(w *wshutil.WshRpc, data wshrpc.CommandGitCommitData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitcommit", data, opts)
+	return resp, err
+}
+
+// command "remotegitdiff", wshserver.RemoteGitDiffCommand
+func RemoteGitDiffCommand(w *wshutil.WshRpc, data wshrpc.CommandGitDiffData, opts *wshrpc.RpcOpts) (*wshrpc.GitDiff, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitDiff](w, "remotegitdiff", data, opts)
+	return resp, err
+}
+
+// command "remotegitdiscard", wshserver.RemoteGitDiscardCommand
+func RemoteGitDiscardCommand(w *wshutil.WshRpc, data wshrpc.CommandGitFilesData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitdiscard", data, opts)
+	return resp, err
+}
+
+// command "remotegitlog", wshserver.RemoteGitLogCommand
+func RemoteGitLogCommand(w *wshutil.WshRpc, data wshrpc.CommandGitLogData, opts *wshrpc.RpcOpts) (*wshrpc.GitLog, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitLog](w, "remotegitlog", data, opts)
+	return resp, err
+}
+
+// command "remotegitrepoinfo", wshserver.RemoteGitRepoInfoCommand
+func RemoteGitRepoInfoCommand(w *wshutil.WshRpc, data wshrpc.CommandGitPathData, opts *wshrpc.RpcOpts) (*wshrpc.GitRepoInfo, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitRepoInfo](w, "remotegitrepoinfo", data, opts)
+	return resp, err
+}
+
+// command "remotegitstage", wshserver.RemoteGitStageCommand
+func RemoteGitStageCommand(w *wshutil.WshRpc, data wshrpc.CommandGitFilesData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitstage", data, opts)
+	return resp, err
+}
+
+// command "remotegitstash", wshserver.RemoteGitStashCommand
+func RemoteGitStashCommand(w *wshutil.WshRpc, data wshrpc.CommandGitStashData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitstash", data, opts)
+	return resp, err
+}
+
+// command "remotegitstatus", wshserver.RemoteGitStatusCommand
+func RemoteGitStatusCommand(w *wshutil.WshRpc, data wshrpc.CommandGitRootData, opts *wshrpc.RpcOpts) (*wshrpc.GitStatus, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitStatus](w, "remotegitstatus", data, opts)
+	return resp, err
+}
+
+// command "remotegitsync", wshserver.RemoteGitSyncCommand
+func RemoteGitSyncCommand(w *wshutil.WshRpc, data wshrpc.CommandGitSyncData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitsync", data, opts)
+	return resp, err
+}
+
+// command "remotegitunstage", wshserver.RemoteGitUnstageCommand
+func RemoteGitUnstageCommand(w *wshutil.WshRpc, data wshrpc.CommandGitFilesData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitunstage", data, opts)
+	return resp, err
+}
+
 // command "remoteinstallrcfiles", wshserver.RemoteInstallRcFilesCommand
 func RemoteInstallRcFilesCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "remoteinstallrcfiles", nil, opts)

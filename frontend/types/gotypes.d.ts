@@ -418,6 +418,68 @@ declare global {
         chatid: string;
     };
 
+    // wshrpc.CommandGitCheckoutData
+    type CommandGitCheckoutData = {
+        gitroot: string;
+        branch: string;
+        create?: boolean;
+    };
+
+    // wshrpc.CommandGitCommitData
+    type CommandGitCommitData = {
+        gitroot: string;
+        message: string;
+        amend?: boolean;
+        all?: boolean;
+    };
+
+    // wshrpc.CommandGitDiffData
+    type CommandGitDiffData = {
+        gitroot: string;
+        path: string;
+        staged?: boolean;
+    };
+
+    // wshrpc.CommandGitFilesData
+    type CommandGitFilesData = {
+        gitroot: string;
+        paths?: string[];
+    };
+
+    // wshrpc.CommandGitLogData
+    type CommandGitLogData = {
+        gitroot: string;
+        offset?: number;
+        limit?: number;
+        ref?: string;
+    };
+
+    // wshrpc.CommandGitPathData
+    type CommandGitPathData = {
+        path: string;
+    };
+
+    // wshrpc.CommandGitRootData
+    type CommandGitRootData = {
+        gitroot: string;
+    };
+
+    // wshrpc.CommandGitStashData
+    type CommandGitStashData = {
+        gitroot: string;
+        action: string;
+        index?: number;
+        message?: string;
+    };
+
+    // wshrpc.CommandGitSyncData
+    type CommandGitSyncData = {
+        gitroot: string;
+        action: string;
+        remote?: string;
+        setupstream?: boolean;
+    };
+
     // wshrpc.CommandJobCmdExitedData
     type CommandJobCmdExitedData = {
         jobid: string;
@@ -1040,6 +1102,85 @@ declare global {
         buildtime: string;
     };
 
+    // wshrpc.GitActionResult
+    type GitActionResult = {
+        success: boolean;
+        output?: string;
+    };
+
+    // wshrpc.GitBranch
+    type GitBranch = {
+        name: string;
+        iscurrent?: boolean;
+        upstream?: string;
+        ahead?: number;
+        behind?: number;
+        lastcommitts?: number;
+    };
+
+    // wshrpc.GitBranchList
+    type GitBranchList = {
+        current: string;
+        branches?: GitBranch[];
+    };
+
+    // wshrpc.GitCommit
+    type GitCommit = {
+        hash: string;
+        fullhash: string;
+        author: string;
+        authoremail?: string;
+        ts: number;
+        subject: string;
+    };
+
+    // wshrpc.GitDiff
+    type GitDiff = {
+        path: string;
+        diff: string;
+        binary?: boolean;
+    };
+
+    // wshrpc.GitFileStatus
+    type GitFileStatus = {
+        path: string;
+        origpath?: string;
+        indexstatus: string;
+        workstatus: string;
+        staged: boolean;
+        unstaged: boolean;
+        untracked?: boolean;
+        added: number;
+        removed: number;
+        binary?: boolean;
+    };
+
+    // wshrpc.GitLog
+    type GitLog = {
+        commits?: GitCommit[];
+        hasmore?: boolean;
+    };
+
+    // wshrpc.GitRepoInfo
+    type GitRepoInfo = {
+        isrepo: boolean;
+        gitroot?: string;
+        errormsg?: string;
+    };
+
+    // wshrpc.GitStatus
+    type GitStatus = {
+        branch: string;
+        detached?: boolean;
+        head: string;
+        upstream?: string;
+        ahead?: number;
+        behind?: number;
+        files?: GitFileStatus[];
+        stashcount?: number;
+        clean?: boolean;
+    };
+
     // waveobj.Job
     type Job = WaveObj & {
         connection: string;
@@ -1161,6 +1302,7 @@ declare global {
         "ai:timeoutms"?: number;
         "aifilediff:chatid"?: string;
         "aifilediff:toolcallid"?: string;
+        "git:root"?: string;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
