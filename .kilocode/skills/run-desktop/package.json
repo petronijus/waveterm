@@ -1,0 +1,10 @@
+{
+    "name": "run-desktop-skill",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Playwright _electron driver for running/driving the Wave Terminal desktop app",
+    "type": "module",
+    "dependencies": {
+        "playwright-core": "^1.49.0"
+    }
+}
