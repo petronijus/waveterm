@@ -41,23 +41,34 @@ task package     # builds an installer for the CURRENT platform → ./make
 
 | OS | toolchain notes | artifacts in `./make` |
 |----|-----------------|------------------------|
-| **macOS** | Xcode CLT. **See "macOS notes" below** — if a signing cert is in your keychain, a bare `task package` auto-signs and *fails*; build unsigned. | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
+| **macOS** | Xcode CLT + an `Apple Development` cert in your keychain. **See "macOS notes" below** — sign the build (ad-hoc/unsigned silently breaks notifications), and run with network so the timestamp step succeeds. | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
 | **Linux** | system build deps for electron-builder targets (e.g. `rpm`, `fakeroot`, `snapcraft` for snap; AppImage/deb work out of the box on most distros) | `*.deb` / `*.AppImage` / `*.snap` |
 | **Windows** | Node/Go/Zig/Task on PATH; a recent MSVC / Build Tools if any native module needs rebuild. **See "Windows notes" below — a bare `task package` can ship a broken installer.** | `*.exe` (NSIS) + `*.zip` |
 
 ### macOS notes
 
-- **Build unsigned when a signing cert is present.** electron-builder auto-discovers any
-  `Apple Development`/`Developer ID` identity from the login keychain and signs with it. A
-  bare `Apple Development` cert can't add a secure timestamp, so `codesign --timestamp`
-  fails and the whole package aborts (`A timestamp was expected but was not found`,
-  electron-builder exits 201). Disable signing to get the intended unsigned dev build:
+- **Sign the build — notifications need it.** macOS delivers Electron notifications through
+  `UNUserNotificationCenter`, which requires a real code signature (a Team ID). An
+  **ad-hoc / unsigned** app is *silently* dropped: no banners, and the app never even appears
+  in **System Settings → Notifications**. (Linux/Windows don't have this requirement — that's
+  why notifications worked there but not on a `CSC_IDENTITY_AUTO_DISCOVERY=false` macOS build.)
+  So let electron-builder sign with your `Apple Development` cert (auto-discovered from the
+  keychain — do **not** pass `CSC_IDENTITY_AUTO_DISCOVERY=false`):
   ```sh
-  CSC_IDENTITY_AUTO_DISCOVERY=false task package
+  task package          # signs with the Apple Development cert in your keychain
   ```
-  An unsigned app is right-click → Open on first launch. (On a machine with *no* cert in
-  the keychain, a plain `task package` is already unsigned and works — the env var is just
-  harmless there, so prefer always passing it.)
+- **The timestamp "failure" was a sandboxed build, not the cert.** `codesign --timestamp`
+  contacts `timestamp.apple.com`; if the build runs with no network it aborts with
+  `A timestamp was expected but was not found` (electron-builder exits 201). Run the package
+  step with normal network access and it timestamps fine. (Signing every Electron component
+  with a per-file timestamp request is slow — a signed package takes noticeably longer.)
+- **Gatekeeper & launch.** An `Apple Development`-signed (non-notarized) app is `spctl`-rejected
+  but still runs locally because a locally-built app carries no `com.apple.quarantine`. Launch
+  via Finder/`open`. If a launch flakes (app exits immediately), it's a stale process/lock —
+  `pkill -9 -f WaveDev` (or `Wave`) then `open` again.
+- **Per-machine.** The cert lives only in your Mac's keychain, so only your Mac produces a
+  signed (notification-capable) build. A machine without the cert yields an ad-hoc build with
+  no notifications.
 
 ## Two channels side by side — "Wave" and "Wave (Dev)"
 
