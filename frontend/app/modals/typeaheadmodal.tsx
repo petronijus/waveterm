@@ -85,6 +85,7 @@ interface TypeAheadModalProps {
     giveFocusRef?: React.RefObject<() => boolean>;
     autoFocus?: boolean;
     selectIndex?: number;
+    centered?: boolean;
 }
 
 const TypeAheadModal = ({
@@ -101,6 +102,7 @@ const TypeAheadModal = ({
     giveFocusRef,
     autoFocus,
     selectIndex,
+    centered,
 }: TypeAheadModalProps) => {
     const domRect = useDimensionsWithExistingRef(blockRef, 30);
     const width = domRect?.width ?? 0;
@@ -146,7 +148,7 @@ const TypeAheadModal = ({
     }, [height, suggestions]);
 
     useLayoutEffect(() => {
-        if (!blockRef.current || !modalRef.current) return;
+        if (centered || !blockRef.current || !modalRef.current) return;
 
         const blockRect = blockRef.current.getBoundingClientRect();
         const anchorRect = anchorRef.current.getBoundingClientRect();
@@ -192,6 +194,7 @@ const TypeAheadModal = ({
     }, []);
 
     useLayoutEffect(() => {
+        if (centered) return;
         if (anchorRef.current && modalRef.current) {
             const parentElement = anchorRef.current.closest(".block-frame-default-header");
             modalRef.current.style.top = `${parentElement?.getBoundingClientRect().height}px`;
@@ -213,7 +216,7 @@ const TypeAheadModal = ({
     };
 
     const renderModal = () => (
-        <div className="type-ahead-modal-wrapper" onKeyDown={handleKeyDown}>
+        <div className={clsx("type-ahead-modal-wrapper", { centered })} onKeyDown={handleKeyDown}>
             {renderBackdrop(onClickBackdrop)}
             <div
                 ref={modalRef}

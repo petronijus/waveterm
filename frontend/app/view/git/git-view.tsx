@@ -323,6 +323,7 @@ const BranchSwitcher = React.memo(function BranchSwitcher({
         <TypeAheadModal
             anchorRef={anchorRef}
             blockRef={blockRef}
+            centered
             suggestions={suggestions}
             label="Switch or create branch…"
             value={filter}

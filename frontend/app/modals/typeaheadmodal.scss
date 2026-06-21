@@ -11,6 +11,31 @@
     z-index: var(--zindex-typeahead-modal-backdrop);
 }
 
+// Centered variant: cover the host block and center the modal, with a blurred
+// backdrop. Used where the trigger lives outside the block-frame header (e.g.
+// the git view toolbar), so anchored dropdown positioning doesn't apply.
+.type-ahead-modal-wrapper.centered {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--zindex-typeahead-modal);
+
+    .type-ahead-modal-backdrop {
+        background-color: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(8px);
+    }
+
+    .type-ahead-modal {
+        position: relative;
+        left: auto;
+        top: auto;
+        width: min(360px, 80%);
+        max-width: 80%;
+    }
+}
+
 .type-ahead-modal {
     position: absolute;
     z-index: var(--zindex-typeahead-modal);
