@@ -50,6 +50,33 @@ git push origin release feat/<task>
 No `--no-verify`. No force-push to `main` (except the documented recovery, with explicit approval).
 Prefer new commits over amends.
 
+## Parallel work across windows (worktrees)
+
+This repo is often worked on from **two sessions at once**. To keep them from fighting over
+the index, working tree, and `./make`, give each session its own **git worktree** — one clone,
+separate directories, separate branches, shared history:
+
+```sh
+git worktree add ../waveterm-dev   feat/dev-channel   # build/test "Wave (Dev)" here
+git worktree add ../waveterm-<task> feat/<task>        # one per in-flight feature
+git worktree list                                      # see who's where
+git worktree remove ../waveterm-<task>                 # when the task is merged
+```
+
+Convention: the main checkout (`~/Documents/Dev/waveterm`) stays on **`release`**; each feature /
+the dev-channel lives in its own worktree. A fresh worktree has no deps — run `task init` in it
+once before the first build. Each worktree has its own `./make`, so two `task package` builds can
+run at once without clobbering each other.
+
+Rules that hold **with or without** worktrees:
+- **One branch per session** — never two sessions on `release` doing merges.
+- **`git fetch` immediately before** any compare / merge / rebase / push — branch pointers move
+  under you; never trust a cached `origin/*`.
+- **Never run two `task package` builds in the same working tree** (`task package` does
+  `rm -rf make` and spawns long-lived children — concurrent builds collide and orphan processes).
+- An agent picking this repo up should `git fetch` and re-read `git rev-parse HEAD` + `git status`
+  before assuming any branch is where it left it.
+
 ## Tasks / planning
 
 - Roadmap & planned features: **[FORK.md](./FORK.md)** ("Planned").
