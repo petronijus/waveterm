@@ -416,17 +416,13 @@ export class GitViewModel implements ViewModel {
         if (isBlank(root)) {
             return;
         }
-        if (file.untracked) {
-            this.setActionStatus({ message: "Untracked file has no diff", isError: false });
-            return;
-        }
         const staged = file.staged && !file.unstaged;
         globalStore.set(this.diffLoadingAtom, true);
         globalStore.set(this.diffAtom, { path: file.path, diff: "" });
         try {
             const diff = await this.env.rpc.RemoteGitDiffCommand(
                 TabRpcClient,
-                { gitroot: root, path: file.path, staged, fullcontext: true },
+                { gitroot: root, path: file.path, staged, fullcontext: true, untracked: !!file.untracked },
                 { route: this.getRoute() }
             );
             if (!this.disposed) {

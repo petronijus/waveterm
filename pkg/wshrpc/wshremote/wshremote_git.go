@@ -426,7 +426,12 @@ func (impl *ServerImpl) RemoteGitDiffCommand(ctx context.Context, data wshrpc.Co
 	ctx, cancel := context.WithTimeout(ctx, gitReadTimeout)
 	defer cancel()
 	args := []string{"diff"}
-	if data.Staged {
+	if data.Untracked {
+		// an untracked file isn't known to git, so diff it against an empty file to
+		// render it as all-additions. --no-index exits 1 when the files differ (always,
+		// here), which is expected — not a failure.
+		args = append(args, "--no-index")
+	} else if data.Staged {
 		args = append(args, "--cached")
 	}
 	if data.FullContext {
@@ -434,9 +439,13 @@ func (impl *ServerImpl) RemoteGitDiffCommand(ctx context.Context, data wshrpc.Co
 		// frontend can render the full file with +/- lines instead of just hunks
 		args = append(args, "--unified=1000000")
 	}
-	args = append(args, "--", data.Path)
+	if data.Untracked {
+		args = append(args, "--", "/dev/null", data.Path)
+	} else {
+		args = append(args, "--", data.Path)
+	}
 	stdout, stderr, err := runGit(ctx, data.GitRoot, args...)
-	if err != nil {
+	if err != nil && !(data.Untracked && stdout != "") {
 		return nil, fmt.Errorf("git diff failed: %s", strings.TrimSpace(stderr))
 	}
 	rtn := &wshrpc.GitDiff{Path: data.Path, Diff: stdout}

@@ -426,8 +426,8 @@ const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel
     const rows = React.useMemo(() => (diff?.diff ? parseUnifiedDiff(diff.diff) : []), [diff?.diff]);
     if (diff == null) return null;
     return (
-        <div className="absolute inset-0 z-10 flex flex-col bg-panel">
-            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs bg-panel">
+        <div className="absolute inset-0 z-10 flex flex-col bg-background">
+            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs bg-background">
                 <i className="fa-sharp fa-solid fa-file-lines text-secondary" />
                 <span className="flex-1 truncate font-mono text-primary" title={diff.path}>
                     {diff.path}

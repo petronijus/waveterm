@@ -85,6 +85,7 @@ type CommandGitDiffData struct {
 	Path        string `json:"path"`                  // repo-relative file
 	Staged      bool   `json:"staged,omitempty"`      // diff the staged version
 	FullContext bool   `json:"fullcontext,omitempty"` // emit the whole file as context (for a full-file view)
+	Untracked   bool   `json:"untracked,omitempty"`   // file isn't tracked yet — diff it against an empty file (all additions)
 }
 
 type GitRepoInfo struct {

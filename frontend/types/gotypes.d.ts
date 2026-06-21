@@ -439,6 +439,7 @@ declare global {
         path: string;
         staged?: boolean;
         fullcontext?: boolean;
+        untracked?: boolean;
     };
 
     // wshrpc.CommandGitFilesData
