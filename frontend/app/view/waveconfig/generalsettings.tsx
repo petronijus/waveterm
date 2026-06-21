@@ -76,7 +76,7 @@ function formatSyncTime(ts: number): string {
 // it so the file view reflects the change live.
 export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel }) => {
     const notifyEnabled = useAtomValue(getSettingsKeyAtom("notify:commanddone")) ?? false;
-    const claudeWaitingEnabled = useAtomValue(getSettingsKeyAtom("notify:claudewaiting")) ?? false;
+    const agentWaitingEnabled = useAtomValue(getSettingsKeyAtom("notify:agentwaiting")) ?? false;
     const thresholdMs = useAtomValue(getSettingsKeyAtom("notify:commanddonethresholdms")) ?? DefaultThresholdMs;
     const syncEnabled = useAtomValue(getSettingsKeyAtom("sync:enabled")) ?? false;
     const syncFolderPath = useAtomValue(getSettingsKeyAtom("sync:folderpath")) ?? "";
@@ -171,14 +171,16 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     <span className="text-sm text-muted-foreground">seconds</span>
                 </div>
                 <Toggle
-                    id="notify-claudewaiting"
-                    checked={claudeWaitingEnabled}
-                    onChange={(v) => setConfigKey("notify:claudewaiting", v)}
-                    label="Notify when Claude is waiting for input"
+                    id="notify-agentwaiting"
+                    checked={agentWaitingEnabled}
+                    onChange={(v) => setConfigKey("notify:agentwaiting", v)}
+                    label="Notify when an AI agent is waiting for input"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
-                    When Claude Code finishes a turn and waits for your reply (and the Wave window is
-                    unfocused), send a notification and mark the tab as "waiting" instead of "working".
+                    When an AI coding agent (Claude Code, Gemini CLI, Codex) finishes a turn and waits
+                    for your reply (and the Wave window is unfocused), send a notification and mark the
+                    tab as "waiting" instead of "working". Requires the agent's terminal bell / OSC 9
+                    notification to be enabled.
                 </p>
             </section>
 

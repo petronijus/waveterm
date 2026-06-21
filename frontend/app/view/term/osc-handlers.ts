@@ -17,7 +17,7 @@ import {
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
 import debug from "debug";
-import { maybeNotifyClaudeWaiting, maybeNotifyCommandDone } from "./notify-commanddone";
+import { maybeNotifyAgentWaiting, maybeNotifyCommandDone } from "./notify-commanddone";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -30,6 +30,15 @@ const Osc52MaxRawLength = 128 * 1024; // includes selector + base64 + whitespace
 export type ShellIntegrationStatus = "ready" | "running-command";
 
 const ClaudeCodeRegex = /^claude\b/;
+
+// Interactive AI coding agents whose turn-done "your turn" signal (terminal bell or
+// an OSC 9 notification) we surface as a distinct tab "waiting for you" state. Each
+// maps a command prefix to the kind shown in the notification title.
+const AgentCommandRegexes: { kind: string; re: RegExp }[] = [
+    { kind: "claude", re: ClaudeCodeRegex },
+    { kind: "gemini", re: /^gemini\b/ },
+    { kind: "codex", re: /^codex\b/ },
+];
 
 type Osc16162Command =
     | { command: "A"; data: Record<string, never> }
@@ -97,6 +106,20 @@ export function isClaudeCodeCommand(decodedCmd: string): boolean {
         return false;
     }
     return ClaudeCodeRegex.test(normalizeCmd(decodedCmd));
+}
+
+// Returns which AI agent a command launches ("claude" | "gemini" | "codex"), or null.
+export function agentKindForCommand(decodedCmd: string): string {
+    if (!decodedCmd) {
+        return null;
+    }
+    const normalized = normalizeCmd(decodedCmd);
+    for (const { kind, re } of AgentCommandRegexes) {
+        if (re.test(normalized)) {
+            return kind;
+        }
+    }
+    return null;
 }
 
 // Tab "working / done" activity badge, driven by shell-integration command
@@ -277,18 +300,19 @@ function cancelCommandActivity(termWrap: TermWrap, blockId: string): void {
     termWrap.cmdActivityStretchBytes = 0;
 }
 
-// Called on terminal BEL. Claude Code rings the bell when it finishes a turn and is
-// waiting for your input — but its TUI keeps repainting, so the output-idle heuristic
-// never sees it stop and the tab would keep "working". Treat the bell (while a claude
-// command is active) as a distinct "waiting for you" state: drop the spinner, show a
-// calm badge on background tabs, and optionally fire an OS notification. The spinner
-// only returns when real output volume resumes (see markCommandActivity).
+// Called on a terminal BEL or an OSC 9 notification. Interactive AI agents (Claude
+// Code, Gemini CLI, Codex) signal "your turn" this way when a turn finishes — but
+// their TUIs keep repainting, so the output-idle heuristic never sees them stop and
+// the tab would keep "working". While an agent command is active, treat that signal
+// as a distinct "waiting for you" state: drop the spinner, show a calm badge on
+// background tabs, and optionally fire an OS notification. The spinner only returns
+// when real output volume resumes (see markCommandActivity).
 function markCommandWaiting(termWrap: TermWrap, blockId: string): void {
     if (!termWrap.cmdActivityRunning) {
-        return; // no command active — a bare-shell bell, not "claude waiting"
+        return; // no command active — a bare-shell bell, not an agent waiting
     }
-    if (!globalStore.get(termWrap.claudeCodeActiveAtom)) {
-        return; // scoped to Claude Code's "your turn" bell, not arbitrary program bells
+    if (globalStore.get(termWrap.agentKindAtom) == null) {
+        return; // scoped to AI agents' "your turn" signal, not arbitrary program bells
     }
     if (termWrap.cmdActivityIdleTimeout != null) {
         clearTimeout(termWrap.cmdActivityIdleTimeout);
@@ -305,8 +329,23 @@ function markCommandWaiting(termWrap: TermWrap, blockId: string): void {
         setActivityBadge(termWrap, blockId, "comment-dots", "#fbbf24", false);
     }
     if (!wasWaiting) {
-        maybeNotifyClaudeWaiting(termWrap); // only on entering the state, not on every repeated bell
+        maybeNotifyAgentWaiting(termWrap); // only on entering the state, not on every repeated bell
     }
+}
+
+// OSC 9 is the desktop-notification escape both Gemini CLI and Codex prefer (with the
+// terminal bell as a fallback), so handling it makes "waiting for you" fire even when
+// a tool never emits BEL. OSC 9;4 is the unrelated ConEmu/Windows-Terminal progress
+// protocol, so it's ignored. We "own" OSC 9, so always return true.
+export function handleOsc9Command(data: string, blockId: string, loaded: boolean, termWrap: TermWrap): boolean {
+    if (!loaded || !data) {
+        return true;
+    }
+    if (data === "4" || data.startsWith("4;")) {
+        return true; // progress protocol, not a notification
+    }
+    markCommandWaiting(termWrap, blockId);
+    return true;
 }
 
 export { markCommandActivity, markCommandWaiting };
@@ -337,18 +376,21 @@ function handleShellIntegrationCommandStart(
                 globalStore.set(termWrap.lastCommandAtom, decodedCmd);
                 const isCC = isClaudeCodeCommand(decodedCmd);
                 globalStore.set(termWrap.claudeCodeActiveAtom, isCC);
+                globalStore.set(termWrap.agentKindAtom, agentKindForCommand(decodedCmd));
                 checkCommandForTelemetry(decodedCmd);
             } catch (e) {
                 console.error("Error decoding cmd64:", e);
                 rtInfo["shell:lastcmd"] = null;
                 globalStore.set(termWrap.lastCommandAtom, null);
                 globalStore.set(termWrap.claudeCodeActiveAtom, false);
+                globalStore.set(termWrap.agentKindAtom, null);
             }
         }
     } else {
         rtInfo["shell:lastcmd"] = null;
         globalStore.set(termWrap.lastCommandAtom, null);
         globalStore.set(termWrap.claudeCodeActiveAtom, false);
+        globalStore.set(termWrap.agentKindAtom, null);
     }
     rtInfo["shell:lastcmdexitcode"] = null;
 }
@@ -526,6 +568,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             rtInfo["shell:state"] = "ready";
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            globalStore.set(termWrap.agentKindAtom, null);
             // finalize activity badge if "D" didn't fire (no-op if it already did)
             finishCommandActivity(termWrap, blockId, null);
             const marker = terminal.registerMarker(0);
@@ -566,6 +609,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             break;
         case "D":
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            globalStore.set(termWrap.agentKindAtom, null);
             finishCommandActivity(termWrap, blockId, cmd.data.exitcode ?? null);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
@@ -581,6 +625,7 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
         case "R":
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
+            globalStore.set(termWrap.agentKindAtom, null);
             cancelCommandActivity(termWrap, blockId);
             if (terminal.buffer.active.type === "alternate") {
                 terminal.write("\x1b[?1049l");

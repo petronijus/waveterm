@@ -30,9 +30,11 @@ import debug from "debug";
 import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
 import {
+    agentKindForCommand,
     handleOsc16162Command,
     handleOsc52Command,
     handleOsc7Command,
+    handleOsc9Command,
     isClaudeCodeCommand,
     markCommandActivity,
     markCommandWaiting,
@@ -110,6 +112,7 @@ export class TermWrap {
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
+    agentKindAtom: jotai.PrimitiveAtom<string>; // which AI agent is running: "claude" | "gemini" | "codex" | null
     // command activity badge (tab "working"/"done" indicator). Activity-driven:
     // the spinner shows only while a command is running AND producing output (so a
     // long-but-idle foreground app like Claude waiting for input doesn't keep spinning).
@@ -169,6 +172,7 @@ export class TermWrap {
         this.shellIntegrationStatusAtom = jotai.atom(null) as jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
         this.lastCommandAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
         this.claudeCodeActiveAtom = jotai.atom(false);
+        this.agentKindAtom = jotai.atom(null) as jotai.PrimitiveAtom<string>;
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
         this.terminal = new Terminal(options);
         this.fitAddon = new FitAddon();
@@ -213,6 +217,14 @@ export class TermWrap {
                 return handleOsc7Command(data, this.blockId, this.loaded);
             } catch (e) {
                 console.error("[termwrap] osc 7 handler error", this.blockId, e);
+                return false;
+            }
+        });
+        this.terminal.parser.registerOscHandler(9, (data: string) => {
+            try {
+                return handleOsc9Command(data, this.blockId, this.loaded, this);
+            } catch (e) {
+                console.error("[termwrap] osc 9 handler error", this.blockId, e);
                 return false;
             }
         });
@@ -478,9 +490,11 @@ export class TermWrap {
             }
 
             const lastCmd = rtInfo ? rtInfo["shell:lastcmd"] : null;
-            const isCC = shellState === "running-command" && isClaudeCodeCommand(lastCmd);
+            const running = shellState === "running-command";
+            const isCC = running && isClaudeCodeCommand(lastCmd);
             globalStore.set(this.lastCommandAtom, lastCmd || null);
             globalStore.set(this.claudeCodeActiveAtom, isCC);
+            globalStore.set(this.agentKindAtom, running ? agentKindForCommand(lastCmd) : null);
         } catch (e) {
             console.log("Error loading runtime info:", e);
         }

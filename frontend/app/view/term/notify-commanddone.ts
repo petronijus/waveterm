@@ -114,13 +114,13 @@ export function maybeNotifyCommandDone(termWrap: TermWrap): void {
     queue({ windowId, tabId: termWrap.tabId, tabName, message });
 }
 
-// Called from markCommandWaiting when Claude Code rings the bell to signal "your
-// turn" while the window is unfocused. Unlike the command-done path this is not a
-// command finishing, so it isn't coalesced or duration-gated — markCommandWaiting
-// already fires it only on the transition into the waiting state. Opt-in via
-// notify:claudewaiting. Clicking the notification jumps to the originating tab.
-export function maybeNotifyClaudeWaiting(termWrap: TermWrap): void {
-    if (!globalStore.get(getSettingsKeyAtom("notify:claudewaiting"))) {
+// Called from markCommandWaiting when an AI agent (Claude / Gemini / Codex) signals
+// "your turn" (terminal bell or OSC 9) while the window is unfocused. Unlike the
+// command-done path this is not a command finishing, so it isn't coalesced or
+// duration-gated — markCommandWaiting already fires it only on the transition into the
+// waiting state. Opt-in via notify:agentwaiting. Clicking it jumps to the tab.
+export function maybeNotifyAgentWaiting(termWrap: TermWrap): void {
+    if (!globalStore.get(getSettingsKeyAtom("notify:agentwaiting"))) {
         return;
     }
     if (globalStore.get(atoms.documentHasFocus)) {
@@ -132,11 +132,13 @@ export function maybeNotifyClaudeWaiting(termWrap: TermWrap): void {
     }
     const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", termWrap.tabId));
     const tabName = tab?.name || "Terminal";
+    const kind = globalStore.get(termWrap.agentKindAtom);
+    const label = kind ? kind[0].toUpperCase() + kind.slice(1) : "Agent";
     fireAndForget(() =>
         RpcApi.NotifyCommand(
             TabRpcClient,
             {
-                title: "Claude is waiting for you",
+                title: `${label} is waiting for you`,
                 body: tabName,
                 silent: false,
                 windowid: windowId,

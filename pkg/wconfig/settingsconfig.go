@@ -173,7 +173,7 @@ type SettingsType struct {
 	NotifyClear                 bool  `json:"notify:*,omitempty"`
 	NotifyCommandDone           bool  `json:"notify:commanddone,omitempty"`
 	NotifyCommandDoneThresholdMs *int `json:"notify:commanddonethresholdms,omitempty"`
-	NotifyClaudeWaiting         bool  `json:"notify:claudewaiting,omitempty"`
+	NotifyAgentWaiting          bool  `json:"notify:agentwaiting,omitempty"`
 
 	SyncClear      bool   `json:"sync:*,omitempty"`
 	SyncEnabled    bool   `json:"sync:enabled,omitempty"`

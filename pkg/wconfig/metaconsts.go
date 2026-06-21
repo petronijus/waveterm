@@ -120,7 +120,7 @@ const (
 	ConfigKey_NotifyClear                    = "notify:*"
 	ConfigKey_NotifyCommandDone              = "notify:commanddone"
 	ConfigKey_NotifyCommandDoneThresholdMs   = "notify:commanddonethresholdms"
-	ConfigKey_NotifyClaudeWaiting            = "notify:claudewaiting"
+	ConfigKey_NotifyAgentWaiting             = "notify:agentwaiting"
 
 	ConfigKey_SyncClear                      = "sync:*"
 	ConfigKey_SyncEnabled                    = "sync:enabled"

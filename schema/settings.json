@@ -325,7 +325,7 @@
         "notify:commanddonethresholdms": {
           "type": "integer"
         },
-        "notify:claudewaiting": {
+        "notify:agentwaiting": {
           "type": "boolean"
         },
         "sync:*": {
