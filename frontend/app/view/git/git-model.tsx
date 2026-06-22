@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
+import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { isBlank, makeConnRoute } from "@/util/util";
+import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import * as jotai from "jotai";
-import { GitEnv } from "./gitenv";
 import { GitView } from "./git-view";
+import { GitEnv } from "./gitenv";
 
 const StatusPollIntervalMs = 4000;
 const LogPageSize = 50;
@@ -52,6 +53,9 @@ export class GitViewModel implements ViewModel {
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
     cwdSource: jotai.Atom<string>;
+    rootOverrideAtom: jotai.PrimitiveAtom<string>;
+    openPickerAtom: jotai.PrimitiveAtom<boolean>;
+    viewText: jotai.Atom<HeaderElem[]>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
 
     disposed = false;
@@ -93,7 +97,15 @@ export class GitViewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
+        this.rootOverrideAtom = jotai.atom<string>(null) as jotai.PrimitiveAtom<string>;
+        this.openPickerAtom = jotai.atom<boolean>(false);
         this.cwdSource = jotai.atom((get) => {
+            // a path the user picked this session takes precedence immediately, before
+            // the git:root meta write round-trips back through the object store
+            const override = get(this.rootOverrideAtom);
+            if (!isBlank(override)) {
+                return override;
+            }
             const gitRoot = get(this.env.getBlockMetaKeyAtom(blockId, "git:root"));
             if (!isBlank(gitRoot)) {
                 return gitRoot;
@@ -107,6 +119,17 @@ export class GitViewModel implements ViewModel {
                 return file;
             }
             return "~";
+        });
+        this.viewText = jotai.atom((get) => {
+            const path = get(this.cwdSource);
+            return [
+                {
+                    elemtype: "text",
+                    text: path,
+                    className: "cursor-pointer hover:text-primary",
+                    onClick: () => globalStore.set(this.openPickerAtom, true),
+                },
+            ] as HeaderElem[];
         });
 
         this.endIconButtons = jotai.atom((get) => {
@@ -144,7 +167,11 @@ export class GitViewModel implements ViewModel {
         }
         const cwd = globalStore.get(this.cwdSource);
         try {
-            const info = await this.env.rpc.RemoteGitRepoInfoCommand(TabRpcClient, { path: cwd }, { route: this.getRoute() });
+            const info = await this.env.rpc.RemoteGitRepoInfoCommand(
+                TabRpcClient,
+                { path: cwd },
+                { route: this.getRoute() }
+            );
             globalStore.set(this.repoInfoAtom, info);
             globalStore.set(this.gitRootAtom, info?.isrepo ? info.gitroot : null);
             return info?.isrepo ? info.gitroot : null;
@@ -162,7 +189,11 @@ export class GitViewModel implements ViewModel {
         }
         const epoch = ++this.fetchEpoch;
         try {
-            const status = await this.env.rpc.RemoteGitStatusCommand(TabRpcClient, { gitroot: root }, { route: this.getRoute() });
+            const status = await this.env.rpc.RemoteGitStatusCommand(
+                TabRpcClient,
+                { gitroot: root },
+                { route: this.getRoute() }
+            );
             if (!this.disposed && this.fetchEpoch === epoch) {
                 globalStore.set(this.statusAtom, status);
                 globalStore.set(this.errorAtom, null);
@@ -180,7 +211,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         try {
-            const branches = await this.env.rpc.RemoteGitBranchesCommand(TabRpcClient, { gitroot: root }, { route: this.getRoute() });
+            const branches = await this.env.rpc.RemoteGitBranchesCommand(
+                TabRpcClient,
+                { gitroot: root },
+                { route: this.getRoute() }
+            );
             if (!this.disposed) {
                 globalStore.set(this.branchesAtom, branches);
             }
@@ -272,9 +307,36 @@ export class GitViewModel implements ViewModel {
         globalStore.set(this.branchesAtom, null);
         globalStore.set(this.logAtom, []);
         globalStore.set(this.gitRootAtom, null);
+        globalStore.set(this.rootOverrideAtom, null);
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, null);
         this.startPolling();
+    }
+
+    // Point the git view at a new path (chosen via the in-app path picker) and
+    // re-check. A repo there gets picked up; otherwise the (centered) "No git
+    // repository" shows.
+    async setRoot(picked: string) {
+        globalStore.set(this.openPickerAtom, false);
+        if (isBlank(picked)) {
+            return;
+        }
+        globalStore.set(this.rootOverrideAtom, picked);
+        // persist the choice on the block so it survives reloads
+        fireAndForget(() =>
+            this.env.rpc.SetMetaCommand(TabRpcClient, {
+                oref: WOS.makeORef("block", this.blockId),
+                meta: { "git:root": picked },
+            })
+        );
+        // drop the previous repo's state so nothing stale lingers while we re-check
+        globalStore.set(this.repoInfoAtom, null);
+        globalStore.set(this.statusAtom, null);
+        globalStore.set(this.branchesAtom, null);
+        globalStore.set(this.logAtom, []);
+        globalStore.set(this.gitRootAtom, null);
+        globalStore.set(this.errorAtom, null);
+        await this.refreshAll();
     }
 
     setActionStatus(status: GitActionStatus) {
@@ -334,7 +396,11 @@ export class GitViewModel implements ViewModel {
         }
         this.closeBranchSwitcher();
         const ok = await this.runAction(`Checkout ${branch}`, () =>
-            this.env.rpc.RemoteGitCheckoutCommand(TabRpcClient, { gitroot: root, branch, create }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitCheckoutCommand(
+                TabRpcClient,
+                { gitroot: root, branch, create },
+                { route: this.getRoute() }
+            )
         );
         if (ok) {
             await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
@@ -375,7 +441,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         const ok = await this.runAction("Commit", () =>
-            this.env.rpc.RemoteGitCommitCommand(TabRpcClient, { gitroot: root, message, amend }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitCommitCommand(
+                TabRpcClient,
+                { gitroot: root, message, amend },
+                { route: this.getRoute() }
+            )
         );
         if (ok) {
             globalStore.set(this.commitMessageAtom, "");
@@ -392,7 +462,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         const ok = await this.runAction(action, () =>
-            this.env.rpc.RemoteGitSyncCommand(TabRpcClient, { gitroot: root, action, setupstream: setUpstream }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitSyncCommand(
+                TabRpcClient,
+                { gitroot: root, action, setupstream: setUpstream },
+                { route: this.getRoute() }
+            )
         );
         if (ok) {
             await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
@@ -405,7 +479,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         await this.runAction(`Stash ${action}`, () =>
-            this.env.rpc.RemoteGitStashCommand(TabRpcClient, { gitroot: root, action, index, message }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitStashCommand(
+                TabRpcClient,
+                { gitroot: root, action, index, message },
+                { route: this.getRoute() }
+            )
         );
     }
 

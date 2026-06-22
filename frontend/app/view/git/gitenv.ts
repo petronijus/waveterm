@@ -17,6 +17,9 @@ export type GitEnv = WaveEnvSubset<{
         RemoteGitSyncCommand: WaveEnv["rpc"]["RemoteGitSyncCommand"];
         RemoteGitStashCommand: WaveEnv["rpc"]["RemoteGitStashCommand"];
         RemoteGitDiffCommand: WaveEnv["rpc"]["RemoteGitDiffCommand"];
+        SetMetaCommand: WaveEnv["rpc"]["SetMetaCommand"];
+        FetchSuggestionsCommand: WaveEnv["rpc"]["FetchSuggestionsCommand"];
+        DisposeSuggestionsCommand: WaveEnv["rpc"]["DisposeSuggestionsCommand"];
     };
     getConnStatusAtom: WaveEnv["getConnStatusAtom"];
     getBlockMetaKeyAtom: MetaKeyAtomFnType<"connection" | "git:root" | "cmd:cwd" | "file">;

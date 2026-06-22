@@ -166,10 +166,9 @@ func listDirectory(ctx context.Context, widgetId string, dir string, maxFiles in
 			return nil, err
 		}
 		var results []DirEntryResult
-		for _, entry := range entries {
-			results = append(results, DirEntryResult{Entry: entry})
-		}
-		// Add parent directory (“..”) entry if not at the filesystem root.
+		// Put the parent directory (“..”) FIRST (unless at the filesystem root) so it
+		// always lands at the top of the listing: with no search term the suggestion
+		// score is index-based (first entry scores highest), so prepending pins it on top.
 		if filepath.Dir(dir) != dir {
 			mockDir := &MockDirEntry{
 				NameStr:  "..",
@@ -177,6 +176,9 @@ func listDirectory(ctx context.Context, widgetId string, dir string, maxFiles in
 				FileMode: fs.ModeDir | 0755,
 			}
 			results = append(results, DirEntryResult{Entry: mockDir})
+		}
+		for _, entry := range entries {
+			results = append(results, DirEntryResult{Entry: entry})
 		}
 		return results, nil
 	})

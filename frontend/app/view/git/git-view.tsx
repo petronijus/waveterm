@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TypeAheadModal } from "@/app/modals/typeaheadmodal";
-import { cn } from "@/util/util";
+import { globalStore } from "@/app/store/jotaiStore";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
+import { cn, isBlank, makeConnRoute } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { GitViewModel } from "./git-model";
@@ -499,87 +502,152 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
         model.forceRefreshOnConnectionChange();
     }, [connection]);
 
+    const fetchSuggestionsFn = async (query: string, reqContext: SuggestionRequestContext) => {
+        const route = makeConnRoute(connection);
+        if (reqContext?.dispose) {
+            model.env.rpc.DisposeSuggestionsCommand(TabRpcClient, reqContext.widgetid, { noresponse: true, route });
+            return null;
+        }
+        const cwd = globalStore.get(model.cwdSource);
+        return await model.env.rpc.FetchSuggestionsCommand(
+            TabRpcClient,
+            {
+                suggestiontype: "file",
+                "file:cwd": cwd,
+                query,
+                widgetid: reqContext.widgetid,
+                reqnum: reqContext.reqnum,
+                "file:connection": connection,
+            },
+            { route }
+        );
+    };
+    const handleSelect = (s: SuggestionType, queryStr: string): boolean => {
+        const path = s == null ? queryStr : s["file:path"];
+        if (isBlank(path)) {
+            globalStore.set(model.openPickerAtom, false);
+            return true;
+        }
+        model.setRoot(path);
+        return true;
+    };
+    const handleTab = (s: SuggestionType): string => {
+        return s["file:mimetype"] == "directory" ? s["file:name"] + "/" : s["file:name"];
+    };
+    const pathPicker = (
+        <BlockHeaderSuggestionControl
+            blockRef={blockRef}
+            openAtom={model.openPickerAtom}
+            onClose={() => globalStore.set(model.openPickerAtom, false)}
+            onSelect={handleSelect}
+            onTab={handleTab}
+            fetchSuggestions={fetchSuggestionsFn}
+            placeholderText="Git repository path…"
+        />
+    );
+
     if (!connStatus?.connected) {
         return (
-            <div className="flex items-center justify-center h-full text-secondary text-sm">Waiting for connection…</div>
+            <>
+                <div className="flex items-center justify-center h-full text-secondary text-sm">
+                    Waiting for connection…
+                </div>
+                {pathPicker}
+            </>
         );
     }
 
     if (loading && repoInfo == null) {
-        return <div className="flex items-center justify-center h-full text-secondary text-sm">Loading…</div>;
+        return (
+            <>
+                <div className="flex items-center justify-center h-full text-secondary text-sm">Loading…</div>
+                {pathPicker}
+            </>
+        );
     }
 
     if (!repoInfo?.isrepo) {
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full gap-2 text-secondary text-sm px-6 text-center">
-                <i className="fa-sharp fa-solid fa-code-branch text-2xl opacity-40" />
-                <div>No git repository found</div>
-                {repoInfo?.errormsg && <div className="text-xs opacity-60">{repoInfo.errormsg}</div>}
-                <button
-                    className="mt-1 text-xs text-accent hover:underline cursor-pointer"
-                    onClick={() => model.refreshAll()}
-                >
-                    Retry
-                </button>
-            </div>
+            <>
+                <div className="flex flex-col items-center justify-center w-full h-full gap-2 text-secondary text-sm px-6 text-center">
+                    <i className="fa-sharp fa-solid fa-code-branch text-2xl opacity-40" />
+                    <div>No git repository found</div>
+                    {repoInfo?.errormsg && <div className="text-xs opacity-60">{repoInfo.errormsg}</div>}
+                    <button
+                        className="mt-1 text-xs text-accent hover:underline cursor-pointer"
+                        onClick={() => model.refreshAll()}
+                    >
+                        Retry
+                    </button>
+                </div>
+                {pathPicker}
+            </>
         );
     }
 
     const branchLabel = status?.detached ? `(detached ${status?.head ?? ""})` : (status?.branch ?? "…");
 
     return (
-        <div className="relative flex flex-col w-full h-full overflow-hidden">
-            <div className="git-toolbar shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border bg-panel">
-                <button
-                    ref={branchAnchorRef}
-                    className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border text-xs text-secondary hover:text-primary hover:bg-white/5 transition-colors cursor-pointer max-w-[40%]"
-                    title="Switch branch"
-                    onClick={() => model.toggleBranchSwitcher()}
-                >
-                    <i className="fa-sharp fa-solid fa-code-branch text-[10px]" />
-                    <span className="truncate">{branchLabel}</span>
-                    <i className="fa-sharp fa-solid fa-caret-down text-[10px]" />
-                </button>
-                {(status?.ahead > 0 || status?.behind > 0) && (
-                    <span className="text-xs text-secondary font-mono whitespace-pre">
-                        {status?.ahead > 0 ? ` ↑${status.ahead}` : ""}
-                        {status?.behind > 0 ? ` ↓${status.behind}` : ""}
-                    </span>
-                )}
-                <span className="flex-1" />
-                <ToolbarButton icon="cloud-arrow-down" title="Fetch" disabled={busy} onClick={() => model.sync("fetch")} />
-                <ToolbarButton icon="arrow-down" title="Pull" disabled={busy} onClick={() => model.sync("pull")} />
-                <ToolbarButton icon="arrow-up" title="Push" disabled={busy} onClick={() => model.sync("push")} />
-                <ToolbarButton
-                    icon="box-archive"
-                    title="Stash changes"
-                    disabled={busy}
-                    onClick={() => model.stash("push")}
-                />
-                {status?.stashcount > 0 && (
+        <>
+            <div className="relative flex flex-col w-full h-full overflow-hidden">
+                <div className="git-toolbar shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border bg-panel">
+                    <button
+                        ref={branchAnchorRef}
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border text-xs text-secondary hover:text-primary hover:bg-white/5 transition-colors cursor-pointer max-w-[40%]"
+                        title="Switch branch"
+                        onClick={() => model.toggleBranchSwitcher()}
+                    >
+                        <i className="fa-sharp fa-solid fa-code-branch text-[10px]" />
+                        <span className="truncate">{branchLabel}</span>
+                        <i className="fa-sharp fa-solid fa-caret-down text-[10px]" />
+                    </button>
+                    {(status?.ahead > 0 || status?.behind > 0) && (
+                        <span className="text-xs text-secondary font-mono whitespace-pre">
+                            {status?.ahead > 0 ? ` ↑${status.ahead}` : ""}
+                            {status?.behind > 0 ? ` ↓${status.behind}` : ""}
+                        </span>
+                    )}
+                    <span className="flex-1" />
                     <ToolbarButton
-                        icon="box-open"
-                        title={`Pop stash (${status.stashcount})`}
+                        icon="cloud-arrow-down"
+                        title="Fetch"
                         disabled={busy}
-                        onClick={() => model.stash("pop")}
+                        onClick={() => model.sync("fetch")}
                     />
-                )}
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-                <ChangesSection model={model} />
-                <div className="git-section-header px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel border-t border-border">
-                    History
+                    <ToolbarButton icon="arrow-down" title="Pull" disabled={busy} onClick={() => model.sync("pull")} />
+                    <ToolbarButton icon="arrow-up" title="Push" disabled={busy} onClick={() => model.sync("push")} />
+                    <ToolbarButton
+                        icon="box-archive"
+                        title="Stash changes"
+                        disabled={busy}
+                        onClick={() => model.stash("push")}
+                    />
+                    {status?.stashcount > 0 && (
+                        <ToolbarButton
+                            icon="box-open"
+                            title={`Pop stash (${status.stashcount})`}
+                            disabled={busy}
+                            onClick={() => model.stash("pop")}
+                        />
+                    )}
                 </div>
-                <HistorySection model={model} />
+
+                <div className="flex-1 overflow-y-auto">
+                    <ChangesSection model={model} />
+                    <div className="git-section-header px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel border-t border-border">
+                        History
+                    </div>
+                    <HistorySection model={model} />
+                </div>
+
+                <CommitBox model={model} />
+                <ActionStatusBar model={model} />
+
+                <BranchSwitcher model={model} anchorRef={branchAnchorRef} blockRef={blockRef} />
+                <DiffPanel model={model} />
             </div>
-
-            <CommitBox model={model} />
-            <ActionStatusBar model={model} />
-
-            <BranchSwitcher model={model} anchorRef={branchAnchorRef} blockRef={blockRef} />
-            <DiffPanel model={model} />
-        </div>
+            {pathPicker}
+        </>
     );
 });
 GitView.displayName = "GitView";
