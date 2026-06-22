@@ -375,7 +375,6 @@ export class GitViewModel implements ViewModel {
     // re-check. A repo there gets picked up; otherwise the (centered) "No git
     // repository" shows.
     async setRoot(picked: string) {
-        globalStore.set(this.openPickerAtom, false);
         if (isBlank(picked)) {
             return;
         }

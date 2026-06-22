@@ -407,13 +407,17 @@ const TerminalView = ({ blockId, blockRef, model }: ViewComponentProps<TermViewM
             { route }
         );
     };
-    const handleCwdSelect = (s: SuggestionType, queryStr: string): boolean => {
+    const handleCwdSelect = (s: SuggestionType, queryStr: string): boolean | { navigate: string } => {
         const path = s == null ? queryStr : s["file:path"];
         if (isBlank(path)) {
             globalStore.set(model.openCwdPickerAtom, false);
             return true;
         }
         model.changeCwd(path);
+        // browsing into a folder keeps the picker open (close by clicking away)
+        if (s != null && s["file:mimetype"] == "directory") {
+            return { navigate: "" };
+        }
         return true;
     };
     const handleCwdTab = (s: SuggestionType): string => {

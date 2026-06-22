@@ -41,7 +41,13 @@ import { boundNumber, fireAndForget, isBlank, stringToBase64 } from "@/util/util
 import * as jotai from "jotai";
 import * as React from "react";
 import { getBlockingCommand } from "./shellblocking";
-import { computeTheme, DefaultTermTheme, isLikelyOnSameHost, quoteForPosixShell, trimTerminalSelection } from "./termutil";
+import {
+    computeTheme,
+    DefaultTermTheme,
+    isLikelyOnSameHost,
+    quoteForPosixShell,
+    trimTerminalSelection,
+} from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
 function projectNameFromPath(p: string): string {
@@ -586,7 +592,6 @@ export class TermViewModel implements ViewModel {
     // calls this). Ctrl-U clears any half-typed line first; OSC 7 then reports the new
     // cwd back, so the header path follows. POSIX-shell quoting.
     changeCwd(path: string) {
-        globalStore.set(this.openCwdPickerAtom, false);
         if (isBlank(path)) {
             return;
         }

@@ -522,13 +522,17 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
             { route }
         );
     };
-    const handleSelect = (s: SuggestionType, queryStr: string): boolean => {
+    const handleSelect = (s: SuggestionType, queryStr: string): boolean | { navigate: string } => {
         const path = s == null ? queryStr : s["file:path"];
         if (isBlank(path)) {
             globalStore.set(model.openPickerAtom, false);
             return true;
         }
         model.setRoot(path);
+        // browsing into a folder keeps the picker open (close by clicking away)
+        if (s != null && s["file:mimetype"] == "directory") {
+            return { navigate: "" };
+        }
         return true;
     };
     const handleTab = (s: SuggestionType): string => {

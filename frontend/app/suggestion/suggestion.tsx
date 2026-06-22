@@ -8,11 +8,16 @@ import clsx from "clsx";
 import { Atom, useAtomValue } from "jotai";
 import React, { ReactNode, useEffect, useId, useRef, useState } from "react";
 
+// onSelect result: true closes the control, false keeps it open, and
+// { navigate } keeps it open while replacing the query (used to browse into a
+// folder without dismissing the picker).
+type SuggestionSelectResult = boolean | { navigate: string };
+
 interface SuggestionControlProps {
     anchorRef: React.RefObject<HTMLElement>;
     isOpen: boolean;
     onClose: () => void;
-    onSelect: (item: SuggestionType, queryStr: string) => boolean;
+    onSelect: (item: SuggestionType, queryStr: string) => SuggestionSelectResult;
     onTab?: (item: SuggestionType, queryStr: string) => string;
     fetchSuggestions: SuggestionsFnType;
     className?: string;
@@ -245,6 +250,18 @@ function SuggestionControlInner({
         }
     }, [selectedIndex]);
 
+    const applySelect = (suggestion: SuggestionType) => {
+        const res = onSelect(suggestion, query);
+        if (res === true) {
+            onClose();
+        } else if (res && typeof res === "object" && res.navigate != null) {
+            // browse into a folder without dismissing the picker
+            setQuery(res.navigate);
+            setSelectedIndex(0);
+        }
+        // false → keep the picker open
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -261,9 +278,7 @@ function SuggestionControlInner({
             if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
                 suggestion = suggestions[selectedIndex];
             }
-            if (onSelect(suggestion, query)) {
-                onClose();
-            }
+            applySelect(suggestion);
         } else if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
@@ -323,10 +338,7 @@ function SuggestionControlInner({
                                     index === selectedIndex ? "bg-accentbg" : "hover:bg-hoverbg",
                                     "text-gray-100"
                                 )}
-                                onClick={() => {
-                                    onSelect(suggestion, query);
-                                    onClose();
-                                }}
+                                onClick={() => applySelect(suggestion)}
                             >
                                 <SuggestionIcon suggestion={suggestion} />
                                 <SuggestionContent suggestion={suggestion} />
