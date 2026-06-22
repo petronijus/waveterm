@@ -3,22 +3,24 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { atoms, getSettingsKeyAtom, globalStore, WOS } from "@/store/global";
+import { atoms, globalStore } from "@/store/global";
 import { fireAndForget } from "@/util/util";
-import type { TermWrap } from "./termwrap";
 
-// Native OS notification when a long-running foreground command finishes while
-// the window is unfocused. Opt-in (notify:commanddone), duration-gated
-// (notify:commanddonethresholdms), and coalesced so a burst of finishes becomes
-// one summary notification instead of a pile. Per-renderer state == per-window.
+// Native OS notifications for terminal activity, driven by the global
+// term-activity subscriber (which derives state from backend Event_TermActivity).
+// Command-done is coalesced so a burst of finishes becomes one summary notification;
+// agent-waiting fires immediately. All gating (settings, duration, focus) happens in
+// the caller — this module just queues/fires. Per-renderer state == per-window.
 
-const DefaultThresholdMs = 30000;
 const CoalesceWindowMs = 5000; // collect finishes for this long, then fire one notification
 
-type DoneEvent = {
+type NotifyTarget = {
     windowId: string;
     tabId: string;
     tabName: string;
+};
+
+type DoneEvent = NotifyTarget & {
     message: string;
 };
 
@@ -80,7 +82,9 @@ function flush(): void {
     );
 }
 
-function queue(event: DoneEvent): void {
+// Queue a finished long-running command for a coalesced OS notification. The caller
+// has already decided this finish qualifies (feature on, window unfocused, long enough).
+export function queueCommandDoneNotification(event: DoneEvent): void {
     ensureFocusCancel();
     pending.push(event);
     if (flushTimeout == null) {
@@ -88,59 +92,19 @@ function queue(event: DoneEvent): void {
     }
 }
 
-// Called from finishCommandActivity. Decides whether this finish qualifies for a
-// notification and, if so, queues it. Cheap no-op when the feature is off.
-export function maybeNotifyCommandDone(termWrap: TermWrap): void {
-    if (!globalStore.get(getSettingsKeyAtom("notify:commanddone"))) {
-        return;
-    }
-    if (globalStore.get(atoms.documentHasFocus)) {
-        return; // window focused — the user is here, no notification
-    }
-    if (termWrap.cmdActivityStartTs <= 0) {
-        return; // never actually started (no shell-integration markers)
-    }
-    const thresholdMs = globalStore.get(getSettingsKeyAtom("notify:commanddonethresholdms")) ?? DefaultThresholdMs;
-    if (Date.now() - termWrap.cmdActivityStartTs < thresholdMs) {
-        return; // too quick to bother announcing
-    }
-    const windowId = globalStore.get(atoms.uiContext)?.windowid;
-    if (!windowId) {
-        return;
-    }
-    const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", termWrap.tabId));
-    const tabName = tab?.name || "Terminal";
-    const message = globalStore.get(termWrap.lastCommandAtom) || "Command finished";
-    queue({ windowId, tabId: termWrap.tabId, tabName, message });
-}
-
-// Called from markCommandWaiting when an AI agent (Claude / Gemini / Codex) signals
-// "your turn" (terminal bell or OSC 9) while the window is unfocused. Always on (no
-// setting) — it's a high-signal, low-frequency event. Unlike the command-done path
-// this is not a command finishing, so it isn't coalesced or duration-gated;
-// markCommandWaiting already fires it only on the transition into the waiting state.
-// Clicking it jumps to the tab.
-export function maybeNotifyAgentWaiting(termWrap: TermWrap): void {
-    if (globalStore.get(atoms.documentHasFocus)) {
-        return; // window focused — you're already here
-    }
-    const windowId = globalStore.get(atoms.uiContext)?.windowid;
-    if (!windowId) {
-        return;
-    }
-    const tab = WOS.getObjectValue<Tab>(WOS.makeORef("tab", termWrap.tabId));
-    const tabName = tab?.name || "Terminal";
-    const kind = globalStore.get(termWrap.agentKindAtom);
-    const label = kind ? kind[0].toUpperCase() + kind.slice(1) : "Agent";
+// Fire an immediate "agent is waiting for you" notification. The caller has already
+// confirmed the window is unfocused. Clicking it jumps to the tab.
+export function fireAgentWaitingNotification(target: NotifyTarget, agentKind: string): void {
+    const label = agentKind ? agentKind[0].toUpperCase() + agentKind.slice(1) : "Agent";
     fireAndForget(() =>
         RpcApi.NotifyCommand(
             TabRpcClient,
             {
                 title: `${label} is waiting for you`,
-                body: tabName,
+                body: target.tabName,
                 silent: false,
-                windowid: windowId,
-                tabid: termWrap.tabId,
+                windowid: target.windowId,
+                tabid: target.tabId,
             },
             { route: "electron" }
         )

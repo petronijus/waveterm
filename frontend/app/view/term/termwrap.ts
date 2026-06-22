@@ -36,8 +36,6 @@ import {
     handleOsc7Command,
     handleOsc9Command,
     isClaudeCodeCommand,
-    markCommandActivity,
-    markCommandWaiting,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
 import {
@@ -113,22 +111,9 @@ export class TermWrap {
     lastCommandAtom: jotai.PrimitiveAtom<string | null>;
     claudeCodeActiveAtom: jotai.PrimitiveAtom<boolean>;
     agentKindAtom: jotai.PrimitiveAtom<string>; // which AI agent is running: "claude" | "gemini" | "codex" | null
-    // command activity badge (tab "working"/"done" indicator). Activity-driven:
-    // the spinner shows only while a command is running AND producing output (so a
-    // long-but-idle foreground app like Claude waiting for input doesn't keep spinning).
-    cmdActivityBadgeId: string = null;
-    cmdActivityRunning: boolean = false; // between command start (C) and end (D/A)
-    cmdActivityStartTs: number = 0; // when the current command started
-    cmdActivityVisible: boolean = false; // spinner currently shown
-    cmdActivityEverShown: boolean = false; // spinner shown at least once this command
-    cmdActivityIdleTimeout: ReturnType<typeof setTimeout> | null = null;
-    // require SUSTAINED output (not a one-off redraw burst from a resize/tab-switch)
-    // before showing the spinner — avoids false positives.
-    cmdActivityActiveSince: number = 0; // start of the current continuous-output stretch
-    cmdActivityLastOutputTs: number = 0; // timestamp of the last output chunk
-    cmdActivitySuppressUntil: number = 0; // ignore output activity until this ts (after a resize)
-    cmdActivityWaiting: boolean = false; // bell-driven "waiting for your input" state (Claude turn done)
-    cmdActivityStretchBytes: number = 0; // bytes seen in the current output stretch (to tell repaints from work)
+    // The tab "working"/"done" activity indicator is now derived on the backend from
+    // the PTY stream (so it works for background tabs whose view is unmounted) — see
+    // pkg/blockcontroller/termactivity.go and frontend/app/view/term/term-activity.ts.
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
@@ -329,9 +314,9 @@ export class TermWrap {
                 if (bellIndicatorEnabled) {
                     setBadge(this.blockId, { icon: "bell", color: "#fbbf24", priority: 1 });
                 }
-                // Claude Code rings the bell when it finishes a turn and is waiting for
-                // input — flip the tab activity indicator out of "working" into "waiting".
-                markCommandWaiting(this, this.blockId);
+                // The agent "waiting for you" tab state (Claude/Gemini/Codex rings the
+                // bell when a turn finishes) is now derived on the backend so it works
+                // for background tabs too — see pkg/blockcontroller/termactivity.go.
                 return true;
             })
         );
@@ -550,7 +535,6 @@ export class TermWrap {
             const decodedData = base64ToArray(msg.data64);
             if (this.loaded) {
                 this.doTerminalWrite(decodedData, null);
-                markCommandActivity(this, this.blockId, decodedData.length); // live output ⇒ "working" tab spinner
             } else {
                 this.heldData.push(decodedData);
             }
@@ -643,9 +627,6 @@ export class TermWrap {
         const oldCols = this.terminal.cols;
         this.fitAddon.fit();
         if (oldRows !== this.terminal.rows || oldCols !== this.terminal.cols) {
-            // a real resize (e.g. tab-switch) makes the shell/TUI repaint; don't let
-            // that one-off output burst be mistaken for command activity
-            this.cmdActivitySuppressUntil = Date.now() + 1200;
             const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
             console.log(
                 "[termwrap] resize",

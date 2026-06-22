@@ -108,6 +108,7 @@ func registerController(blockId string, controller Controller) {
 	if existingController != nil {
 		existingController.Stop(false, Status_Done, true)
 		wstore.DeleteRTInfo(waveobj.MakeORef(waveobj.OType_Block, blockId))
+		ResetTermActivity(blockId)
 	}
 }
 
@@ -302,6 +303,7 @@ func DestroyBlockController(blockId string) {
 	log.Printf("[destroy] block=%s: stopping controller (type=%T, connName=%s)", blockId, controller, controller.GetConnName())
 	controller.Stop(true, Status_Done, true)
 	wstore.DeleteRTInfo(waveobj.MakeORef(waveobj.OType_Block, blockId))
+	ResetTermActivity(blockId)
 	deleteController(blockId)
 	log.Printf("[destroy] block=%s: controller deleted from registry", blockId)
 }
@@ -376,6 +378,12 @@ func HandleAppendBlockFile(blockId string, blockFile string, data []byte) error 
 	err := filestore.WFS.AppendData(ctx, blockId, blockFile, data)
 	if err != nil {
 		return fmt.Errorf("error appending to blockfile: %w", err)
+	}
+	if blockFile == wavebase.BlockFile_Term {
+		// Detect command activity (working/done tab indicator) from the raw PTY
+		// stream here — the single choke point all terminal output flows through —
+		// so it works for background tabs whose frontend view is unmounted.
+		FeedTermActivity(blockId, data)
 	}
 	wps.Broker.Publish(wps.WaveEvent{
 		Event: wps.Event_BlockFile,

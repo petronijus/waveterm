@@ -1886,6 +1886,17 @@ declare global {
         "display:order": number;
     };
 
+    // baseds.TermActivityData
+    type TermActivityData = {
+        blockid: string;
+        state: string;
+        visible?: boolean;
+        exitcode?: number;
+        agentkind?: string;
+        command?: string;
+        durationms?: number;
+    };
+
     // waveobj.TermSize
     type TermSize = {
         rows: number;

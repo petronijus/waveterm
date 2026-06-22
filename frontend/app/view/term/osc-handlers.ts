@@ -1,12 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { clearBadgeById, setBadge } from "@/app/store/badge";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { v7 as uuidv7 } from "uuid";
 import {
-    atoms,
     getApi,
     getBlockMetaKeyAtom,
     getBlockTermDurableAtom,
@@ -17,7 +14,6 @@ import {
 } from "@/store/global";
 import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/util/util";
 import debug from "debug";
-import { maybeNotifyAgentWaiting, maybeNotifyCommandDone } from "./notify-commanddone";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -122,233 +118,13 @@ export function agentKindForCommand(decodedCmd: string): string {
     return null;
 }
 
-// Tab "working / done" activity badge, driven by shell-integration command
-// lifecycle (OSC 16162 C → D/A) PLUS live PTY output. Generic — works for any
-// command, not just one tool. The spinner shows only while a command is running
-// AND actively producing output, so a long-running foreground app that's idle
-// (e.g. Claude waiting for input) stops spinning until it works again.
-const CmdActivityDelayMs = 1200; // ignore the first burst so quick commands don't flash
-const CmdActivityIdleMs = 2500; // output quiet this long ⇒ "done thinking" / idle
-const CmdActivitySustainMs = 700; // output must flow this long continuously before we call it "working"
-const CmdActivityGapMs = 1000; // a quiet gap longer than this ends the continuous stretch
-const CmdActivityWorkBytes = 512; // after a "waiting" bell, a stretch must carry at least this many bytes to count as real work again (so the idle TUI's cursor/box repaints don't re-trigger the spinner; real claude output streams far more)
-const CmdActivityPriority = 5;
-
-function ensureActivityBadgeId(termWrap: TermWrap): string {
-    if (termWrap.cmdActivityBadgeId == null) {
-        termWrap.cmdActivityBadgeId = uuidv7();
-    }
-    return termWrap.cmdActivityBadgeId;
-}
-
-// Is the user currently looking at this terminal's tab? (active tab + window focused)
-function isTermTabActive(termWrap: TermWrap): boolean {
-    return globalStore.get(atoms.staticTabId) === termWrap.tabId && !!globalStore.get(atoms.documentHasFocus);
-}
-
-// Transition our activity badge: clear our previous state (shares one badgeid) then set the new one.
-function setActivityBadge(termWrap: TermWrap, blockId: string, icon: string, color: string, pidlinked: boolean): void {
-    const id = ensureActivityBadgeId(termWrap);
-    clearBadgeById(blockId, id);
-    setBadge(blockId, { badgeid: id, icon, color, priority: CmdActivityPriority, pidlinked });
-}
-
-function hideActivityBadge(termWrap: TermWrap, blockId: string): void {
-    if (termWrap.cmdActivityBadgeId != null) {
-        clearBadgeById(blockId, termWrap.cmdActivityBadgeId);
-    }
-}
-
-// "done — come look" badge: green check on success, red x on failure. pidlinked=false
-// so it clears as soon as you focus the tab.
-function showDoneBadge(termWrap: TermWrap, blockId: string, exitcode: number | null): void {
-    const ok = exitcode == null || exitcode === 0;
-    setActivityBadge(
-        termWrap,
-        blockId,
-        ok ? "circle-check" : "circle-xmark",
-        ok ? "var(--success-color)" : "var(--error-color)",
-        false
-    );
-}
-
-function startCommandActivity(termWrap: TermWrap, blockId: string): void {
-    hideActivityBadge(termWrap, blockId); // drop any leftover done/pending from the previous command
-    if (termWrap.cmdActivityIdleTimeout != null) {
-        clearTimeout(termWrap.cmdActivityIdleTimeout);
-        termWrap.cmdActivityIdleTimeout = null;
-    }
-    termWrap.cmdActivityRunning = true;
-    termWrap.cmdActivityStartTs = Date.now();
-    termWrap.cmdActivityVisible = false;
-    termWrap.cmdActivityEverShown = false;
-    termWrap.cmdActivityActiveSince = 0;
-    termWrap.cmdActivityLastOutputTs = 0;
-    termWrap.cmdActivityWaiting = false;
-    termWrap.cmdActivityStretchBytes = 0;
-}
-
-// Called on each live PTY output chunk. We only call it "working" once output has
-// flowed CONTINUOUSLY for CmdActivitySustainMs — a one-off redraw burst (terminal
-// resize on tab-switch, a TUI repaint) is a single cluster and never qualifies, so
-// it no longer produces a phantom spinner/checkmark. When sustained output then
-// goes quiet, the command is "done thinking": away ⇒ pending "done" badge, watching ⇒ just stop.
-function markCommandActivity(termWrap: TermWrap, blockId: string, outputLen: number = 0): void {
-    if (!termWrap.cmdActivityRunning) {
-        return;
-    }
-    // Only badge tabs you're NOT looking at. On the active+focused tab you can see
-    // the terminal directly, so no spinner is needed there — and crucially, terminal
-    // resizes (the repaint bursts behind the tab-switch "blink") only happen to the
-    // visible tab, so never spinning the active tab removes the blink at the source.
-    if (isTermTabActive(termWrap)) {
-        if (termWrap.cmdActivityVisible) {
-            termWrap.cmdActivityVisible = false;
-            hideActivityBadge(termWrap, blockId);
-        }
-        if (termWrap.cmdActivityIdleTimeout != null) {
-            clearTimeout(termWrap.cmdActivityIdleTimeout);
-            termWrap.cmdActivityIdleTimeout = null;
-        }
-        termWrap.cmdActivityActiveSince = 0;
-        return;
-    }
-    const now = Date.now();
-    if (now < termWrap.cmdActivitySuppressUntil) {
-        return; // output right after a resize is a repaint, not command activity
-    }
-    if (now - termWrap.cmdActivityStartTs < CmdActivityDelayMs) {
-        return; // quick command / first burst — don't flash
-    }
-    // start a new continuous stretch if this is the first chunk or there was a quiet gap
-    if (termWrap.cmdActivityActiveSince === 0 || now - termWrap.cmdActivityLastOutputTs > CmdActivityGapMs) {
-        termWrap.cmdActivityActiveSince = now;
-        termWrap.cmdActivityStretchBytes = 0;
-    }
-    termWrap.cmdActivityLastOutputTs = now;
-    termWrap.cmdActivityStretchBytes += outputLen;
-    // While we're in the bell-driven "waiting for you" state, a claude TUI keeps
-    // repainting its idle prompt — small bursts that must NOT look like work. Only a
-    // stretch carrying real volume (CmdActivityWorkBytes) counts as work resuming and
-    // flips us back to the spinner. Outside the waiting state this gate is a no-op.
-    const workVolumeOk = !termWrap.cmdActivityWaiting || termWrap.cmdActivityStretchBytes >= CmdActivityWorkBytes;
-    if (!termWrap.cmdActivityVisible && workVolumeOk && now - termWrap.cmdActivityActiveSince >= CmdActivitySustainMs) {
-        termWrap.cmdActivityWaiting = false;
-        termWrap.cmdActivityVisible = true;
-        termWrap.cmdActivityEverShown = true;
-        setActivityBadge(termWrap, blockId, "spinner+spin", "var(--accent-color)", true);
-    }
-    // Only run the idle timer while the spinner is actually showing. Once we've gone
-    // idle/"done", stray repaint bursts must NOT re-arm it (that re-decided show/hide
-    // on every tab-switch and made the checkmark flicker). The spinner only comes back
-    // when sustained output resumes (the block above), which is real new work.
-    if (termWrap.cmdActivityVisible) {
-        if (termWrap.cmdActivityIdleTimeout != null) {
-            clearTimeout(termWrap.cmdActivityIdleTimeout);
-        }
-        termWrap.cmdActivityIdleTimeout = setTimeout(() => {
-            termWrap.cmdActivityIdleTimeout = null;
-            termWrap.cmdActivityActiveSince = 0; // stretch ended
-            termWrap.cmdActivityVisible = false;
-            if (isTermTabActive(termWrap)) {
-                hideActivityBadge(termWrap, blockId); // you're watching — just stop spinning
-            } else {
-                showDoneBadge(termWrap, blockId, null); // away — "done, come look"
-            }
-        }, CmdActivityIdleMs);
-    }
-}
-
-function finishCommandActivity(termWrap: TermWrap, blockId: string, exitcode: number | null): void {
-    if (!termWrap.cmdActivityRunning) {
-        return; // already finalized (e.g. D fired, then A)
-    }
-    termWrap.cmdActivityRunning = false;
-    if (termWrap.cmdActivityIdleTimeout != null) {
-        clearTimeout(termWrap.cmdActivityIdleTimeout);
-        termWrap.cmdActivityIdleTimeout = null;
-    }
-    if (termWrap.cmdActivityWaiting) {
-        termWrap.cmdActivityWaiting = false;
-        hideActivityBadge(termWrap, blockId); // the "waiting for you" state ended with the command
-    }
-    // Notification is duration-gated, not output-gated, so a long *silent* command
-    // (e.g. `sleep 60`) still notifies even though it never showed a spinner.
-    maybeNotifyCommandDone(termWrap);
-    if (!termWrap.cmdActivityEverShown) {
-        return; // never worked visibly — quick/silent command, no badge
-    }
-    termWrap.cmdActivityVisible = false;
-    termWrap.cmdActivityEverShown = false;
-    if (isTermTabActive(termWrap)) {
-        hideActivityBadge(termWrap, blockId); // you watched it finish
-    } else {
-        showDoneBadge(termWrap, blockId, exitcode); // away — leave the result
-    }
-}
-
-function cancelCommandActivity(termWrap: TermWrap, blockId: string): void {
-    if (termWrap.cmdActivityIdleTimeout != null) {
-        clearTimeout(termWrap.cmdActivityIdleTimeout);
-        termWrap.cmdActivityIdleTimeout = null;
-    }
-    hideActivityBadge(termWrap, blockId);
-    termWrap.cmdActivityRunning = false;
-    termWrap.cmdActivityVisible = false;
-    termWrap.cmdActivityEverShown = false;
-    termWrap.cmdActivityWaiting = false;
-    termWrap.cmdActivityStretchBytes = 0;
-}
-
-// Called on a terminal BEL or an OSC 9 notification. Interactive AI agents (Claude
-// Code, Gemini CLI, Codex) signal "your turn" this way when a turn finishes — but
-// their TUIs keep repainting, so the output-idle heuristic never sees them stop and
-// the tab would keep "working". While an agent command is active, treat that signal
-// as a distinct "waiting for you" state: drop the spinner, show a calm badge on
-// background tabs, and optionally fire an OS notification. The spinner only returns
-// when real output volume resumes (see markCommandActivity).
-function markCommandWaiting(termWrap: TermWrap, blockId: string): void {
-    if (!termWrap.cmdActivityRunning) {
-        return; // no command active — a bare-shell bell, not an agent waiting
-    }
-    if (globalStore.get(termWrap.agentKindAtom) == null) {
-        return; // scoped to AI agents' "your turn" signal, not arbitrary program bells
-    }
-    if (termWrap.cmdActivityIdleTimeout != null) {
-        clearTimeout(termWrap.cmdActivityIdleTimeout);
-        termWrap.cmdActivityIdleTimeout = null;
-    }
-    const wasWaiting = termWrap.cmdActivityWaiting;
-    termWrap.cmdActivityWaiting = true;
-    termWrap.cmdActivityVisible = false;
-    termWrap.cmdActivityActiveSince = 0;
-    termWrap.cmdActivityStretchBytes = 0;
-    if (isTermTabActive(termWrap)) {
-        hideActivityBadge(termWrap, blockId); // you're looking at it — no badge needed
-    } else {
-        setActivityBadge(termWrap, blockId, "comment-dots", "#fbbf24", false);
-    }
-    if (!wasWaiting) {
-        maybeNotifyAgentWaiting(termWrap); // only on entering the state, not on every repeated bell
-    }
-}
-
 // OSC 9 is the desktop-notification escape both Gemini CLI and Codex prefer (with the
-// terminal bell as a fallback), so handling it makes "waiting for you" fire even when
-// a tool never emits BEL. OSC 9;4 is the unrelated ConEmu/Windows-Terminal progress
-// protocol, so it's ignored. We "own" OSC 9, so always return true.
+// terminal bell as a fallback). We "own" OSC 9 so always return true to consume it;
+// the agent "waiting for you" state it signals is now detected on the backend (it sees
+// the raw stream even for background tabs), so there's nothing to do here.
 export function handleOsc9Command(data: string, blockId: string, loaded: boolean, termWrap: TermWrap): boolean {
-    if (!loaded || !data) {
-        return true;
-    }
-    if (data === "4" || data.startsWith("4;")) {
-        return true; // progress protocol, not a notification
-    }
-    markCommandWaiting(termWrap, blockId);
     return true;
 }
-
-export { markCommandActivity, markCommandWaiting };
 
 function handleShellIntegrationCommandStart(
     termWrap: TermWrap,
@@ -358,7 +134,6 @@ function handleShellIntegrationCommandStart(
 ): void {
     rtInfo["shell:state"] = "running-command";
     globalStore.set(termWrap.shellIntegrationStatusAtom, "running-command");
-    startCommandActivity(termWrap, blockId);
     const connName = globalStore.get(getBlockMetaKeyAtom(blockId, "connection")) ?? "";
     const isRemote = isSshConnName(connName);
     const isWsl = isWslConnName(connName);
@@ -569,8 +344,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             globalStore.set(termWrap.shellIntegrationStatusAtom, "ready");
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             globalStore.set(termWrap.agentKindAtom, null);
-            // finalize activity badge if "D" didn't fire (no-op if it already did)
-            finishCommandActivity(termWrap, blockId, null);
             const marker = terminal.registerMarker(0);
             if (marker) {
                 termWrap.promptMarkers.push(marker);
@@ -610,7 +383,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
         case "D":
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             globalStore.set(termWrap.agentKindAtom, null);
-            finishCommandActivity(termWrap, blockId, cmd.data.exitcode ?? null);
             if (cmd.data.exitcode != null) {
                 rtInfo["shell:lastcmdexitcode"] = cmd.data.exitcode;
             } else {
@@ -626,7 +398,6 @@ export function handleOsc16162Command(data: string, blockId: string, loaded: boo
             globalStore.set(termWrap.shellIntegrationStatusAtom, null);
             globalStore.set(termWrap.claudeCodeActiveAtom, false);
             globalStore.set(termWrap.agentKindAtom, null);
-            cancelCommandActivity(termWrap, blockId);
             if (terminal.buffer.active.type === "alternate") {
                 terminal.write("\x1b[?1049l");
             }
