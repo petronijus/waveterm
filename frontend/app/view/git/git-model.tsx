@@ -1,8 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { atoms } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import * as WOS from "@/app/store/wos";
+import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import * as jotai from "jotai";
@@ -11,6 +13,25 @@ import { GitEnv } from "./gitenv";
 
 const StatusPollIntervalMs = 4000;
 const LogPageSize = 50;
+
+function projectNameFromPath(p: string): string {
+    if (p === "~" || isBlank(p)) {
+        return "home";
+    }
+    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
+    return parts[parts.length - 1] || p;
+}
+
+function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
+    if (projects[base] == null) {
+        return base;
+    }
+    let i = 2;
+    while (projects[`${base} (${i})`] != null) {
+        i++;
+    }
+    return `${base} (${i})`;
+}
 
 export type GitActionStatus = {
     message: string;
@@ -53,13 +74,15 @@ export class GitViewModel implements ViewModel {
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
     cwdSource: jotai.Atom<string>;
-    rootOverrideAtom: jotai.PrimitiveAtom<string>;
     openPickerAtom: jotai.PrimitiveAtom<boolean>;
+    isCurrentDirBookmarkedAtom: jotai.Atom<boolean>;
     viewText: jotai.Atom<HeaderElem[]>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
 
     disposed = false;
     cancelPoll: (() => void) | null = null;
+    cwdUnsub: (() => void) | null = null;
+    lastResolvedCwd: string = null;
     fetchEpoch = 0;
 
     constructor({ blockId, waveEnv }: ViewModelInitType) {
@@ -97,19 +120,11 @@ export class GitViewModel implements ViewModel {
             const connAtom = this.env.getConnStatusAtom(connName);
             return get(connAtom);
         });
-        this.rootOverrideAtom = jotai.atom<string>(null) as jotai.PrimitiveAtom<string>;
         this.openPickerAtom = jotai.atom<boolean>(false);
         this.cwdSource = jotai.atom((get) => {
-            // a path the user picked this session takes precedence immediately, before
-            // the git:root meta write round-trips back through the object store
-            const override = get(this.rootOverrideAtom);
-            if (!isBlank(override)) {
-                return override;
-            }
-            const gitRoot = get(this.env.getBlockMetaKeyAtom(blockId, "git:root"));
-            if (!isBlank(gitRoot)) {
-                return gitRoot;
-            }
+            // cmd:cwd/file are what the header picker and a connections-panel project
+            // set, so they take precedence; git:root is a legacy fallback (nothing sets
+            // it anymore — the picker clears it).
             const cmdCwd = get(this.env.getBlockMetaKeyAtom(blockId, "cmd:cwd"));
             if (!isBlank(cmdCwd)) {
                 return cmdCwd;
@@ -117,6 +132,10 @@ export class GitViewModel implements ViewModel {
             const file = get(this.env.getBlockMetaKeyAtom(blockId, "file"));
             if (!isBlank(file)) {
                 return file;
+            }
+            const gitRoot = get(this.env.getBlockMetaKeyAtom(blockId, "git:root"));
+            if (!isBlank(gitRoot)) {
+                return gitRoot;
             }
             return "~";
         });
@@ -132,24 +151,62 @@ export class GitViewModel implements ViewModel {
             ] as HeaderElem[];
         });
 
+        this.isCurrentDirBookmarkedAtom = jotai.atom<boolean>((get) => {
+            const projects = get(atoms.fullConfigAtom)?.projects ?? {};
+            const curPath = get(this.cwdSource);
+            const curConn = get(this.connection) || "local";
+            return Object.values(projects).some((p) => p?.path === curPath && (p?.connection || "local") === curConn);
+        });
+
         this.endIconButtons = jotai.atom((get) => {
-            const repoInfo = get(this.repoInfoAtom);
-            const busy = get(this.actionBusyAtom);
             const buttons: IconButtonDecl[] = [];
-            if (!repoInfo?.isrepo) {
-                return buttons;
-            }
+            const bookmarked = get(this.isCurrentDirBookmarkedAtom);
             buttons.push({
                 elemtype: "iconbutton",
-                icon: "arrows-rotate",
-                title: "Refresh",
-                disabled: busy,
-                click: () => this.refreshAll(),
+                icon: bookmarked ? "star" : "regular@star",
+                title: bookmarked ? "Remove project bookmark" : "Bookmark folder as project",
+                click: () => fireAndForget(() => this.toggleProjectBookmark()),
             });
+            const repoInfo = get(this.repoInfoAtom);
+            const busy = get(this.actionBusyAtom);
+            if (repoInfo?.isrepo) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: "arrows-rotate",
+                    title: "Refresh",
+                    disabled: busy,
+                    click: () => this.refreshAll(),
+                });
+            }
             return buttons;
         });
 
+        // Re-check whenever the effective path changes — from the header picker OR a
+        // project picked in the connections panel (which sets cmd:cwd) — so the git
+        // view jumps to the new folder.
+        this.cwdUnsub = globalStore.sub(this.cwdSource, () => this.onCwdChanged());
+
         this.startPolling();
+    }
+
+    onCwdChanged() {
+        if (this.disposed) {
+            return;
+        }
+        const cwd = globalStore.get(this.cwdSource);
+        if (cwd === this.lastResolvedCwd) {
+            return;
+        }
+        this.lastResolvedCwd = cwd;
+        // drop the previous repo's state so nothing stale lingers while we re-check
+        globalStore.set(this.repoInfoAtom, null);
+        globalStore.set(this.statusAtom, null);
+        globalStore.set(this.branchesAtom, null);
+        globalStore.set(this.logAtom, []);
+        globalStore.set(this.gitRootAtom, null);
+        globalStore.set(this.errorAtom, null);
+        globalStore.set(this.loadingAtom, true);
+        fireAndForget(() => this.refreshAll());
     }
 
     get viewComponent(): ViewComponent {
@@ -166,6 +223,7 @@ export class GitViewModel implements ViewModel {
             return null;
         }
         const cwd = globalStore.get(this.cwdSource);
+        this.lastResolvedCwd = cwd;
         try {
             const info = await this.env.rpc.RemoteGitRepoInfoCommand(
                 TabRpcClient,
@@ -307,7 +365,7 @@ export class GitViewModel implements ViewModel {
         globalStore.set(this.branchesAtom, null);
         globalStore.set(this.logAtom, []);
         globalStore.set(this.gitRootAtom, null);
-        globalStore.set(this.rootOverrideAtom, null);
+        this.lastResolvedCwd = null;
         globalStore.set(this.loadingAtom, true);
         globalStore.set(this.errorAtom, null);
         this.startPolling();
@@ -321,22 +379,41 @@ export class GitViewModel implements ViewModel {
         if (isBlank(picked)) {
             return;
         }
-        globalStore.set(this.rootOverrideAtom, picked);
-        // persist the choice on the block so it survives reloads
-        fireAndForget(() =>
-            this.env.rpc.SetMetaCommand(TabRpcClient, {
-                oref: WOS.makeORef("block", this.blockId),
-                meta: { "git:root": picked },
-            })
+        // Persist on the block using the same meta keys a connections-panel project
+        // uses (cmd:cwd/file), so the header picker and project picks stay consistent.
+        // Clear any old git:root so it can't shadow the new path. The cwdSource
+        // subscription (onCwdChanged) then clears stale state and re-checks.
+        await this.env.rpc.SetMetaCommand(TabRpcClient, {
+            oref: WOS.makeORef("block", this.blockId),
+            meta: { "git:root": null, "cmd:cwd": picked, file: picked },
+        });
+    }
+
+    // Bookmark (or un-bookmark) the current folder as a "project", so it shows up in
+    // the connections panel — same as the star button in the file preview.
+    async toggleProjectBookmark() {
+        const path = globalStore.get(this.cwdSource);
+        if (isBlank(path)) {
+            return;
+        }
+        const conn = globalStore.get(this.connection);
+        const connKey = conn || "local";
+        const projects = globalStore.get(atoms.fullConfigAtom)?.projects ?? {};
+        const existing = Object.entries(projects).find(
+            ([, p]) => p?.path === path && (p?.connection || "local") === connKey
         );
-        // drop the previous repo's state so nothing stale lingers while we re-check
-        globalStore.set(this.repoInfoAtom, null);
-        globalStore.set(this.statusAtom, null);
-        globalStore.set(this.branchesAtom, null);
-        globalStore.set(this.logAtom, []);
-        globalStore.set(this.gitRootAtom, null);
-        globalStore.set(this.errorAtom, null);
-        await this.refreshAll();
+        if (existing) {
+            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name: existing[0], metamaptype: null });
+            return;
+        }
+        const name = uniqueProjectName(projectNameFromPath(path), projects);
+        const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
+        const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
+        const meta: ProjectConfigType = { path, "display:order": nextOrder };
+        if (conn && conn !== "local") {
+            meta.connection = conn;
+        }
+        await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
     }
 
     setActionStatus(status: GitActionStatus) {
@@ -533,6 +610,10 @@ export class GitViewModel implements ViewModel {
 
     dispose() {
         this.disposed = true;
+        if (this.cwdUnsub) {
+            this.cwdUnsub();
+            this.cwdUnsub = null;
+        }
         if (this.cancelPoll) {
             this.cancelPoll();
             this.cancelPoll = null;
