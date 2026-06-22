@@ -10,6 +10,7 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { makeFeBlockRouteId } from "@/app/store/wshrouter";
 import { DefaultRouter, TabRpcClient } from "@/app/store/wshrpcutil";
+import { uiThemeOverrideAtom } from "@/app/uitheme";
 import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
@@ -36,13 +37,31 @@ import {
 import * as services from "@/store/services";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
-import { boundNumber, fireAndForget, stringToBase64 } from "@/util/util";
+import { boundNumber, fireAndForget, isBlank, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { getBlockingCommand } from "./shellblocking";
-import { uiThemeOverrideAtom } from "@/app/uitheme";
-import { computeTheme, DefaultTermTheme, isLikelyOnSameHost, trimTerminalSelection } from "./termutil";
+import { computeTheme, DefaultTermTheme, isLikelyOnSameHost, quoteForPosixShell, trimTerminalSelection } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
+
+function projectNameFromPath(p: string): string {
+    if (p === "~" || isBlank(p)) {
+        return "home";
+    }
+    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
+    return parts[parts.length - 1] || p;
+}
+
+function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
+    if (projects[base] == null) {
+        return base;
+    }
+    let i = 2;
+    while (projects[`${base} (${i})`] != null) {
+        i++;
+    }
+    return `${base} (${i})`;
+}
 
 export class TermViewModel implements ViewModel {
     viewType: string;
@@ -56,6 +75,8 @@ export class TermViewModel implements ViewModel {
     viewIcon: jotai.Atom<IconButtonDecl>;
     viewName: jotai.Atom<string>;
     viewText: jotai.Atom<HeaderElem[]>;
+    openCwdPickerAtom: jotai.PrimitiveAtom<boolean>;
+    isCwdBookmarkedAtom: jotai.Atom<boolean>;
     blockBg: jotai.Atom<MetaType>;
     manageConnection: jotai.Atom<boolean>;
     filterOutNowsh?: jotai.Atom<boolean>;
@@ -74,6 +95,7 @@ export class TermViewModel implements ViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
     shellProcStatus: jotai.Atom<string>;
     shellProcStatusUnsubFn: () => void;
+    cwdUnsub: () => void;
     blockJobStatusAtom: jotai.PrimitiveAtom<BlockJobStatusData>;
     blockJobStatusVersionTs: number;
     blockJobStatusUnsubFn: () => void;
@@ -126,6 +148,20 @@ export class TermViewModel implements ViewModel {
             }
             return "";
         });
+        this.openCwdPickerAtom = jotai.atom<boolean>(false);
+        this.isCwdBookmarkedAtom = jotai.atom<boolean>((get) => {
+            const projects = get(atoms.fullConfigAtom)?.projects ?? {};
+            const blockData = get(this.blockAtom);
+            const curPath = blockData?.meta?.["cmd:cwd"];
+            if (isBlank(curPath)) {
+                return false;
+            }
+            const curConn = blockData?.meta?.connection || "local";
+            return Object.values(projects).some((p) => p?.path === curPath && (p?.connection || "local") === curConn);
+        });
+        // When cmd:cwd is changed externally (e.g. picking a project in the connections
+        // panel) rather than reported by the shell itself, cd the live shell there.
+        this.cwdUnsub = globalStore.sub(getBlockMetaKeyAtom(blockId, "cmd:cwd"), () => this.onExternalCwdChange());
         this.viewText = jotai.atom((get) => {
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
@@ -196,6 +232,18 @@ export class TermViewModel implements ViewModel {
                             });
                         }
                     }
+                }
+            }
+            if (!isCmd && this.isBasicTerm(get)) {
+                // clickable cwd — opens the in-app path picker to cd the shell
+                const cwd = get(getBlockMetaKeyAtom(this.blockId, "cmd:cwd"));
+                if (!isBlank(cwd)) {
+                    rtn.push({
+                        elemtype: "text",
+                        text: cwd,
+                        className: "cursor-pointer hover:text-primary",
+                        onClick: () => globalStore.set(this.openCwdPickerAtom, true),
+                    });
                 }
             }
             const isMI = get(this.tabModel.isTermMultiInput);
@@ -286,6 +334,16 @@ export class TermViewModel implements ViewModel {
             const connStatus = get(this.connStatus);
             const isCmd = get(this.isCmdController);
             const rtn: IconButtonDecl[] = [];
+
+            if (!isCmd && this.isBasicTerm(get) && !isBlank(blockData?.meta?.["cmd:cwd"])) {
+                const bookmarked = get(this.isCwdBookmarkedAtom);
+                rtn.push({
+                    elemtype: "iconbutton",
+                    icon: bookmarked ? "star" : "regular@star",
+                    title: bookmarked ? "Remove project bookmark" : "Bookmark folder as project",
+                    click: () => fireAndForget(() => this.toggleProjectBookmark()),
+                });
+            }
 
             const isAIPanelOpen = get(WorkspaceLayoutModel.getInstance().panelVisibleAtom);
             if (isAIPanelOpen) {
@@ -513,6 +571,66 @@ export class TermViewModel implements ViewModel {
         RpcApi.ControllerInputCommand(TabRpcClient, { blockid: this.blockId, inputdata64: b64data });
     }
 
+    // cmd:cwd changed. The shell reports its own cwd here via OSC 7 (termWrap.
+    // lastReportedCwd matches) — ignore those. A mismatch means something set cmd:cwd
+    // externally (a project picked in the connections panel), so cd the shell to it.
+    onExternalCwdChange() {
+        const cwd = globalStore.get(getBlockMetaKeyAtom(this.blockId, "cmd:cwd"));
+        if (isBlank(cwd) || cwd === this.termRef.current?.lastReportedCwd) {
+            return;
+        }
+        this.changeCwd(cwd);
+    }
+
+    // Change the terminal's folder by cd-ing the live shell (the in-app path picker
+    // calls this). Ctrl-U clears any half-typed line first; OSC 7 then reports the new
+    // cwd back, so the header path follows. POSIX-shell quoting.
+    changeCwd(path: string) {
+        globalStore.set(this.openCwdPickerAtom, false);
+        if (isBlank(path)) {
+            return;
+        }
+        // Keep a leading ~ / ~/ OUTSIDE the quotes so the shell still expands it to
+        // $HOME (single quotes would make it a literal "~" directory); quote the rest.
+        let cdArg: string;
+        if (path === "~") {
+            cdArg = "~";
+        } else if (path.startsWith("~/")) {
+            cdArg = "~/" + quoteForPosixShell(path.slice(2));
+        } else {
+            cdArg = quoteForPosixShell(path);
+        }
+        this.sendDataToController("\x15cd " + cdArg + "\r");
+    }
+
+    // Bookmark (or un-bookmark) the current folder as a "project", so it shows up in
+    // the connections panel — same as the star button in the file preview and git view.
+    async toggleProjectBookmark() {
+        const blockData = globalStore.get(this.blockAtom);
+        const path = blockData?.meta?.["cmd:cwd"];
+        if (isBlank(path)) {
+            return;
+        }
+        const conn = blockData?.meta?.connection;
+        const connKey = conn || "local";
+        const projects = globalStore.get(atoms.fullConfigAtom)?.projects ?? {};
+        const existing = Object.entries(projects).find(
+            ([, p]) => p?.path === path && (p?.connection || "local") === connKey
+        );
+        if (existing) {
+            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name: existing[0], metamaptype: null });
+            return;
+        }
+        const name = uniqueProjectName(projectNameFromPath(path), projects);
+        const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
+        const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
+        const meta: ProjectConfigType = { path, "display:order": nextOrder };
+        if (conn && conn !== "local") {
+            meta.connection = conn;
+        }
+        await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
+    }
+
     setTermMode(mode: "term" | "vdom") {
         if (mode == "term") {
             mode = null;
@@ -593,6 +711,7 @@ export class TermViewModel implements ViewModel {
 
     dispose() {
         DefaultRouter.unregisterRoute(makeFeBlockRouteId(this.blockId));
+        this.cwdUnsub?.();
         this.shellProcStatusUnsubFn?.();
         this.blockJobStatusUnsubFn?.();
         this.termBPMUnsubFn?.();

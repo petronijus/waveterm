@@ -252,7 +252,7 @@ export function handleOsc52Command(data: string, blockId: string, loaded: boolea
 
 // for xterm handlers, we return true always because we "own" OSC 7.
 // even if it is invalid we dont want to propagate to other handlers
-export function handleOsc7Command(data: string, blockId: string, loaded: boolean): boolean {
+export function handleOsc7Command(data: string, blockId: string, loaded: boolean, termWrap?: TermWrap): boolean {
     if (!loaded) {
         return true;
     }
@@ -293,6 +293,12 @@ export function handleOsc7Command(data: string, blockId: string, loaded: boolean
     } catch (e) {
         console.log("Invalid OSC 7 command received (parse error)", data, e);
         return true;
+    }
+
+    // Record the shell-reported cwd synchronously so a cmd:cwd watcher can tell a real
+    // shell move (this) apart from an external "go here" request (e.g. picking a project).
+    if (termWrap != null) {
+        termWrap.lastReportedCwd = pathPart;
     }
 
     setTimeout(() => {

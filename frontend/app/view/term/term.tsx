@@ -12,9 +12,10 @@ import { useTabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
-import { fireAndForget, useAtomValueSafe } from "@/util/util";
+import { fireAndForget, isBlank, makeConnRoute, useAtomValueSafe } from "@/util/util";
 import { computeBgStyleFromMeta } from "@/util/waveutil";
 import { ISearchOptions } from "@xterm/addon-search";
 import clsx from "clsx";
@@ -178,7 +179,7 @@ const TermToolbarVDomNode = ({ blockId, model }: TerminalViewProps) => {
     );
 };
 
-const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => {
+const TerminalView = ({ blockId, blockRef, model }: ViewComponentProps<TermViewModel>) => {
     const viewRef = React.useRef<HTMLDivElement>(null);
     const connectElemRef = React.useRef<HTMLDivElement>(null);
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);
@@ -385,20 +386,65 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
         [model]
     );
 
+    const fetchCwdSuggestions = async (query: string, reqContext: SuggestionRequestContext) => {
+        const conn = blockData?.meta?.connection || "local";
+        const route = makeConnRoute(conn);
+        if (reqContext?.dispose) {
+            RpcApi.DisposeSuggestionsCommand(TabRpcClient, reqContext.widgetid, { noresponse: true, route });
+            return null;
+        }
+        const cwd = blockData?.meta?.["cmd:cwd"] || "~";
+        return await RpcApi.FetchSuggestionsCommand(
+            TabRpcClient,
+            {
+                suggestiontype: "file",
+                "file:cwd": cwd,
+                query,
+                widgetid: reqContext.widgetid,
+                reqnum: reqContext.reqnum,
+                "file:connection": conn,
+            },
+            { route }
+        );
+    };
+    const handleCwdSelect = (s: SuggestionType, queryStr: string): boolean => {
+        const path = s == null ? queryStr : s["file:path"];
+        if (isBlank(path)) {
+            globalStore.set(model.openCwdPickerAtom, false);
+            return true;
+        }
+        model.changeCwd(path);
+        return true;
+    };
+    const handleCwdTab = (s: SuggestionType): string => {
+        return s["file:mimetype"] == "directory" ? s["file:name"] + "/" : s["file:name"];
+    };
+
     return (
-        <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
-            {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
-            <TermResyncHandler blockId={blockId} model={model} />
-            <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
-            <TermStickers config={stickerConfig} />
-            <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
-            <TermVDomNode key="vdom" blockId={blockId} model={model} />
-            <div key="connect-elem" className="term-connectelem" ref={connectElemRef} />
-            <NullErrorBoundary debugName="TermLinkTooltip">
-                <TermLinkTooltip termWrap={termWrapInst} />
-            </NullErrorBoundary>
-            <Search {...searchProps} />
-        </div>
+        <>
+            <div className={clsx("view-term", "term-mode-" + termMode)} ref={viewRef} onContextMenu={handleContextMenu}>
+                {termBg && <div key="term-bg" className="absolute inset-0 z-0 pointer-events-none" style={termBg} />}
+                <TermResyncHandler blockId={blockId} model={model} />
+                <TermThemeUpdater blockId={blockId} model={model} termRef={model.termRef} />
+                <TermStickers config={stickerConfig} />
+                <TermToolbarVDomNode key="vdom-toolbar" blockId={blockId} model={model} />
+                <TermVDomNode key="vdom" blockId={blockId} model={model} />
+                <div key="connect-elem" className="term-connectelem" ref={connectElemRef} />
+                <NullErrorBoundary debugName="TermLinkTooltip">
+                    <TermLinkTooltip termWrap={termWrapInst} />
+                </NullErrorBoundary>
+                <Search {...searchProps} />
+            </div>
+            <BlockHeaderSuggestionControl
+                blockRef={blockRef}
+                openAtom={model.openCwdPickerAtom}
+                onClose={() => globalStore.set(model.openCwdPickerAtom, false)}
+                onSelect={handleCwdSelect}
+                onTab={handleCwdTab}
+                fetchSuggestions={fetchCwdSuggestions}
+                placeholderText="Change folder…"
+            />
+        </>
     );
 };
 

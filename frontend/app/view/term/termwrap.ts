@@ -31,11 +31,11 @@ import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
 import {
     agentKindForCommand,
+    handleOsc11Command,
     handleOsc16162Command,
     handleOsc52Command,
     handleOsc7Command,
     handleOsc9Command,
-    handleOsc11Command,
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
@@ -102,6 +102,7 @@ export class TermWrap {
     multiInputCallback: (data: string) => void;
     sendDataHandler: (data: string) => void;
     bgColor: string; // real (themed) panel background, reported on OSC 11 queries
+    lastReportedCwd: string = null; // last cwd the shell reported via OSC 7
     onSearchResultsDidChange?: (result: { resultIndex: number; resultCount: number }) => void;
     toDispose: TermTypes.IDisposable[] = [];
     webglAddon: WebglAddon | null = null;
@@ -203,7 +204,7 @@ export class TermWrap {
         // Register OSC handlers
         this.terminal.parser.registerOscHandler(7, (data: string) => {
             try {
-                return handleOsc7Command(data, this.blockId, this.loaded);
+                return handleOsc7Command(data, this.blockId, this.loaded, this);
             } catch (e) {
                 console.error("[termwrap] osc 7 handler error", this.blockId, e);
                 return false;
@@ -671,7 +672,10 @@ export class TermWrap {
         if (!decModesStr) {
             return;
         }
-        const modes = decModesStr.split(",").map((s) => parseInt(s, 10)).filter((n) => !isNaN(n) && SafeReplayDecModes.has(n));
+        const modes = decModesStr
+            .split(",")
+            .map((s) => parseInt(s, 10))
+            .filter((n) => !isNaN(n) && SafeReplayDecModes.has(n));
         if (modes.length === 0) {
             return;
         }
@@ -690,9 +694,23 @@ export class TermWrap {
         const serializedOutput = this.serializeAddon.serialize();
         const termSize: TermSize = { rows: this.terminal.rows, cols: this.terminal.cols };
         const decModes = this.serializeDecModes();
-        console.log("idle timeout term", this.dataBytesProcessed, serializedOutput.length, termSize, "decmodes:", decModes);
+        console.log(
+            "idle timeout term",
+            this.dataBytesProcessed,
+            serializedOutput.length,
+            termSize,
+            "decmodes:",
+            decModes
+        );
         fireAndForget(() =>
-            services.BlockService.SaveTerminalState(this.blockId, serializedOutput, "full", this.ptyOffset, termSize, decModes)
+            services.BlockService.SaveTerminalState(
+                this.blockId,
+                serializedOutput,
+                "full",
+                this.ptyOffset,
+                termSize,
+                decModes
+            )
         );
         this.dataBytesProcessed = 0;
     }
