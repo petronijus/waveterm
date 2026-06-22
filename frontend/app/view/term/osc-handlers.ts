@@ -315,6 +315,62 @@ export function handleOsc7Command(data: string, blockId: string, loaded: boolean
     return true;
 }
 
+function parseColorToRgb(color: string): { r: number; g: number; b: number } {
+    if (!color) {
+        return null;
+    }
+    const c = color.trim();
+    if (c.startsWith("#")) {
+        let hex = c.slice(1);
+        if (hex.length === 3) {
+            hex = hex
+                .split("")
+                .map((ch) => ch + ch)
+                .join("");
+        }
+        if (hex.length === 8) {
+            hex = hex.slice(0, 6); // drop alpha — apps can't render it anyway
+        }
+        if (hex.length !== 6) {
+            return null;
+        }
+        const num = parseInt(hex, 16);
+        if (Number.isNaN(num)) {
+            return null;
+        }
+        return { r: (num >> 16) & 0xff, g: (num >> 8) & 0xff, b: num & 0xff };
+    }
+    const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (m) {
+        return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
+    }
+    return null;
+}
+
+// OSC 11 is the terminal background-color query/set. Apps (Claude Code, vim, tmux, …)
+// query it to paint fills that match the terminal background. We force xterm's render
+// background to transparent black (#00000000) so the themed block background shows
+// through (see computeTheme) — but that means xterm's default answer is solid black,
+// and apps then paint solid black blocks that clash with the real panel color. So
+// intercept the *query* and answer with the real panel background; let xterm handle a
+// *set* (return false). We "own" the query response, so return true for it.
+export function handleOsc11Command(data: string, termWrap: TermWrap): boolean {
+    if (!termWrap.loaded) {
+        return true; // ignore queries replayed from the scrollback cache during load
+    }
+    if (data !== "?") {
+        return false; // a set (or unknown) — let xterm's default handler run
+    }
+    const rgb = parseColorToRgb(termWrap.bgColor);
+    if (rgb == null) {
+        return false; // unknown background format — fall back to xterm's answer
+    }
+    const hx = (n: number) => n.toString(16).padStart(2, "0").repeat(2); // 8-bit → 16-bit per component
+    const report = `\x1b]11;rgb:${hx(rgb.r)}/${hx(rgb.g)}/${hx(rgb.b)}\x1b\\`;
+    termWrap.sendDataHandler?.(report);
+    return true;
+}
+
 export function handleOsc16162Command(data: string, blockId: string, loaded: boolean, termWrap: TermWrap): boolean {
     const terminal = termWrap.terminal;
     if (!loaded) {

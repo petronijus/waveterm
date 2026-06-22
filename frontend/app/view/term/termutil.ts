@@ -74,7 +74,11 @@ export function computeTheme(
         }
     }
     const bgcolor = themeCopy.background;
-    themeCopy.background = "#00000000";
+    // Keep the terminal background fully transparent so the themed panel shows
+    // through — but use the PANEL's rgb (alpha 0), not "#00000000". Renderers that
+    // ignore alpha when filling a styled cell's background (italic/bold/etc.) would
+    // otherwise paint solid black; with the panel rgb they blend in instead.
+    themeCopy.background = bgcolor ? colord(bgcolor).alpha(0).toHex() : "#00000000";
     return [themeCopy, bgcolor];
 }
 

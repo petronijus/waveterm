@@ -511,7 +511,7 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
 
     if (!repoInfo?.isrepo) {
         return (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-secondary text-sm px-6 text-center">
+            <div className="flex flex-col items-center justify-center w-full h-full gap-2 text-secondary text-sm px-6 text-center">
                 <i className="fa-sharp fa-solid fa-code-branch text-2xl opacity-40" />
                 <div>No git repository found</div>
                 {repoInfo?.errormsg && <div className="text-xs opacity-60">{repoInfo.errormsg}</div>}

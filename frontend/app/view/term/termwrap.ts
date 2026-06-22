@@ -35,6 +35,7 @@ import {
     handleOsc52Command,
     handleOsc7Command,
     handleOsc9Command,
+    handleOsc11Command,
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
@@ -74,6 +75,7 @@ type TermWrapOptions = {
     useWebGl?: boolean;
     sendDataHandler?: (data: string) => void;
     nodeModel?: BlockNodeModel;
+    bgColor?: string; // real (themed) panel background, reported back on OSC 11 queries
 };
 
 // DEC private modes that are safe to replay on durable reconnect.
@@ -99,6 +101,7 @@ export class TermWrap {
     hasResized: boolean;
     multiInputCallback: (data: string) => void;
     sendDataHandler: (data: string) => void;
+    bgColor: string; // real (themed) panel background, reported on OSC 11 queries
     onSearchResultsDidChange?: (result: { resultIndex: number; resultCount: number }) => void;
     toDispose: TermTypes.IDisposable[] = [];
     webglAddon: WebglAddon | null = null;
@@ -148,6 +151,7 @@ export class TermWrap {
         this.tabId = tabId;
         this.blockId = blockId;
         this.sendDataHandler = waveOptions.sendDataHandler;
+        this.bgColor = waveOptions.bgColor;
         this.nodeModel = waveOptions.nodeModel;
         this.ptyOffset = 0;
         this.dataBytesProcessed = 0;
@@ -210,6 +214,14 @@ export class TermWrap {
                 return handleOsc9Command(data, this.blockId, this.loaded, this);
             } catch (e) {
                 console.error("[termwrap] osc 9 handler error", this.blockId, e);
+                return false;
+            }
+        });
+        this.terminal.parser.registerOscHandler(11, (data: string) => {
+            try {
+                return handleOsc11Command(data, this);
+            } catch (e) {
+                console.error("[termwrap] osc 11 handler error", this.blockId, e);
                 return false;
             }
         });
