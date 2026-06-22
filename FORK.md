@@ -71,14 +71,26 @@ git checkout feat/<task> && git rebase main
   above. Inherits its shell-integration limitation: the very first command in a fresh terminal
   isn't detected (bash-preexec doesn't fire `preexec` for it), so it doesn't notify — every command
   after the first does.
+- **Agent-waiting notification** — a distinct "waiting for you" tab state + OS notification when
+  an AI agent needs input, generalized across Claude, Gemini & Codex via an OSC 9 signal. Always
+  on (no toggle).
+- **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
+  double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
+  entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH
+  connections. Backend git RPC test coverage included.
+- **Config sync** — a per-install last-writer-wins merge engine (`wsync`) with tombstones that
+  converges settings across machines. Transports: WebDAV (mtime-stamped change detection) or a
+  credential-free local-folder mode (Nextcloud / Drive desktop client). Background scheduler wired
+  into `wavesrv` startup, a "Sync now" RPC, status UI, and a native folder picker.
+- **Folder bookmarks ("projects")** — bookmark folders, surfaced across the Files view, the
+  connection dropdown, and a two-pane Connections & Projects settings panel.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
   Linux & Windows builds run on local machines — no hosted CI).
 
 ## Planned
 
-- **Sync** — sync tabs, settings, and window layout between machines.
-- **Bookmarks in the Files view** — bookmark/favorite files & folders in the file browser for
-  quick access.
+- **Sync — window/tab layout** — `wsync` currently converges settings; extend it to also sync
+  open tabs and window layout between machines.
 
 ## Known upstream bug to fix / report
 

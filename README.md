@@ -1,7 +1,8 @@
 # Wave Terminal — petronijus fork
 
 A personal fork of [Wave Terminal](https://github.com/wavetermdev/waveterm) that tracks
-upstream and adds a curated layer on top: cherry-picked SSH improvements and a
+upstream and adds a curated layer on top: a Git view, cross-machine config sync,
+desktop notifications, folder bookmarks, cherry-picked SSH improvements, and a
 VS Code-like UI theming system.
 
 > Upstream Wave is an open-source terminal that combines a classic terminal with the
@@ -10,6 +11,22 @@ VS Code-like UI theming system.
 
 ## What this fork adds
 
+- **Git view** — a first-class Git block with a branch switcher, file change list, and inline
+  diff; double-click a file for the full file with `+`/`-` markers; **"Open Git Here"** in the
+  file-preview context menu. Backed by `RemoteGit*` RPC over `wshremote`, so it works on the
+  local machine **and** over remote SSH connections.
+- **Config sync (cross-machine)** — a per-install last-writer-wins merge engine (`wsync`) that
+  converges settings across machines. Transports: **WebDAV**, or a credential-free
+  **local-folder** mode (drop it in a Nextcloud / Drive desktop-client folder). Background
+  scheduler, a **"Sync now"** action, status UI, and a native folder picker in Wave Config.
+- **Folder bookmarks ("projects")** — bookmark folders and reach them quickly from the Files
+  view, the connection dropdown, and a two-pane Connections & Projects settings panel.
+- **Desktop notifications** — fire a system notification when a long-running command finishes
+  while the window is unfocused (clicking it focuses the tab); plus an **agent-waiting** state
+  that flags a tab as "waiting for you" across Claude, Gemini & Codex. Configurable from a
+  visual settings panel.
+- **Tab activity indicator** — output-driven "working" spinner and "done" badge on tabs, so you
+  can see at a glance which terminal is busy.
 - **UI theme picker** — app-wide color themes (Dracula, Dark+/Light+, One Dark, Monokai,
   Nord, Solarized Dark/Light), switchable live from the block gear menu (**UI Theme**) or a
   dedicated **Themes** editor (also a tab in Wave Config). Edit any theme's colors with live
@@ -21,8 +38,9 @@ VS Code-like UI theming system.
   [whoisjeremylam/waveterm-remote](https://github.com/whoisjeremylam/waveterm-remote):
   hardened SSH reconnect, **SSH port forwarding (Local/RemoteForward)** which upstream lacks,
   and related crash/CPU-spin fixes.
-- **Light-mode polish** — themed the tab bar, tab close button, sidebar/widget icons, AI panel,
-  popovers, workspace accent, and the CPU/Mem graphs so light themes look right.
+- **Settings & terminal polish** — default terminal font size in General settings, a resizable
+  GUI/JSON settings split kept in sync live, and light-mode theming across the tab bar, sidebar/
+  widget icons, AI panel, popovers, workspace accent, and CPU/Mem graphs.
 
 ## Install
 
