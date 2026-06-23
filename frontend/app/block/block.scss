@@ -281,6 +281,14 @@
         &.magnified,
         &.ephemeral {
             background-color: rgb(from var(--block-bg-color) r g b / var(--magnified-block-opacity));
+        }
+
+        // The magnified panel resizes every frame; its own backdrop-filter would
+        // re-blur per frame and stutter the animation. The full-screen
+        // .magnified-node-backdrop already blurs everything behind it, so the
+        // panel doesn't need its own blur. Ephemeral keeps it (it has the same
+        // full-screen backdrop but the look is intentional there).
+        &.ephemeral {
             backdrop-filter: blur(var(--magnified-block-blur));
         }
 

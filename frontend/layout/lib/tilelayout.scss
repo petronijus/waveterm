@@ -140,8 +140,16 @@
         .tile-node,
         .placeholder {
             transition-duration: var(--animation-time-s);
-            transition-timing-function: linear;
+            // Decelerating ease reads far smoother than linear for the magnify /
+            // move / resize size animations.
+            transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
             transition-property: transform, width, height, background-color;
+        }
+
+        // Promote the animating nodes to their own compositor layer so the
+        // size/position animation doesn't repaint on the main thread.
+        .tile-node {
+            will-change: transform, width, height;
         }
     }
 
