@@ -12,6 +12,7 @@ bin/
 *.dmg
 *.exe
 .DS_Store
+.metadata_never_index
 *~
 out/
 make/

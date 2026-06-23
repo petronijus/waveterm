@@ -62,6 +62,14 @@ task package     # builds an installer for the CURRENT platform → ./make
   `A timestamp was expected but was not found` (electron-builder exits 201). Run the package
   step with normal network access and it timestamps fine. (Signing every Electron component
   with a per-file timestamp request is slow — a signed package takes noticeably longer.)
+- **`rm -rf make` before a rebuild.** `task package` runs `clean` (`rm -rf make`) *in parallel*
+  with `build:backend`, so `go mod tidy` can race it and scan a **leftover** `make/.../Wave.app/
+  .../Electron Framework.framework/Resources/*.lproj` from the previous build — paths with spaces
+  → `malformed import path ... invalid char ' '`, and the package aborts at `go:mod:tidy`
+  (exit 201). It only bites when `make/` is non-empty at start, so wipe it first:
+  ```sh
+  rm -rf make && task package
+  ```
 - **Gatekeeper & launch.** An `Apple Development`-signed (non-notarized) app is `spctl`-rejected
   but still runs locally because a locally-built app carries no `com.apple.quarantine`. Launch
   via Finder/`open`. If a launch flakes (app exits immediately), it's a stale process/lock —
