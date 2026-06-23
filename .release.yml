@@ -1,0 +1,20 @@
+# Fork release config (repo-release skill). This is a fork of wavetermdev/waveterm.
+# Releases are cut from the `release` branch (NOT main), tag-only: package.json keeps
+# the upstream base version (e.g. 0.14.5) and each fork release is tagged v<ver>-pj.<n>.
+# Artifacts are built per-OS by hand (no hosted CI) — see BUILDING.md.
+name: waveterm
+release_branch: release
+prerelease: true
+tag_format: v{version}            # version is the full fork string, e.g. 0.14.5-pj.3
+version_files: []                 # tag-only — do not touch package.json
+changelog: ""                     # no in-repo changelog; notes live in the GitHub release body
+artifacts:
+  mode: local
+  local_upload:
+    - "make/Wave-darwin-*.dmg"
+    - "make/Wave-darwin-*.zip"
+    - "make/*.deb"
+    - "make/*.AppImage"
+    - "make/*.snap"
+    - "make/*.exe"
+preflight_extra: []               # gitleaks + PII scan (skill defaults) cover this repo
