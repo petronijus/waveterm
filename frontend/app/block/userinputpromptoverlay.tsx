@@ -24,18 +24,11 @@ export const UserInputPromptOverlay = React.memo(
         }
 
         const promptEntry = activeUserInputPrompts[connName];
-        if (!promptEntry) {
-            console.log("[DEBUG] UserInputPromptOverlay: no prompt for connName:", connName, "blockId:", nodeModel.blockId, "activePrompts:", Object.keys(activeUserInputPrompts));
+        const isDismissed = modalsModel.isUserInputPromptDismissedForTab(connName, nodeModel.blockId);
+        console.log(`[PW-OVERLAY] block=${nodeModel.blockId} conn=${connName} found=${!!promptEntry} dismissed=${isDismissed}`);
+        if (!promptEntry || isDismissed) {
             return null;
         }
-
-        // Check if this tab has dismissed the prompt
-        if (modalsModel.isUserInputPromptDismissedForTab(connName, nodeModel.blockId)) {
-            console.log("[DEBUG] UserInputPromptOverlay: prompt dismissed for connName:", connName, "blockId:", nodeModel.blockId);
-            return null;
-        }
-
-        console.log("[DEBUG] UserInputPromptOverlay: rendering prompt for connName:", connName, "blockId:", nodeModel.blockId);
         return (
             <div
                 className="@container absolute inset-0 z-[calc(var(--zindex-block-mask-inner)+1)] flex items-center justify-center"

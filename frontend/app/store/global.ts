@@ -623,6 +623,7 @@ function subscribeToConnEvents() {
                     // Auto-dismiss user input prompts for this connection on successful connect
                     const userInputPrompts = globalStore.get(modalsModel.activeUserInputPromptsAtom);
                     const promptEntry = userInputPrompts[connStatus.connection];
+                    console.log(`[PW-CONN] connected: conn=${connStatus.connection} hasPrompt=${!!promptEntry}`);
                     if (promptEntry) {
                         modalsModel.dismissUserInputPrompt(connStatus.connection);
                     }
@@ -636,7 +637,6 @@ function subscribeToConnEvents() {
                         modalsModel.dismissUserInputPrompt(connStatus.connection);
                     }
                 }
-                console.log("connstatus update", connStatus);
                 const curAtom = getConnStatusAtom(connStatus.connection);
                 globalStore.set(curAtom, connStatus);
             } catch (e) {

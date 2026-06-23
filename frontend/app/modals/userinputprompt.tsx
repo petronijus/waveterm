@@ -22,14 +22,13 @@ const UserInputPrompt = (userInputRequest: UserInputPromptProps) => {
     const blockId = userInputRequest.blockId;
 
     const handleDismiss = useCallback(() => {
-        if (blockId && connName) {
-            modalsModel.dismissUserInputPromptForTab(connName, blockId);
-        } else if (connName) {
+        console.log(`[PW-RESP] handleDismiss: connName=${connName} requestId=${userInputRequest.requestid}`);
+        if (connName) {
             modalsModel.dismissUserInputPrompt(connName);
         } else {
             modalsModel.popModal();
         }
-    }, [connName, blockId]);
+    }, [connName]);
 
     const handleSendErrResponse = useCallback(() => {
         fireAndForget(() =>
@@ -37,24 +36,23 @@ const UserInputPrompt = (userInputRequest: UserInputPromptProps) => {
                 type: "userinputresp",
                 requestid: userInputRequest.requestid,
                 errormsg: "Canceled by the user",
-                connname: connName,
             })
         );
         handleDismiss();
-    }, [userInputRequest, connName, handleDismiss]);
+    }, [userInputRequest, handleDismiss]);
 
     const handleSendText = useCallback(() => {
+        console.log(`[PW-RESP] handleSendText: connName=${connName} requestId=${userInputRequest.requestid}`);
         fireAndForget(() =>
             UserInputService.SendUserInputResponse({
                 type: "userinputresp",
                 requestid: userInputRequest.requestid,
                 text: responseText,
                 checkboxstat: checkboxRef?.current?.checked ?? false,
-                connname: connName,
             })
         );
         handleDismiss();
-    }, [responseText, userInputRequest, connName, handleDismiss]);
+    }, [responseText, userInputRequest, handleDismiss]);
 
     const handleSendConfirm = useCallback(
         (response: boolean) => {
@@ -64,12 +62,11 @@ const UserInputPrompt = (userInputRequest: UserInputPromptProps) => {
                     requestid: userInputRequest.requestid,
                     confirm: response,
                     checkboxstat: checkboxRef?.current?.checked ?? false,
-                    connname: connName,
                 })
             );
             handleDismiss();
         },
-        [userInputRequest, connName, handleDismiss]
+        [userInputRequest, handleDismiss]
     );
 
     const handleSubmit = useCallback(() => {
