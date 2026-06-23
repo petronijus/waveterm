@@ -11,7 +11,7 @@ import * as jotai from "jotai";
 import { GitView } from "./git-view";
 import { GitEnv } from "./gitenv";
 
-const StatusPollIntervalMs = 4000;
+const StatusPollIntervalMs = 2000;
 const LogPageSize = 50;
 
 function projectNameFromPath(p: string): string {
@@ -84,6 +84,7 @@ export class GitViewModel implements ViewModel {
     cwdUnsub: (() => void) | null = null;
     lastResolvedCwd: string = null;
     fetchEpoch = 0;
+    lastBranchHeadSig: string = null;
 
     constructor({ blockId, waveEnv }: ViewModelInitType) {
         this.viewType = "git";
@@ -322,7 +323,20 @@ export class GitViewModel implements ViewModel {
             return;
         }
         await Promise.all([this.refreshStatus(), this.refreshBranches(), this.refreshLog(true)]);
+        this.lastBranchHeadSig = this.branchHeadSig();
         globalStore.set(this.loadingAtom, false);
+    }
+
+    // Cheap signature of "which branch / which commit" we're on. The poll only
+    // pulls the lightweight status each tick; when this signature changes
+    // (branch switch or new/amended commit) it also refreshes the branch list
+    // and log, which a plain status poll wouldn't pick up.
+    branchHeadSig(): string {
+        const status = globalStore.get(this.statusAtom);
+        if (status == null) {
+            return null;
+        }
+        return `${status.branch} ${status.head} ${status.detached}`;
     }
 
     startPolling() {
@@ -349,6 +363,11 @@ export class GitViewModel implements ViewModel {
                 };
                 if (!globalStore.get(this.actionBusyAtom)) {
                     await this.refreshStatus();
+                    const sig = this.branchHeadSig();
+                    if (sig != null && sig !== this.lastBranchHeadSig) {
+                        this.lastBranchHeadSig = sig;
+                        await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+                    }
                 }
             }
         };
