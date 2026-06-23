@@ -74,6 +74,7 @@
         overflow: hidden;
         width: 100%;
         height: 100%;
+        transition: box-shadow 0.15s ease-out;
 
         &.dragging {
             filter: blur(8px);
@@ -82,6 +83,15 @@
         &.resizing {
             border: 1px solid var(--accent-color);
             backdrop-filter: blur(8px);
+        }
+
+        // The block's own focus border (block-mask) is clipped by the inner
+        // overflow:hidden, so the outward accent glow lives here on the
+        // tile-node, whose own overflow doesn't clip its box-shadow. Scope to
+        // .tile-leaf so the always-"focused" hidden drag preview (in
+        // .tile-preview-container) doesn't make every node glow.
+        &:has(.tile-leaf .block-focused) {
+            box-shadow: 0 0 10px rgb(from var(--accent-color) r g b / 40%);
         }
 
         .tile-leaf {
