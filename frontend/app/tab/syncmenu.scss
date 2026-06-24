@@ -29,6 +29,17 @@
         padding: 4px 6px 6px 6px;
     }
 
+    .sync-menu-status {
+        padding: 6px 8px 4px 8px;
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        word-break: break-word;
+
+        &.is-error {
+            color: var(--error-color, #e06c75);
+        }
+    }
+
     .sync-menu-name-input {
         width: 100%;
         box-sizing: border-box;

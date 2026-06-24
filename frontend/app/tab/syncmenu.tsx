@@ -27,6 +27,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
     const [busy, setBusy] = useState(false);
     const [naming, setNaming] = useState(false);
     const [newName, setNewName] = useState("");
+    const [status, setStatus] = useState<{ msg: string; error: boolean }>(null);
 
     const refresh = useCallback(() => {
         fireAndForget(async () => {
@@ -36,14 +37,20 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
     }, []);
 
     const run = useCallback(
-        (fn: () => Promise<void>) => {
+        (fn: () => Promise<void>, okMsg?: string) => {
             if (busy) {
                 return;
             }
             setBusy(true);
+            setStatus(null);
             fireAndForget(async () => {
                 try {
                     await fn();
+                    if (okMsg) {
+                        setStatus({ msg: okMsg, error: false });
+                    }
+                } catch (e) {
+                    setStatus({ msg: e?.message ?? String(e), error: true });
                 } finally {
                     setBusy(false);
                 }
@@ -52,8 +59,8 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
         [busy]
     );
 
-    const saveSettings = () => run(() => RpcApi.SaveSettingsCommand(TabRpcClient));
-    const loadSettings = () => run(() => RpcApi.LoadSettingsCommand(TabRpcClient));
+    const saveSettings = () => run(() => RpcApi.SaveSettingsCommand(TabRpcClient), "Settings saved");
+    const loadSettings = () => run(() => RpcApi.LoadSettingsCommand(TabRpcClient), "Settings loaded");
     const loadLayout = (name: string) => run(() => RpcApi.LoadLayoutCommand(TabRpcClient, { tabid: tabId, name }));
     const deleteLayout = (name: string) =>
         run(async () => {
@@ -73,7 +80,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
             setLayouts(list ?? []);
             setNewName("");
             setNaming(false);
-        });
+        }, `Layout "${name}" saved`);
     };
 
     return (
@@ -145,6 +152,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
                         </ExpandableMenuItem>
                     )}
                 </ExpandableMenu>
+                {status && <div className={cn("sync-menu-status", status.error && "is-error")}>{status.msg}</div>}
             </PopoverContent>
         </Popover>
     );

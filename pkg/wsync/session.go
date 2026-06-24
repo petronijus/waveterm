@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -183,33 +185,41 @@ func restoreWindows(ctx context.Context, slots []WindowSlot) error {
 	return nil
 }
 
-// loadSessionTransport builds the storage transport for the manual session feature from
-// settings. It mirrors loadSyncConfig's backend selection but does not require the
-// sync:enabled toggle — Save/Load are explicit user actions, so a configured folder or
-// WebDAV endpoint is enough.
+// DefaultLocalSyncDir is the folder (under the wave data dir) settings/layouts and
+// the manual session save/load fall back to when no sync:folderpath or WebDAV is
+// configured — so the features work out of the box. The user can point
+// sync:folderpath at a desktop-synced folder (Nextcloud/Dropbox/Drive) to make the
+// same files travel across machines.
+const DefaultLocalSyncDir = "sync"
+
+// loadSessionTransport builds the storage transport for the manual session / settings
+// / layouts features from settings. Save/Load are explicit user actions (no
+// sync:enabled toggle needed): a configured folder or WebDAV endpoint is used if
+// present, otherwise it falls back to a local default folder so nothing errors out
+// just because the user hasn't picked a sync location yet.
 func loadSessionTransport() (Transport, error) {
 	settings := wconfig.GetWatcher().GetFullConfig().Settings
 	if strings.TrimSpace(settings.SyncFolderPath) != "" {
 		return MakeLocalFolderTransport(settings.SyncFolderPath), nil
 	}
-	if settings.SyncWebDAVURL == "" || settings.SyncWebDAVUser == "" {
-		return nil, fmt.Errorf("session sync not configured: set sync:folderpath or sync:webdavurl/sync:webdavuser")
+	if settings.SyncWebDAVURL != "" && settings.SyncWebDAVUser != "" {
+		folder := settings.SyncFolder
+		if folder == "" {
+			folder = DefaultSyncFolder
+		}
+		pw, ok, err := secretstore.GetSecret(SecretName_WebDAVPassword)
+		if err != nil {
+			return nil, fmt.Errorf("reading webdav password secret: %w", err)
+		}
+		if !ok || pw == "" {
+			return nil, fmt.Errorf("webdav configured but secret %q not set", SecretName_WebDAVPassword)
+		}
+		return MakeWebDAVClient(WebDAVConfig{
+			BaseURL:  settings.SyncWebDAVURL,
+			Folder:   folder,
+			User:     settings.SyncWebDAVUser,
+			Password: pw,
+		}), nil
 	}
-	folder := settings.SyncFolder
-	if folder == "" {
-		folder = DefaultSyncFolder
-	}
-	pw, ok, err := secretstore.GetSecret(SecretName_WebDAVPassword)
-	if err != nil {
-		return nil, fmt.Errorf("reading webdav password secret: %w", err)
-	}
-	if !ok || pw == "" {
-		return nil, fmt.Errorf("webdav configured but secret %q not set", SecretName_WebDAVPassword)
-	}
-	return MakeWebDAVClient(WebDAVConfig{
-		BaseURL:  settings.SyncWebDAVURL,
-		Folder:   folder,
-		User:     settings.SyncWebDAVUser,
-		Password: pw,
-	}), nil
+	return MakeLocalFolderTransport(filepath.Join(wavebase.GetWaveDataDir(), DefaultLocalSyncDir)), nil
 }
