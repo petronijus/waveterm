@@ -347,7 +347,10 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stretchBytes = 0
 	t.command = decodeCmd64(cmd64)
 	t.agentKind = agentKindForCommand(t.command)
-	t.setState(termActivityNone) // drop any leftover done/thinking indicator from the previous command
+	// Show the working spinner the instant a command starts (shell-integration C
+	// marker), not only once the output heuristic trips — so even quick/quiet commands
+	// get an indicator. This also replaces any leftover done badge from the last command.
+	t.setState(termActivityWorking)
 }
 
 func (t *termActivityTracker) finishCommand(exitCode *int) {
@@ -356,7 +359,10 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 	}
 	t.running = false
 	t.stopIdleTimer()
-	visible := t.everShown
+	// A shell-integration-tracked command (C→D) always gets a done badge, even if it
+	// was quick or silent — the user wants a ✓/✗ after every command, not only after
+	// long ones.
+	visible := true
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -522,7 +528,8 @@ func activityBadgeId(blockId string) string {
 	return id
 }
 
-func publishBadgeEvent(oref string, be baseds.BadgeEvent) {
+// publishBadgeEvent is a package var so tests can capture emitted badge events.
+var publishBadgeEvent = func(oref string, be baseds.BadgeEvent) {
 	wps.Broker.Publish(wps.WaveEvent{
 		Event:  wps.Event_Badge,
 		Scopes: []string{oref},
@@ -539,9 +546,10 @@ func publishActivityBadge(ev baseds.TermActivityData) {
 	badgeId := activityBadgeId(ev.BlockId)
 	var badge *baseds.Badge
 	switch ev.State {
-	case termActivityWorking:
-		// pidlinked so focusing the running tab doesn't clear the live spinner (it's
-		// replaced explicitly on done/none).
+	case termActivityWorking, termActivityThinking:
+		// "thinking" = command still running but output paused — keep the spinner so a
+		// long command's indicator doesn't blink out when it goes quiet. pidlinked so
+		// focusing the running tab doesn't clear the live spinner (replaced on done/none).
 		badge = &baseds.Badge{BadgeId: badgeId, Icon: "spinner+spin", Color: "var(--accent-color)", Priority: activityBadgePriority, PidLinked: true}
 	case termActivityWaiting:
 		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}

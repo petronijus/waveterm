@@ -199,3 +199,66 @@ func TestAgentKindForCommand(t *testing.T) {
 		}
 	}
 }
+
+// captureBadges runs the real state→badge mapping (publishActivityBadge) while
+// capturing the emitted badge events, so a test can assert the working spinner and
+// the done check/xmark are published. It bypasses the wps broker.
+func captureBadges(t *testing.T) *[]baseds.BadgeEvent {
+	t.Helper()
+	var mu sync.Mutex
+	var badges []baseds.BadgeEvent
+	origBadge := publishBadgeEvent
+	origAct := publishActivity
+	publishBadgeEvent = func(oref string, be baseds.BadgeEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		badges = append(badges, be)
+	}
+	publishActivity = func(evs []baseds.TermActivityData) {
+		for _, ev := range evs {
+			publishActivityBadge(ev)
+		}
+	}
+	t.Cleanup(func() { publishBadgeEvent = origBadge; publishActivity = origAct })
+	return &badges
+}
+
+func lastSetIcon(badges []baseds.BadgeEvent) string {
+	icon := ""
+	for _, b := range badges {
+		if b.Badge != nil {
+			icon = b.Badge.Icon
+		}
+	}
+	return icon
+}
+
+// TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone verifies the user-visible
+// behavior: a quick shell-integration command (C then D, no output) still shows a
+// spinner the instant it starts and a check when it finishes.
+func TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone(t *testing.T) {
+	badges := captureBadges(t)
+	blockId := "test-badge"
+	ResetTermActivity(blockId)
+
+	FeedTermActivity(blockId, cmdStartSeq("ls"))
+	if got := lastSetIcon(*badges); got != "spinner+spin" {
+		t.Fatalf("after command start, last set badge icon = %q, want spinner+spin; events=%+v", got, *badges)
+	}
+
+	exit0 := 0
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":0}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-check" {
+		t.Fatalf("after command done, last set badge icon = %q, want circle-check; events=%+v", got, *badges)
+	}
+
+	// a non-zero exit shows the error mark
+	ResetTermActivity(blockId)
+	*badges = nil
+	FeedTermActivity(blockId, cmdStartSeq("false"))
+	_ = exit0
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":1}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-xmark" {
+		t.Fatalf("after failed command, last set badge icon = %q, want circle-xmark", got)
+	}
+}
