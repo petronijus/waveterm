@@ -37,7 +37,8 @@ import (
 // frontend used (see the old osc-handlers.ts CmdActivity* constants).
 const (
 	cmdActivityDelay     = 1200 * time.Millisecond // ignore the first burst so quick commands don't flash
-	cmdActivityIdle      = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle
+	cmdActivityIdle      = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle (command-tracked)
+	cmdActivityDoneIdle  = 4000 * time.Millisecond // output-only: quiet this long ⇒ "done" ✓ — long enough to ride out an agent's mid-turn pauses without flickering
 	cmdActivitySustain   = 700 * time.Millisecond  // output must flow this long continuously before we call it "working"
 	cmdActivityGap       = 1000 * time.Millisecond // a quiet gap longer than this ends the continuous stretch
 	cmdActivityWorkBytes = 512                     // after a "waiting" bell, a stretch must carry at least this many bytes to count as real work resuming
@@ -465,7 +466,13 @@ func (t *termActivityTracker) armIdleTimer() {
 	if t.idleTimer != nil {
 		t.idleTimer.Stop()
 	}
-	t.idleTimer = time.AfterFunc(cmdActivityIdle, func() {
+	// Output-only activity waits out a longer quiet window before calling it "done" so an
+	// agent's mid-turn pauses don't flicker the spinner to a ✓ and back.
+	idleDur := cmdActivityIdle
+	if t.outputDriven {
+		idleDur = cmdActivityDoneIdle
+	}
+	t.idleTimer = time.AfterFunc(idleDur, func() {
 		t.lock.Lock()
 		if gen != t.idleGen {
 			t.lock.Unlock()
@@ -479,12 +486,12 @@ func (t *termActivityTracker) armIdleTimer() {
 		}
 		t.visible = false
 		if t.outputDriven {
-			// Output stopped with no shell-integration command to bound it (absent/broken
-			// C/D markers, or an interactive agent like Claude between turns). This lull IS
-			// our only "done" signal for output-only activity, so show a ✓ instead of
-			// clearing to nothing. everShown stays set so a later precmd (D) marker can
-			// upgrade the ✓ to the real ✓/✗ exit status; a new burst of output starts a
-			// fresh spinner, replacing the ✓.
+			// Output stopped with no shell-integration command to bound it (broken C/D
+			// markers, or an interactive agent like Claude between turns). The spinner has
+			// already ridden out a longer quiet window (cmdActivityDoneIdle) without new
+			// output, so treat this as "done" and show a ✓ — short mid-task pauses keep the
+			// spinner instead of flickering. A new burst of output starts a fresh spinner,
+			// and a later real D marker upgrades the ✓ to the true ✓/✗ exit status.
 			t.outputDriven = false
 			t.curState = termActivityDone
 			t.outbox = append(t.outbox, baseds.TermActivityData{
@@ -588,14 +595,15 @@ func publishActivityBadge(ev baseds.TermActivityData) {
 		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}
 	case termActivityDone:
 		if ev.Visible {
-			// pidlinked so focusing the tab where the command just finished doesn't
-			// instantly wipe the ✓/✗ before you see it (the frontend clears non-pidlinked
-			// badges on focus, and "done" lands on the tab you're already looking at). It
-			// stays until the next command in that block replaces it.
+			// Not pidlinked: the ✓/✗ is an attention cue for a tab you're NOT on. When you
+			// focus the tab it clears (app.tsx focus-clear) shortly after — you've seen it.
+			// On background tabs it persists until that block's next state change. (The
+			// clear/set broker race that used to wipe it instantly is fixed in the badge
+			// store's same-id update, so pidlinked is no longer needed to protect it.)
 			if ev.ExitCode == nil || *ev.ExitCode == 0 {
-				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority, PidLinked: true}
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority}
 			} else {
-				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority, PidLinked: true}
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority}
 			}
 		}
 	}

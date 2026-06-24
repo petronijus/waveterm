@@ -287,7 +287,7 @@ func TestTermActivity_OutputDrivenSpinner(t *testing.T) {
 	// after output stops, the idle timer must mark it done (✓) — that lull is the only
 	// "done" signal we get for output-only activity (e.g. an agent finishing a turn).
 	*events = nil
-	time.Sleep(cmdActivityIdle + 400*time.Millisecond)
+	time.Sleep(cmdActivityDoneIdle + 400*time.Millisecond)
 	if !hasState(*events, termActivityDone) {
 		t.Fatalf("expected done (✓) after output went idle; got %+v", *events)
 	}
