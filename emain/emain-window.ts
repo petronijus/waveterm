@@ -5,7 +5,15 @@ import { ClientService, ObjectService, WindowService, WorkspaceService } from "@
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { fireAndForget } from "@/util/util";
-import { BaseWindow, BaseWindowConstructorOptions, dialog, globalShortcut, ipcMain, screen, webContents } from "electron";
+import {
+    BaseWindow,
+    BaseWindowConstructorOptions,
+    dialog,
+    globalShortcut,
+    ipcMain,
+    screen,
+    webContents,
+} from "electron";
 import { globalEvents } from "emain/emain-events";
 import path from "path";
 import { debounce } from "throttle-debounce";
@@ -287,9 +295,11 @@ export class WaveBrowserWindow extends BaseWindow {
             fireAndForget(() => ClientService.FocusWindow(this.waveWindowId));
             setWasInFg(true);
             setWasActive(true);
+            this.broadcastWindowFocus(true);
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
         });
         this.on("blur", () => {
+            this.broadcastWindowFocus(false);
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
         });
         this.on("close", (e) => {
@@ -509,6 +519,20 @@ export class WaveBrowserWindow extends BaseWindow {
                 tabView.webContents.focus();
             }
         }, 30);
+    }
+
+    // Push the window's OS-level focus state to every tab renderer (active and the
+    // warm off-screen ones). The renderer's own DOM focus/blur is unreliable for a
+    // child WebContentsView, so this main-process signal is the source of truth for
+    // "is the user looking at this window" — which gates command-done / agent-waiting
+    // notifications.
+    private broadcastWindowFocus(focused: boolean) {
+        if (this.isDestroyed()) {
+            return;
+        }
+        for (const tabView of this.allLoadedTabViews.values()) {
+            tabView?.webContents?.send("window-focus-change", focused);
+        }
     }
 
     private finalizePositioning() {

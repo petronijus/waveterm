@@ -116,6 +116,16 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         window.addEventListener("blur", () => {
             globalStore.set(documentHasFocusAtom, false);
         });
+        // A child WebContentsView's DOM focus/blur doesn't reliably track the OS
+        // window's focus, so the main process pushes the authoritative window-focus
+        // state here — this drives the notification "is the user here" gate.
+        try {
+            getApi().onWindowFocusChange((focused) => {
+                globalStore.set(documentHasFocusAtom, focused);
+            });
+        } catch (e) {
+            console.log("failed to initialize window focus listener", e);
+        }
     }
 
     const modalOpen = atom(false);
