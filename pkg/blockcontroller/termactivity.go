@@ -561,8 +561,9 @@ var publishBadgeEvent = func(oref string, be baseds.BadgeEvent) {
 
 // publishActivityBadge maps a per-block activity state to a tab badge and publishes
 // it. It clears-by-id first so the set always lands (the badge store only overwrites
-// a strictly-higher badge; reusing the id + clearing sidesteps that). The frontend
-// clears the badge when you focus the tab, so a "done" mark goes away once you look.
+// a strictly-higher badge; reusing the id + clearing sidesteps that). Activity badges
+// are pidlinked so the frontend's focus-clear leaves them alone — they persist until
+// the block's next state change replaces them.
 func publishActivityBadge(ev baseds.TermActivityData) {
 	oref := waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()
 	badgeId := activityBadgeId(ev.BlockId)
@@ -577,15 +578,23 @@ func publishActivityBadge(ev baseds.TermActivityData) {
 		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}
 	case termActivityDone:
 		if ev.Visible {
+			// pidlinked so focusing the tab where the command just finished doesn't
+			// instantly wipe the ✓/✗ before you see it (the frontend clears non-pidlinked
+			// badges on focus, and "done" lands on the tab you're already looking at). It
+			// stays until the next command in that block replaces it.
 			if ev.ExitCode == nil || *ev.ExitCode == 0 {
-				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority}
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority, PidLinked: true}
 			} else {
-				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority}
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority, PidLinked: true}
 			}
 		}
 	}
-	publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, ClearById: badgeId})
+	// Single event per transition: a set with the stable badgeid updates the badge in
+	// place (the store applies same-id updates), and a clear-by-id removes it. Avoids
+	// the clear-then-set broker race that wiped the badge the instant it appeared.
 	if badge != nil {
 		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, Badge: badge})
+	} else {
+		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, ClearById: badgeId})
 	}
 }
