@@ -437,6 +437,9 @@ func (t *termActivityTracker) markOutput(n int) {
 		t.everShown = true
 		if !t.running {
 			t.outputDriven = true // no command boundary; the idle timer will end it
+			if t.startTs.IsZero() {
+				t.startTs = t.activeSince // anchor duration to when this output run began
+			}
 		}
 		t.setState(termActivityWorking)
 	}
@@ -493,12 +496,19 @@ func (t *termActivityTracker) armIdleTimer() {
 			// spinner instead of flickering. A new burst of output starts a fresh spinner,
 			// and a later real D marker upgrades the ✓ to the true ✓/✗ exit status.
 			t.outputDriven = false
+			durMs := int64(0)
+			if !t.startTs.IsZero() {
+				durMs = time.Since(t.startTs).Milliseconds()
+			}
+			t.startTs = time.Time{}
+			t.everShown = false
 			t.curState = termActivityDone
 			t.outbox = append(t.outbox, baseds.TermActivityData{
-				BlockId: t.blockId,
-				State:   termActivityDone,
-				Visible: true,
-				Command: t.command,
+				BlockId:    t.blockId,
+				State:      termActivityDone,
+				Visible:    true,
+				Command:    t.command,
+				DurationMs: durMs,
 			})
 		} else {
 			t.setState(termActivityThinking) // command still running, output just paused

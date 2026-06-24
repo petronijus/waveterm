@@ -31,7 +31,7 @@
     "window:confirmclose": true,
     "window:savelastwindow": true,
     "telemetry:enabled": true,
-    "notify:commanddone": false,
+    "notify:commanddone": true,
     "notify:commanddonethresholdms": 30000,
     "sync:enabled": false,
     "sync:folder": "waveterm-sync",
