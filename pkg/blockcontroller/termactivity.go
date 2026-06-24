@@ -356,11 +356,20 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 }
 
 func (t *termActivityTracker) finishCommand(exitCode *int) {
-	if !t.running {
-		return // already finalized (e.g. D fired, then A)
+	// Finalize on a command-end (D) marker if we were tracking a command (C fired) OR
+	// we showed an output-driven spinner — the latter covers shells where preexec/C is
+	// broken but the precmd D marker still fires, so a command with output still gets a
+	// ✓/✗. A bare prompt with no activity is ignored, and a second A after D no-ops.
+	if !t.running && !t.everShown {
+		return
 	}
 	t.running = false
+	t.outputDriven = false
 	t.stopIdleTimer()
+	// End the current output stretch so the marker's own bytes (and the prompt redraw
+	// that follows) don't immediately re-trip the spinner over the ✓ we're about to set.
+	t.activeSince = time.Time{}
+	t.stretchBytes = 0
 	// A shell-integration-tracked command (C→D) always gets a done badge, even if it
 	// was quick or silent — the user wants a ✓/✗ after every command, not only after
 	// long ones.

@@ -291,3 +291,26 @@ func TestTermActivity_OutputDrivenSpinner(t *testing.T) {
 		t.Fatalf("expected none (cleared) after output went idle; got %+v", *events)
 	}
 }
+
+// TestTermActivity_CheckOnDoneWithoutCommandStart verifies a command that produced an
+// output-driven spinner still gets a ✓ when the precmd (D) marker fires, even though
+// no command-start (C) marker ever did (broken bash preexec).
+func TestTermActivity_CheckOnDoneWithoutCommandStart(t *testing.T) {
+	badges := captureBadges(t)
+	blockId := "test-check-noC"
+	ResetTermActivity(blockId)
+	// sustained output, no C marker -> spinner
+	deadline := time.Now().Add(cmdActivitySustain + 300*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("output...\n"))
+		time.Sleep(40 * time.Millisecond)
+	}
+	if got := lastSetIcon(*badges); got != "spinner+spin" {
+		t.Fatalf("expected spinner from output; got %q", got)
+	}
+	// command ends: only a D marker fires (precmd), no preceding C
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":0}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-check" {
+		t.Fatalf("expected circle-check after D marker on an output-driven command; got %q; events=%+v", got, *badges)
+	}
+}
