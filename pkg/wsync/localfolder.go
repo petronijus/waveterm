@@ -77,3 +77,26 @@ func (t *LocalFolderTransport) ListStateFiles(ctx context.Context) ([]string, er
 	}
 	return names, nil
 }
+
+// ListFiles returns the "<prefix>*.json" basenames in the folder. Dot-prefixed
+// temp files (.wsync-*.tmp) never match the .json suffix and are skipped.
+func (t *LocalFolderTransport) ListFiles(ctx context.Context, prefix string) ([]string, error) {
+	entries, err := os.ReadDir(t.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, StateFileSuffix) {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}

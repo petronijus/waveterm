@@ -216,6 +216,12 @@ export class RpcApiType {
         return client.wshRpcCall("deletebuilder", data, opts);
     }
 
+    // command "deletelayout" [call]
+    DeleteLayoutCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "deletelayout", data, opts);
+        return client.wshRpcCall("deletelayout", data, opts);
+    }
+
     // command "deletesubblock" [call]
     DeleteSubBlockCommand(client: WshClient, data: CommandDeleteBlockData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "deletesubblock", data, opts);
@@ -618,10 +624,28 @@ export class RpcApiType {
         return client.wshRpcCall("listalleditableapps", null, opts);
     }
 
+    // command "listlayouts" [call]
+    ListLayoutsCommand(client: WshClient, opts?: RpcOpts): Promise<string[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "listlayouts", null, opts);
+        return client.wshRpcCall("listlayouts", null, opts);
+    }
+
+    // command "loadlayout" [call]
+    LoadLayoutCommand(client: WshClient, data: CommandLayoutData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "loadlayout", data, opts);
+        return client.wshRpcCall("loadlayout", data, opts);
+    }
+
     // command "loadsession" [call]
     LoadSessionCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "loadsession", null, opts);
         return client.wshRpcCall("loadsession", null, opts);
+    }
+
+    // command "loadsettings" [call]
+    LoadSettingsCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "loadsettings", null, opts);
+        return client.wshRpcCall("loadsettings", null, opts);
     }
 
     // command "macosversion" [call]
@@ -906,10 +930,22 @@ export class RpcApiType {
         return client.wshRpcCall("routeunannounce", null, opts);
     }
 
+    // command "savelayout" [call]
+    SaveLayoutCommand(client: WshClient, data: CommandLayoutData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "savelayout", data, opts);
+        return client.wshRpcCall("savelayout", data, opts);
+    }
+
     // command "savesession" [call]
     SaveSessionCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "savesession", null, opts);
         return client.wshRpcCall("savesession", null, opts);
+    }
+
+    // command "savesettings" [call]
+    SaveSettingsCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "savesettings", null, opts);
+        return client.wshRpcCall("savesettings", null, opts);
     }
 
     // command "sendtelemetry" [call]

@@ -597,6 +597,30 @@ func (ws *WshServer) LoadSessionCommand(ctx context.Context) error {
 	return wsync.LoadSessionNow(ctx)
 }
 
+func (ws *WshServer) SaveSettingsCommand(ctx context.Context) error {
+	return wsync.SaveSettingsNow(ctx)
+}
+
+func (ws *WshServer) LoadSettingsCommand(ctx context.Context) error {
+	return wsync.LoadSettingsNow(ctx)
+}
+
+func (ws *WshServer) SaveLayoutCommand(ctx context.Context, data wshrpc.CommandLayoutData) error {
+	return wsync.SaveLayout(ctx, data.TabId, data.Name)
+}
+
+func (ws *WshServer) LoadLayoutCommand(ctx context.Context, data wshrpc.CommandLayoutData) error {
+	return wsync.LoadLayout(ctx, data.TabId, data.Name)
+}
+
+func (ws *WshServer) ListLayoutsCommand(ctx context.Context) ([]string, error) {
+	return wsync.ListLayouts(ctx)
+}
+
+func (ws *WshServer) DeleteLayoutCommand(ctx context.Context, name string) error {
+	return wsync.DeleteLayout(ctx, name)
+}
+
 func (ws *WshServer) GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error) {
 	watcher := wconfig.GetWatcher()
 	return watcher.GetFullConfig(), nil

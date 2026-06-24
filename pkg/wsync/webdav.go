@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	webdavTimeout    = 30 * time.Second
-	StateFilePrefix  = "state."
-	StateFileSuffix  = ".json"
+	webdavTimeout     = 30 * time.Second
+	StateFilePrefix   = "state."
+	StateFileSuffix   = ".json"
 	webdavPropfindXML = `<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/></d:prop></d:propfind>`
 )
 
@@ -147,6 +147,12 @@ func (c *WebDAVClient) Delete(ctx context.Context, name string) error {
 // ListStateFiles returns the names of all state.<installid>.json files in the
 // sync folder (depth-1 PROPFIND), so a machine can pull every peer's state.
 func (c *WebDAVClient) ListStateFiles(ctx context.Context) ([]string, error) {
+	return c.ListFiles(ctx, StateFilePrefix)
+}
+
+// ListFiles returns the "<prefix>*.json" basenames in the sync folder via a
+// depth-1 PROPFIND.
+func (c *WebDAVClient) ListFiles(ctx context.Context, prefix string) ([]string, error) {
 	resp, err := c.do(ctx, "PROPFIND", c.folderURL(), []byte(webdavPropfindXML), map[string]string{
 		"Depth":        "1",
 		"Content-Type": "application/xml",
@@ -162,7 +168,7 @@ func (c *WebDAVClient) ListStateFiles(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseStateFileNames(data)
+	return parseFileNames(data, prefix)
 }
 
 type propfindMultistatus struct {
@@ -172,9 +178,9 @@ type propfindMultistatus struct {
 	} `xml:"response"`
 }
 
-// parseStateFileNames extracts state.*.json basenames from a PROPFIND multistatus
+// parseFileNames extracts "<prefix>*.json" basenames from a PROPFIND multistatus
 // body, ignoring the folder entry itself and any other files.
-func parseStateFileNames(body []byte) ([]string, error) {
+func parseFileNames(body []byte, prefix string) ([]string, error) {
 	var ms propfindMultistatus
 	if err := xml.Unmarshal(body, &ms); err != nil {
 		return nil, fmt.Errorf("parsing PROPFIND response: %w", err)
@@ -186,7 +192,7 @@ func parseStateFileNames(body []byte) ([]string, error) {
 		if unescaped, err := url.PathUnescape(base); err == nil {
 			base = unescaped
 		}
-		if strings.HasPrefix(base, StateFilePrefix) && strings.HasSuffix(base, StateFileSuffix) {
+		if strings.HasPrefix(base, prefix) && strings.HasSuffix(base, StateFileSuffix) {
 			names = append(names, base)
 		}
 	}

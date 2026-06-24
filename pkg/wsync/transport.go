@@ -22,6 +22,9 @@ type Transport interface {
 	Delete(ctx context.Context, name string) error
 	// ListStateFiles returns the basenames of all state.<installid>.json files.
 	ListStateFiles(ctx context.Context) ([]string, error)
+	// ListFiles returns the basenames of all "<prefix>*.json" files in the folder
+	// (used to enumerate named artifacts such as saved layouts).
+	ListFiles(ctx context.Context, prefix string) ([]string, error)
 }
 
 // compile-time assertions that the backends satisfy Transport.

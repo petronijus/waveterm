@@ -12,6 +12,7 @@ import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
+import { SyncMenu } from "./syncmenu";
 import { Tab } from "./tab";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
@@ -283,16 +284,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 prevAllLoadedRef.current = true;
             }
         }
-    }, [
-        tabIds,
-        tabsLoaded,
-        newTabId,
-        saveTabsPosition,
-        hideAiButton,
-        appUpdateStatus,
-        zoomFactor,
-        showMenuBar,
-    ]);
+    }, [tabIds, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
 
     const getDragDirection = (currentX: number) => {
         let dragDirection: string;
@@ -576,9 +568,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     // Calculate window drag left width based on platform and state
     let windowDragLeftWidth = 10;
     if (env.isMacOS() && !isFullScreen) {
-        const trafficLightsWidth = isMacOSTahoeOrLater()
-            ? MacOSTahoeTrafficLightsWidth
-            : MacOSTrafficLightsWidth;
+        const trafficLightsWidth = isMacOSTahoeOrLater() ? MacOSTahoeTrafficLightsWidth : MacOSTrafficLightsWidth;
         if (zoomFactor > 0) {
             windowDragLeftWidth = trafficLightsWidth / zoomFactor;
         } else {
@@ -666,6 +656,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             </button>
             <div className="flex-1" />
             <div ref={rightContainerRef} className="flex flex-row gap-1 items-end">
+                <SyncMenu tabId={activeTabId} />
                 <UpdateStatusBanner />
                 <div
                     className="h-full shrink-0 z-window-drag"

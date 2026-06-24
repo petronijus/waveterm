@@ -25,7 +25,7 @@ func TestParseStateFileNames(t *testing.T) {
   <d:response><d:href>/remote.php/dav/files/petr/waveterm-sync/state.linux-uuid.json</d:href></d:response>
   <d:response><d:href>/remote.php/dav/files/petr/waveterm-sync/readme.txt</d:href></d:response>
 </d:multistatus>`)
-	names, err := parseStateFileNames(body)
+	names, err := parseFileNames(body, StateFilePrefix)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -42,8 +42,8 @@ func TestStateFileNameRoundTrip(t *testing.T) {
 	if name != "state.abc-123.json" {
 		t.Fatalf("StateFileName = %q", name)
 	}
-	got, err := parseStateFileNames([]byte(
-		`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/x/` + name + `</d:href></d:response></d:multistatus>`))
+	got, err := parseFileNames([]byte(
+		`<d:multistatus xmlns:d="DAV:"><d:response><d:href>/x/`+name+`</d:href></d:response></d:multistatus>`), StateFilePrefix)
 	if err != nil || len(got) != 1 || got[0] != name {
 		t.Fatalf("round trip failed: %v err=%v", got, err)
 	}

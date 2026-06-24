@@ -538,6 +538,12 @@ declare global {
     // wshrpc.CommandJobStartStreamData
     type CommandJobStartStreamData = object;
 
+    // wshrpc.CommandLayoutData
+    type CommandLayoutData = {
+        tabid: string;
+        name: string;
+    };
+
     // wshrpc.CommandListAllAppFilesData
     type CommandListAllAppFilesData = {
         appid: string;

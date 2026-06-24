@@ -83,6 +83,12 @@ type WshRpcInterface interface {
 	SyncStatusCommand(ctx context.Context) (SyncStatusData, error)
 	SaveSessionCommand(ctx context.Context) error
 	LoadSessionCommand(ctx context.Context) error
+	SaveSettingsCommand(ctx context.Context) error
+	LoadSettingsCommand(ctx context.Context) error
+	SaveLayoutCommand(ctx context.Context, data CommandLayoutData) error
+	LoadLayoutCommand(ctx context.Context, data CommandLayoutData) error
+	ListLayoutsCommand(ctx context.Context) ([]string, error)
+	DeleteLayoutCommand(ctx context.Context, name string) error
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
@@ -279,6 +285,11 @@ type CommandGetMetaData struct {
 type CommandSetMetaData struct {
 	ORef waveobj.ORef        `json:"oref"`
 	Meta waveobj.MetaMapType `json:"meta"`
+}
+
+type CommandLayoutData struct {
+	TabId string `json:"tabid"`
+	Name  string `json:"name"`
 }
 
 type CommandResolveIdsData struct {

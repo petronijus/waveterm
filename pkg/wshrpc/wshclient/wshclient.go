@@ -215,6 +215,12 @@ func DeleteBuilderCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) 
 	return err
 }
 
+// command "deletelayout", wshserver.DeleteLayoutCommand
+func DeleteLayoutCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "deletelayout", data, opts)
+	return err
+}
+
 // command "deletesubblock", wshserver.DeleteSubBlockCommand
 func DeleteSubBlockCommand(w *wshutil.WshRpc, data wshrpc.CommandDeleteBlockData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "deletesubblock", data, opts)
@@ -616,9 +622,27 @@ func ListAllEditableAppsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wshr
 	return resp, err
 }
 
+// command "listlayouts", wshserver.ListLayoutsCommand
+func ListLayoutsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]string, error) {
+	resp, err := sendRpcRequestCallHelper[[]string](w, "listlayouts", nil, opts)
+	return resp, err
+}
+
+// command "loadlayout", wshserver.LoadLayoutCommand
+func LoadLayoutCommand(w *wshutil.WshRpc, data wshrpc.CommandLayoutData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "loadlayout", data, opts)
+	return err
+}
+
 // command "loadsession", wshserver.LoadSessionCommand
 func LoadSessionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "loadsession", nil, opts)
+	return err
+}
+
+// command "loadsettings", wshserver.LoadSettingsCommand
+func LoadSettingsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "loadsettings", nil, opts)
 	return err
 }
 
@@ -902,9 +926,21 @@ func RouteUnannounceCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	return err
 }
 
+// command "savelayout", wshserver.SaveLayoutCommand
+func SaveLayoutCommand(w *wshutil.WshRpc, data wshrpc.CommandLayoutData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "savelayout", data, opts)
+	return err
+}
+
 // command "savesession", wshserver.SaveSessionCommand
 func SaveSessionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "savesession", nil, opts)
+	return err
+}
+
+// command "savesettings", wshserver.SaveSettingsCommand
+func SaveSettingsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "savesettings", nil, opts)
 	return err
 }
 
