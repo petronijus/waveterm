@@ -479,10 +479,20 @@ func (t *termActivityTracker) armIdleTimer() {
 		}
 		t.visible = false
 		if t.outputDriven {
-			// No shell-integration command to wait on — output stopped, so the activity
-			// is over: clear the spinner instead of leaving a "thinking" badge stuck on.
+			// Output stopped with no shell-integration command to bound it (absent/broken
+			// C/D markers, or an interactive agent like Claude between turns). This lull IS
+			// our only "done" signal for output-only activity, so show a ✓ instead of
+			// clearing to nothing. everShown stays set so a later precmd (D) marker can
+			// upgrade the ✓ to the real ✓/✗ exit status; a new burst of output starts a
+			// fresh spinner, replacing the ✓.
 			t.outputDriven = false
-			t.setState(termActivityNone)
+			t.curState = termActivityDone
+			t.outbox = append(t.outbox, baseds.TermActivityData{
+				BlockId: t.blockId,
+				State:   termActivityDone,
+				Visible: true,
+				Command: t.command,
+			})
 		} else {
 			t.setState(termActivityThinking) // command still running, output just paused
 		}
