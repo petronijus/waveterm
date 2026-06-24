@@ -262,3 +262,32 @@ func TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone(t *testing.T) {
 		t.Fatalf("after failed command, last set badge icon = %q, want circle-xmark", got)
 	}
 }
+
+// TestTermActivity_OutputDrivenSpinner verifies the spinner shows from raw output
+// even when no shell-integration command-start (C) marker ever arrives — the case
+// where bash preexec is broken in the user's shell, so only D/A markers fire.
+func TestTermActivity_OutputDrivenSpinner(t *testing.T) {
+	events := captureEvents(t)
+	blockId := "test-outputdriven"
+	ResetTermActivity(blockId)
+	// No cmdStartSeq — just sustained raw output for longer than cmdActivitySustain.
+	deadline := time.Now().Add(cmdActivitySustain + 400*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("build output line ...\n"))
+		time.Sleep(40 * time.Millisecond)
+	}
+	if !hasState(*events, termActivityWorking) {
+		t.Fatalf("expected working spinner from sustained output with no C marker; got %+v", *events)
+	}
+	running, _, _ := trackerSnapshot(blockId)
+	if running {
+		t.Fatalf("output-driven activity must not set running=true (no real command tracked)")
+	}
+
+	// after output stops, the idle timer must CLEAR it (none), not leave a stuck badge.
+	*events = nil
+	time.Sleep(cmdActivityIdle + 400*time.Millisecond)
+	if !hasState(*events, termActivityNone) {
+		t.Fatalf("expected none (cleared) after output went idle; got %+v", *events)
+	}
+}

@@ -116,6 +116,7 @@ type termActivityTracker struct {
 
 	// command activity state machine
 	running      bool
+	outputDriven bool // spinner came from raw output, not a shell-integration command start
 	startTs      time.Time
 	visible      bool      // spinner currently "on"
 	everShown    bool      // spinner shown at least once this command
@@ -338,6 +339,7 @@ func decodeCmd64(cmd64 string) string {
 func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stopIdleTimer()
 	t.running = true
+	t.outputDriven = false
 	t.startTs = time.Now()
 	t.visible = false
 	t.everShown = false
@@ -390,6 +392,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 func (t *termActivityTracker) cancelCommand() {
 	t.stopIdleTimer()
 	t.running = false
+	t.outputDriven = false
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -401,12 +404,12 @@ func (t *termActivityTracker) cancelCommand() {
 // markOutput is called once per output chunk with the chunk length. It runs the
 // "sustained output ⇒ working" heuristic. Assumes t.lock held.
 func (t *termActivityTracker) markOutput(n int) {
-	if !t.running {
-		return
-	}
 	now := time.Now()
-	if now.Sub(t.startTs) < cmdActivityDelay {
-		return // quick command / first burst — don't flash
+	// For a shell-integration-tracked command (C marker fired) skip the first burst so a
+	// quick command doesn't flash. With no C marker (e.g. bash preexec is broken in the
+	// user's shell) we drive the spinner purely off output.
+	if t.running && now.Sub(t.startTs) < cmdActivityDelay {
+		return
 	}
 	if t.activeSince.IsZero() || now.Sub(t.lastOutputTs) > cmdActivityGap {
 		t.activeSince = now
@@ -422,6 +425,9 @@ func (t *termActivityTracker) markOutput(n int) {
 		t.waiting = false
 		t.visible = true
 		t.everShown = true
+		if !t.running {
+			t.outputDriven = true // no command boundary; the idle timer will end it
+		}
 		t.setState(termActivityWorking)
 	}
 	if t.visible {
@@ -463,7 +469,14 @@ func (t *termActivityTracker) armIdleTimer() {
 			return
 		}
 		t.visible = false
-		t.setState(termActivityThinking)
+		if t.outputDriven {
+			// No shell-integration command to wait on — output stopped, so the activity
+			// is over: clear the spinner instead of leaving a "thinking" badge stuck on.
+			t.outputDriven = false
+			t.setState(termActivityNone)
+		} else {
+			t.setState(termActivityThinking) // command still running, output just paused
+		}
 		out := t.outbox
 		t.outbox = nil
 		t.lock.Unlock()
