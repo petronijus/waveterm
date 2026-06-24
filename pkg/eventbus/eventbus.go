@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	WSEvent_ElectronNewWindow       = "electron:newwindow"
 	WSEvent_ElectronCloseWindow     = "electron:closewindow"
 	WSEvent_ElectronUpdateActiveTab = "electron:updateactivetab"
 	WSEvent_Rpc                     = "rpc"

@@ -81,6 +81,8 @@ type WshRpcInterface interface {
 	SetFlagCommand(ctx context.Context, data FlagRequest) error
 	SyncNowCommand(ctx context.Context) (SyncStatusData, error)
 	SyncStatusCommand(ctx context.Context) (SyncStatusData, error)
+	SaveSessionCommand(ctx context.Context) error
+	LoadSessionCommand(ctx context.Context) error
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)

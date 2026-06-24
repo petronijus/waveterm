@@ -616,6 +616,12 @@ func ListAllEditableAppsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wshr
 	return resp, err
 }
 
+// command "loadsession", wshserver.LoadSessionCommand
+func LoadSessionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "loadsession", nil, opts)
+	return err
+}
+
 // command "macosversion", wshserver.MacOSVersionCommand
 func MacOSVersionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (string, error) {
 	resp, err := sendRpcRequestCallHelper[string](w, "macosversion", nil, opts)
@@ -893,6 +899,12 @@ func RouteAnnounceCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 // command "routeunannounce", wshserver.RouteUnannounceCommand
 func RouteUnannounceCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "routeunannounce", nil, opts)
+	return err
+}
+
+// command "savesession", wshserver.SaveSessionCommand
+func SaveSessionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "savesession", nil, opts)
 	return err
 }
 

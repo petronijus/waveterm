@@ -589,6 +589,14 @@ func (ws *WshServer) SyncStatusCommand(ctx context.Context) (wshrpc.SyncStatusDa
 	return syncStatusToData(wsync.GetScheduler().GetStatus()), nil
 }
 
+func (ws *WshServer) SaveSessionCommand(ctx context.Context) error {
+	return wsync.SaveSessionNow(ctx)
+}
+
+func (ws *WshServer) LoadSessionCommand(ctx context.Context) error {
+	return wsync.LoadSessionNow(ctx)
+}
+
 func (ws *WshServer) GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error) {
 	watcher := wconfig.GetWatcher()
 	return watcher.GetFullConfig(), nil

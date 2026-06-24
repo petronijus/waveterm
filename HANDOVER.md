@@ -9,6 +9,32 @@ to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow l
 > The detailed working plan and machine-specific handover steps are tracked **privately, outside
 > this repo**.
 
+## Manual session sync — Save/Load (as of 2026-06-24)
+
+**Implemented on `release`, NOT yet runtime-tested.** Replaces the background autosync with a
+**manual** model: two buttons in the top-right of the tab bar — **Save session** (☁↑) and **Load
+session** (☁↓). Save writes one `session.json` snapshot (workspaces + tabs + blocks + layouts +
+open windows incl. position/size) to the configured transport; Load restores it — upserts the
+objects and reconciles the OS windows (opens missing, closes extras, **never the last**). Config
+files are **excluded** from the snapshot so a Load never clobbers a machine's own settings
+(including the sync transport config itself). The background scheduler is **disabled**
+(`main-server.go`). A new `electron:newwindow` event lets Go open a window; window identity is
+keyed by **workspaceid** (the per-machine window OID can't be shared across installs).
+
+Files: `pkg/wsync/session.go`, `pkg/wcore/window.go` (`OpenWindowForSync`,
+`CloseWindowKeepWorkspace`, `WindowForWorkspace`), `pkg/eventbus/eventbus.go`, RPC
+`SaveSession`/`LoadSessionCommand` (wshrpctypes + wshserver), `frontend/app/tab/vtabbar.tsx`.
+
+### Next up — per OS
+- **All OSes:** pull `release`, `task init` if needed, build. Configure a transport in Settings
+  (`sync:folderpath` = a Nextcloud desktop-client folder, or WebDAV). Then **test**: Save on one
+  machine, Load on another → workspaces/tabs/blocks restore and the saved windows open at their
+  saved positions (Electron clamps to the local display).
+- **macOS:** buttons already present (macOS tab-bar header) — test Save/Load + window open/close,
+  including Load closing local extra windows and the never-close-last-window guard.
+- **Windows / Linux:** the Save/Load buttons currently render **only in the macOS header**
+  (`MacOSHeader` in `vtabbar.tsx`). **Add them to the Windows/Linux header** before testing there.
+
 ## Active work in progress (as of 2026-06-21)
 
 All of the below is **merged to `release`** and pushed.

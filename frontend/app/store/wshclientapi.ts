@@ -618,6 +618,12 @@ export class RpcApiType {
         return client.wshRpcCall("listalleditableapps", null, opts);
     }
 
+    // command "loadsession" [call]
+    LoadSessionCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "loadsession", null, opts);
+        return client.wshRpcCall("loadsession", null, opts);
+    }
+
     // command "macosversion" [call]
     MacOSVersionCommand(client: WshClient, opts?: RpcOpts): Promise<string> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "macosversion", null, opts);
@@ -898,6 +904,12 @@ export class RpcApiType {
     RouteUnannounceCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "routeunannounce", null, opts);
         return client.wshRpcCall("routeunannounce", null, opts);
+    }
+
+    // command "savesession" [call]
+    SaveSessionCommand(client: WshClient, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "savesession", null, opts);
+        return client.wshRpcCall("savesession", null, opts);
     }
 
     // command "sendtelemetry" [call]

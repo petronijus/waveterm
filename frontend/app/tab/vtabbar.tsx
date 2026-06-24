@@ -5,6 +5,7 @@ import { Tooltip } from "@/app/element/tooltip";
 import { getTabBadgeAtom } from "@/app/store/badge";
 import { getTabModelByTabId } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
+import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -48,6 +49,60 @@ const VTabBarAIButton = memo(() => {
 });
 VTabBarAIButton.displayName = "VTabBarAIButton";
 
+const SessionSyncButtonClass =
+    "flex h-[22px] px-3.5 justify-end mb-1 items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] text-secondary";
+
+const SessionSyncButtons = memo(() => {
+    const [busy, setBusy] = useState<"save" | "load">(null);
+
+    const run = useCallback(
+        (action: "save" | "load") => {
+            if (busy != null) {
+                return;
+            }
+            setBusy(action);
+            fireAndForget(async () => {
+                try {
+                    if (action === "save") {
+                        await RpcApi.SaveSessionCommand(TabRpcClient);
+                    } else {
+                        await RpcApi.LoadSessionCommand(TabRpcClient);
+                    }
+                } finally {
+                    setBusy(null);
+                }
+            });
+        },
+        [busy]
+    );
+
+    return (
+        <>
+            <Tooltip
+                content="Save session to sync"
+                placement="bottom"
+                hideOnClick
+                divClassName={SessionSyncButtonClass}
+                divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                divOnClick={() => run("save")}
+            >
+                <i className={cn("fa", busy === "save" ? "fa-spinner fa-spin" : "fa-cloud-arrow-up")} />
+            </Tooltip>
+            <Tooltip
+                content="Load session from sync"
+                placement="bottom"
+                hideOnClick
+                divClassName={SessionSyncButtonClass}
+                divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                divOnClick={() => run("load")}
+            >
+                <i className={cn("fa", busy === "load" ? "fa-spinner fa-spin" : "fa-cloud-arrow-down")} />
+            </Tooltip>
+        </>
+    );
+});
+SessionSyncButtons.displayName = "SessionSyncButtons";
+
 const MacOSHeader = memo(() => {
     const env = useWaveEnv<VTabBarEnv>();
     const isFullScreen = useAtomValue(env.atoms.isFullScreen);
@@ -69,6 +124,7 @@ const MacOSHeader = memo(() => {
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
                 <VTabBarAIButton />
+                <SessionSyncButtons />
                 <Tooltip content="Workspace Switcher" placement="bottom" hideOnClick divClassName="flex items-center">
                     <WorkspaceSwitcher />
                 </Tooltip>

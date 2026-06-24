@@ -127,6 +127,87 @@ func CreateWindow(ctx context.Context, winSize *waveobj.WinSize, workspaceId str
 	return GetWindow(ctx, windowId)
 }
 
+// WindowForWorkspace returns the (first) local window currently showing workspaceId,
+// or nil if none does. Used by session restore to decide whether a window already
+// exists for a synced workspace.
+func WindowForWorkspace(ctx context.Context, workspaceId string) (*waveobj.Window, error) {
+	allWindows, err := wstore.DBGetAllObjsByType[*waveobj.Window](ctx, waveobj.OType_Window)
+	if err != nil {
+		return nil, fmt.Errorf("error getting all windows: %w", err)
+	}
+	for _, w := range allWindows {
+		if w.WorkspaceId == workspaceId {
+			return w, nil
+		}
+	}
+	return nil, nil
+}
+
+// OpenWindowForSync opens an OS window for an already-existing workspace at the given
+// geometry — used by session restore to mirror a window saved on another machine.
+// The geometry is the saved Pos/WinSize; Electron clamps it to the local display when
+// it builds the BrowserWindow. No-op if a window already shows the workspace. Unlike
+// the per-machine window OIDs (which never match across installs), the workspace is the
+// portable identity, so we key restore on it.
+func OpenWindowForSync(ctx context.Context, workspaceId string, pos waveobj.Point, winSize waveobj.WinSize) error {
+	existing, err := WindowForWorkspace(ctx, workspaceId)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	if _, err := GetWorkspace(ctx, workspaceId); err != nil {
+		return fmt.Errorf("error getting workspace %q for sync window: %w", workspaceId, err)
+	}
+	windowId := uuid.NewString()
+	window := &waveobj.Window{
+		OID:         windowId,
+		WorkspaceId: workspaceId,
+		Pos:         pos,
+		WinSize:     winSize,
+	}
+	if err := wstore.DBInsert(ctx, window); err != nil {
+		return fmt.Errorf("error inserting sync window: %w", err)
+	}
+	client, err := GetClientData(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting client: %w", err)
+	}
+	client.WindowIds = append(client.WindowIds, windowId)
+	if err := wstore.DBUpdate(ctx, client); err != nil {
+		return fmt.Errorf("error updating client: %w", err)
+	}
+	eventbus.SendEventToElectron(eventbus.WSEventType{
+		EventType: eventbus.WSEvent_ElectronNewWindow,
+		Data:      windowId,
+	})
+	return nil
+}
+
+// CloseWindowKeepWorkspace closes a window without deleting its workspace. Session
+// restore uses this when reconciling the open-window set: the workspace's own
+// lifecycle is owned by the workspace items, so closing a window here must not take
+// the (still-synced) workspace content with it the way CloseWindow does.
+func CloseWindowKeepWorkspace(ctx context.Context, windowId string) error {
+	if err := wstore.DBDelete(ctx, waveobj.OType_Window, windowId); err != nil {
+		return fmt.Errorf("error deleting window: %w", err)
+	}
+	client, err := wstore.DBGetSingleton[*waveobj.Client](ctx)
+	if err != nil {
+		return fmt.Errorf("error getting client: %w", err)
+	}
+	client.WindowIds = utilfn.RemoveElemFromSlice(client.WindowIds, windowId)
+	if err := wstore.DBUpdate(ctx, client); err != nil {
+		return fmt.Errorf("error updating client: %w", err)
+	}
+	eventbus.SendEventToElectron(eventbus.WSEventType{
+		EventType: eventbus.WSEvent_ElectronCloseWindow,
+		Data:      windowId,
+	})
+	return nil
+}
+
 // CloseWindow closes a window and deletes its workspace if it is empty and not named.
 // If fromElectron is true, it does not send an event to Electron.
 func CloseWindow(ctx context.Context, windowId string, fromElectron bool) error {
