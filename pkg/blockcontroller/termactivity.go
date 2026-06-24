@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wps"
@@ -488,7 +489,10 @@ func (t *termActivityTracker) setState(state string) {
 }
 
 // publishActivity is a package var so tests can capture emitted events instead of
-// routing them through the broker.
+// routing them through the broker. Besides the Event_TermActivity stream (which the
+// frontend uses for focus-aware OS notifications), it sets the tab's working/done
+// badge straight from the backend so the indicator shows on every tab — active,
+// background, or not-yet-opened — without depending on a live renderer.
 var publishActivity = func(events []baseds.TermActivityData) {
 	for _, ev := range events {
 		wps.Broker.Publish(wps.WaveEvent{
@@ -496,5 +500,62 @@ var publishActivity = func(events []baseds.TermActivityData) {
 			Scopes: []string{waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()},
 			Data:   ev,
 		})
+		publishActivityBadge(ev)
+	}
+}
+
+const activityBadgePriority = 5
+
+var (
+	activityBadgeIdsLock sync.Mutex
+	activityBadgeIds     = map[string]string{} // blockId -> stable uuidv7 badge id
+)
+
+func activityBadgeId(blockId string) string {
+	activityBadgeIdsLock.Lock()
+	defer activityBadgeIdsLock.Unlock()
+	id, ok := activityBadgeIds[blockId]
+	if !ok {
+		id = uuid.Must(uuid.NewV7()).String()
+		activityBadgeIds[blockId] = id
+	}
+	return id
+}
+
+func publishBadgeEvent(oref string, be baseds.BadgeEvent) {
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_Badge,
+		Scopes: []string{oref},
+		Data:   be,
+	})
+}
+
+// publishActivityBadge maps a per-block activity state to a tab badge and publishes
+// it. It clears-by-id first so the set always lands (the badge store only overwrites
+// a strictly-higher badge; reusing the id + clearing sidesteps that). The frontend
+// clears the badge when you focus the tab, so a "done" mark goes away once you look.
+func publishActivityBadge(ev baseds.TermActivityData) {
+	oref := waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()
+	badgeId := activityBadgeId(ev.BlockId)
+	var badge *baseds.Badge
+	switch ev.State {
+	case termActivityWorking:
+		// pidlinked so focusing the running tab doesn't clear the live spinner (it's
+		// replaced explicitly on done/none).
+		badge = &baseds.Badge{BadgeId: badgeId, Icon: "spinner+spin", Color: "var(--accent-color)", Priority: activityBadgePriority, PidLinked: true}
+	case termActivityWaiting:
+		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}
+	case termActivityDone:
+		if ev.Visible {
+			if ev.ExitCode == nil || *ev.ExitCode == 0 {
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority}
+			} else {
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority}
+			}
+		}
+	}
+	publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, ClearById: badgeId})
+	if badge != nil {
+		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, Badge: badge})
 	}
 }
