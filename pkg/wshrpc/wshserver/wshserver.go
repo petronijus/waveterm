@@ -610,7 +610,17 @@ func (ws *WshServer) SaveLayoutCommand(ctx context.Context, data wshrpc.CommandL
 }
 
 func (ws *WshServer) LoadLayoutCommand(ctx context.Context, data wshrpc.CommandLayoutData) error {
-	return wsync.LoadLayout(ctx, data.TabId, data.Name)
+	ctx = waveobj.ContextWithUpdates(ctx)
+	if err := wsync.LoadLayout(ctx, data.TabId, data.Name); err != nil {
+		return err
+	}
+	// Collect every waveobj change made while rebuilding the tab (new blocks, the
+	// tab's blockids, the layoutstate's queued actions, the tab meta) and broadcast
+	// them so the live tab's LayoutModel processes the queued layout actions — the
+	// same pattern CreateBlockCommand uses. Without this the actions pile up unseen.
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	wps.Broker.SendUpdateEvents(updates)
+	return nil
 }
 
 func (ws *WshServer) ListLayoutsCommand(ctx context.Context) ([]string, error) {
