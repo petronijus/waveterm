@@ -82,6 +82,7 @@ export class GitViewModel implements ViewModel {
     disposed = false;
     cancelPoll: (() => void) | null = null;
     cwdUnsub: (() => void) | null = null;
+    connStatusUnsub: (() => void) | null = null;
     lastResolvedCwd: string = null;
     fetchEpoch = 0;
     lastBranchHeadSig: string = null;
@@ -186,6 +187,20 @@ export class GitViewModel implements ViewModel {
         // project picked in the connections panel (which sets cmd:cwd) — so the git
         // view jumps to the new folder.
         this.cwdUnsub = globalStore.sub(this.cwdSource, () => this.onCwdChanged());
+
+        // The panel can mount before its connection is `connected` (app start,
+        // a reopened layout), so the initial resolveRoot finds no git root and the
+        // poll would keep refreshing a status that never loads. Re-resolve the
+        // moment the connection (re)connects so the panel recovers on its own.
+        this.connStatusUnsub = globalStore.sub(this.connStatus, () => {
+            if (this.disposed) {
+                return;
+            }
+            const connected = globalStore.get(this.connStatus)?.connected;
+            if (connected && isBlank(globalStore.get(this.gitRootAtom))) {
+                fireAndForget(() => this.refreshAll());
+            }
+        });
 
         this.startPolling();
     }
@@ -362,11 +377,27 @@ export class GitViewModel implements ViewModel {
                     cancelled = true;
                 };
                 if (!globalStore.get(this.actionBusyAtom)) {
-                    await this.refreshStatus();
-                    const sig = this.branchHeadSig();
-                    if (sig != null && sig !== this.lastBranchHeadSig) {
-                        this.lastBranchHeadSig = sig;
-                        await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+                    if (isBlank(globalStore.get(this.gitRootAtom))) {
+                        // No git root yet — the connection wasn't ready when polling
+                        // started, the path wasn't a repo, or a repo just appeared
+                        // (git init). Re-resolve so polling self-heals instead of
+                        // forever refreshing a status that can never load.
+                        const root = await this.resolveRoot();
+                        if (!isBlank(root)) {
+                            await Promise.all([
+                                this.refreshStatus(),
+                                this.refreshBranches(),
+                                this.refreshLog(true),
+                            ]);
+                            this.lastBranchHeadSig = this.branchHeadSig();
+                        }
+                    } else {
+                        await this.refreshStatus();
+                        const sig = this.branchHeadSig();
+                        if (sig != null && sig !== this.lastBranchHeadSig) {
+                            this.lastBranchHeadSig = sig;
+                            await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+                        }
                     }
                 }
             }
@@ -631,6 +662,10 @@ export class GitViewModel implements ViewModel {
         if (this.cwdUnsub) {
             this.cwdUnsub();
             this.cwdUnsub = null;
+        }
+        if (this.connStatusUnsub) {
+            this.connStatusUnsub();
+            this.connStatusUnsub = null;
         }
         if (this.cancelPoll) {
             this.cancelPoll();
