@@ -119,7 +119,10 @@ func setBadge(oref waveobj.ORef, data baseds.BadgeEvent) {
 	}
 	incoming := *data.Badge
 	existing, hasExisting := globalBadgeStore.transient[orefStr]
-	if !hasExisting || cmpBadge(incoming, existing) > 0 {
+	// Same badgeid ⇒ it's an update of the same logical badge (e.g. spinner→check for a
+	// terminal's activity), so always apply it. Otherwise only a strictly-higher badge
+	// wins. (Updating in place avoids a clear-then-set race on the broker.)
+	if !hasExisting || existing.BadgeId == incoming.BadgeId || cmpBadge(incoming, existing) > 0 {
 		globalBadgeStore.transient[orefStr] = incoming
 		log.Printf("badge store: badge set: oref=%s badge=%+v\n", orefStr, incoming)
 	}

@@ -199,3 +199,119 @@ func TestAgentKindForCommand(t *testing.T) {
 		}
 	}
 }
+
+// captureBadges runs the real state→badge mapping (publishActivityBadge) while
+// capturing the emitted badge events, so a test can assert the working spinner and
+// the done check/xmark are published. It bypasses the wps broker.
+func captureBadges(t *testing.T) *[]baseds.BadgeEvent {
+	t.Helper()
+	var mu sync.Mutex
+	var badges []baseds.BadgeEvent
+	origBadge := publishBadgeEvent
+	origAct := publishActivity
+	publishBadgeEvent = func(oref string, be baseds.BadgeEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		badges = append(badges, be)
+	}
+	publishActivity = func(evs []baseds.TermActivityData) {
+		for _, ev := range evs {
+			publishActivityBadge(ev)
+		}
+	}
+	t.Cleanup(func() { publishBadgeEvent = origBadge; publishActivity = origAct })
+	return &badges
+}
+
+func lastSetIcon(badges []baseds.BadgeEvent) string {
+	icon := ""
+	for _, b := range badges {
+		if b.Badge != nil {
+			icon = b.Badge.Icon
+		}
+	}
+	return icon
+}
+
+// TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone verifies the user-visible
+// behavior: a quick shell-integration command (C then D, no output) still shows a
+// spinner the instant it starts and a check when it finishes.
+func TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone(t *testing.T) {
+	badges := captureBadges(t)
+	blockId := "test-badge"
+	ResetTermActivity(blockId)
+
+	FeedTermActivity(blockId, cmdStartSeq("ls"))
+	if got := lastSetIcon(*badges); got != "spinner+spin" {
+		t.Fatalf("after command start, last set badge icon = %q, want spinner+spin; events=%+v", got, *badges)
+	}
+
+	exit0 := 0
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":0}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-check" {
+		t.Fatalf("after command done, last set badge icon = %q, want circle-check; events=%+v", got, *badges)
+	}
+
+	// a non-zero exit shows the error mark
+	ResetTermActivity(blockId)
+	*badges = nil
+	FeedTermActivity(blockId, cmdStartSeq("false"))
+	_ = exit0
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":1}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-xmark" {
+		t.Fatalf("after failed command, last set badge icon = %q, want circle-xmark", got)
+	}
+}
+
+// TestTermActivity_OutputDrivenSpinner verifies the spinner shows from raw output
+// even when no shell-integration command-start (C) marker ever arrives — the case
+// where bash preexec is broken in the user's shell, so only D/A markers fire.
+func TestTermActivity_OutputDrivenSpinner(t *testing.T) {
+	events := captureEvents(t)
+	blockId := "test-outputdriven"
+	ResetTermActivity(blockId)
+	// No cmdStartSeq — just sustained raw output for longer than cmdActivitySustain.
+	deadline := time.Now().Add(cmdActivitySustain + 400*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("build output line ...\n"))
+		time.Sleep(40 * time.Millisecond)
+	}
+	if !hasState(*events, termActivityWorking) {
+		t.Fatalf("expected working spinner from sustained output with no C marker; got %+v", *events)
+	}
+	running, _, _ := trackerSnapshot(blockId)
+	if running {
+		t.Fatalf("output-driven activity must not set running=true (no real command tracked)")
+	}
+
+	// after output stops, the idle timer must mark it done (✓) — that lull is the only
+	// "done" signal we get for output-only activity (e.g. an agent finishing a turn).
+	*events = nil
+	time.Sleep(cmdActivityDoneIdle + 400*time.Millisecond)
+	if !hasState(*events, termActivityDone) {
+		t.Fatalf("expected done (✓) after output went idle; got %+v", *events)
+	}
+}
+
+// TestTermActivity_CheckOnDoneWithoutCommandStart verifies a command that produced an
+// output-driven spinner still gets a ✓ when the precmd (D) marker fires, even though
+// no command-start (C) marker ever did (broken bash preexec).
+func TestTermActivity_CheckOnDoneWithoutCommandStart(t *testing.T) {
+	badges := captureBadges(t)
+	blockId := "test-check-noC"
+	ResetTermActivity(blockId)
+	// sustained output, no C marker -> spinner
+	deadline := time.Now().Add(cmdActivitySustain + 300*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("output...\n"))
+		time.Sleep(40 * time.Millisecond)
+	}
+	if got := lastSetIcon(*badges); got != "spinner+spin" {
+		t.Fatalf("expected spinner from output; got %q", got)
+	}
+	// command ends: only a D marker fires (precmd), no preceding C
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":0}\x07"))
+	if got := lastSetIcon(*badges); got != "circle-check" {
+		t.Fatalf("expected circle-check after D marker on an output-driven command; got %q; events=%+v", got, *badges)
+	}
+}

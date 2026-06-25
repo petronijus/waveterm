@@ -139,6 +139,10 @@ export class WaveTabView extends WebContentsView {
             webPreferences: {
                 preload: path.join(getElectronAppBasePath(), "preload", "index.cjs"),
                 webviewTag: true,
+                // Keep background (off-screen) tab renderers running at full speed so they
+                // keep processing terminal-activity events — set their tab's working/done
+                // badge and fire OS notifications — instead of being throttled while hidden.
+                backgroundThrottling: false,
             },
         });
         this.createdTs = Date.now();

@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wps"
@@ -36,7 +37,8 @@ import (
 // frontend used (see the old osc-handlers.ts CmdActivity* constants).
 const (
 	cmdActivityDelay     = 1200 * time.Millisecond // ignore the first burst so quick commands don't flash
-	cmdActivityIdle      = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle
+	cmdActivityIdle      = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle (command-tracked)
+	cmdActivityDoneIdle  = 4000 * time.Millisecond // output-only: quiet this long ⇒ "done" ✓ — long enough to ride out an agent's mid-turn pauses without flickering
 	cmdActivitySustain   = 700 * time.Millisecond  // output must flow this long continuously before we call it "working"
 	cmdActivityGap       = 1000 * time.Millisecond // a quiet gap longer than this ends the continuous stretch
 	cmdActivityWorkBytes = 512                     // after a "waiting" bell, a stretch must carry at least this many bytes to count as real work resuming
@@ -115,6 +117,7 @@ type termActivityTracker struct {
 
 	// command activity state machine
 	running      bool
+	outputDriven bool // spinner came from raw output, not a shell-integration command start
 	startTs      time.Time
 	visible      bool      // spinner currently "on"
 	everShown    bool      // spinner shown at least once this command
@@ -337,6 +340,7 @@ func decodeCmd64(cmd64 string) string {
 func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stopIdleTimer()
 	t.running = true
+	t.outputDriven = false
 	t.startTs = time.Now()
 	t.visible = false
 	t.everShown = false
@@ -346,16 +350,31 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stretchBytes = 0
 	t.command = decodeCmd64(cmd64)
 	t.agentKind = agentKindForCommand(t.command)
-	t.setState(termActivityNone) // drop any leftover done/thinking indicator from the previous command
+	// Show the working spinner the instant a command starts (shell-integration C
+	// marker), not only once the output heuristic trips — so even quick/quiet commands
+	// get an indicator. This also replaces any leftover done badge from the last command.
+	t.setState(termActivityWorking)
 }
 
 func (t *termActivityTracker) finishCommand(exitCode *int) {
-	if !t.running {
-		return // already finalized (e.g. D fired, then A)
+	// Finalize on a command-end (D) marker if we were tracking a command (C fired) OR
+	// we showed an output-driven spinner — the latter covers shells where preexec/C is
+	// broken but the precmd D marker still fires, so a command with output still gets a
+	// ✓/✗. A bare prompt with no activity is ignored, and a second A after D no-ops.
+	if !t.running && !t.everShown {
+		return
 	}
 	t.running = false
+	t.outputDriven = false
 	t.stopIdleTimer()
-	visible := t.everShown
+	// End the current output stretch so the marker's own bytes (and the prompt redraw
+	// that follows) don't immediately re-trip the spinner over the ✓ we're about to set.
+	t.activeSince = time.Time{}
+	t.stretchBytes = 0
+	// A shell-integration-tracked command (C→D) always gets a done badge, even if it
+	// was quick or silent — the user wants a ✓/✗ after every command, not only after
+	// long ones.
+	visible := true
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -383,6 +402,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 func (t *termActivityTracker) cancelCommand() {
 	t.stopIdleTimer()
 	t.running = false
+	t.outputDriven = false
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -394,12 +414,12 @@ func (t *termActivityTracker) cancelCommand() {
 // markOutput is called once per output chunk with the chunk length. It runs the
 // "sustained output ⇒ working" heuristic. Assumes t.lock held.
 func (t *termActivityTracker) markOutput(n int) {
-	if !t.running {
-		return
-	}
 	now := time.Now()
-	if now.Sub(t.startTs) < cmdActivityDelay {
-		return // quick command / first burst — don't flash
+	// For a shell-integration-tracked command (C marker fired) skip the first burst so a
+	// quick command doesn't flash. With no C marker (e.g. bash preexec is broken in the
+	// user's shell) we drive the spinner purely off output.
+	if t.running && now.Sub(t.startTs) < cmdActivityDelay {
+		return
 	}
 	if t.activeSince.IsZero() || now.Sub(t.lastOutputTs) > cmdActivityGap {
 		t.activeSince = now
@@ -415,6 +435,12 @@ func (t *termActivityTracker) markOutput(n int) {
 		t.waiting = false
 		t.visible = true
 		t.everShown = true
+		if !t.running {
+			t.outputDriven = true // no command boundary; the idle timer will end it
+			if t.startTs.IsZero() {
+				t.startTs = t.activeSince // anchor duration to when this output run began
+			}
+		}
 		t.setState(termActivityWorking)
 	}
 	if t.visible {
@@ -443,7 +469,13 @@ func (t *termActivityTracker) armIdleTimer() {
 	if t.idleTimer != nil {
 		t.idleTimer.Stop()
 	}
-	t.idleTimer = time.AfterFunc(cmdActivityIdle, func() {
+	// Output-only activity waits out a longer quiet window before calling it "done" so an
+	// agent's mid-turn pauses don't flicker the spinner to a ✓ and back.
+	idleDur := cmdActivityIdle
+	if t.outputDriven {
+		idleDur = cmdActivityDoneIdle
+	}
+	t.idleTimer = time.AfterFunc(idleDur, func() {
 		t.lock.Lock()
 		if gen != t.idleGen {
 			t.lock.Unlock()
@@ -456,7 +488,31 @@ func (t *termActivityTracker) armIdleTimer() {
 			return
 		}
 		t.visible = false
-		t.setState(termActivityThinking)
+		if t.outputDriven {
+			// Output stopped with no shell-integration command to bound it (broken C/D
+			// markers, or an interactive agent like Claude between turns). The spinner has
+			// already ridden out a longer quiet window (cmdActivityDoneIdle) without new
+			// output, so treat this as "done" and show a ✓ — short mid-task pauses keep the
+			// spinner instead of flickering. A new burst of output starts a fresh spinner,
+			// and a later real D marker upgrades the ✓ to the true ✓/✗ exit status.
+			t.outputDriven = false
+			durMs := int64(0)
+			if !t.startTs.IsZero() {
+				durMs = time.Since(t.startTs).Milliseconds()
+			}
+			t.startTs = time.Time{}
+			t.everShown = false
+			t.curState = termActivityDone
+			t.outbox = append(t.outbox, baseds.TermActivityData{
+				BlockId:    t.blockId,
+				State:      termActivityDone,
+				Visible:    true,
+				Command:    t.command,
+				DurationMs: durMs,
+			})
+		} else {
+			t.setState(termActivityThinking) // command still running, output just paused
+		}
 		out := t.outbox
 		t.outbox = nil
 		t.lock.Unlock()
@@ -488,7 +544,10 @@ func (t *termActivityTracker) setState(state string) {
 }
 
 // publishActivity is a package var so tests can capture emitted events instead of
-// routing them through the broker.
+// routing them through the broker. Besides the Event_TermActivity stream (which the
+// frontend uses for focus-aware OS notifications), it sets the tab's working/done
+// badge straight from the backend so the indicator shows on every tab — active,
+// background, or not-yet-opened — without depending on a live renderer.
 var publishActivity = func(events []baseds.TermActivityData) {
 	for _, ev := range events {
 		wps.Broker.Publish(wps.WaveEvent{
@@ -496,5 +555,74 @@ var publishActivity = func(events []baseds.TermActivityData) {
 			Scopes: []string{waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()},
 			Data:   ev,
 		})
+		publishActivityBadge(ev)
+	}
+}
+
+const activityBadgePriority = 5
+
+var (
+	activityBadgeIdsLock sync.Mutex
+	activityBadgeIds     = map[string]string{} // blockId -> stable uuidv7 badge id
+)
+
+func activityBadgeId(blockId string) string {
+	activityBadgeIdsLock.Lock()
+	defer activityBadgeIdsLock.Unlock()
+	id, ok := activityBadgeIds[blockId]
+	if !ok {
+		id = uuid.Must(uuid.NewV7()).String()
+		activityBadgeIds[blockId] = id
+	}
+	return id
+}
+
+// publishBadgeEvent is a package var so tests can capture emitted badge events.
+var publishBadgeEvent = func(oref string, be baseds.BadgeEvent) {
+	wps.Broker.Publish(wps.WaveEvent{
+		Event:  wps.Event_Badge,
+		Scopes: []string{oref},
+		Data:   be,
+	})
+}
+
+// publishActivityBadge maps a per-block activity state to a tab badge and publishes
+// it. It clears-by-id first so the set always lands (the badge store only overwrites
+// a strictly-higher badge; reusing the id + clearing sidesteps that). Activity badges
+// are pidlinked so the frontend's focus-clear leaves them alone — they persist until
+// the block's next state change replaces them.
+func publishActivityBadge(ev baseds.TermActivityData) {
+	oref := waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()
+	badgeId := activityBadgeId(ev.BlockId)
+	var badge *baseds.Badge
+	switch ev.State {
+	case termActivityWorking, termActivityThinking:
+		// "thinking" = command still running but output paused — keep the spinner so a
+		// long command's indicator doesn't blink out when it goes quiet. pidlinked so
+		// focusing the running tab doesn't clear the live spinner (replaced on done/none).
+		badge = &baseds.Badge{BadgeId: badgeId, Icon: "spinner+spin", Color: "var(--accent-color)", Priority: activityBadgePriority, PidLinked: true}
+	case termActivityWaiting:
+		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}
+	case termActivityDone:
+		if ev.Visible {
+			// Not pidlinked: the ✓/✗ is an attention cue for a tab you're NOT on. When you
+			// focus the tab it clears (app.tsx focus-clear) shortly after — you've seen it.
+			// On background tabs it persists until that block's next state change. (The
+			// clear/set broker race that used to wipe it instantly is fixed in the badge
+			// store's same-id update, so pidlinked is no longer needed to protect it.)
+			if ev.ExitCode == nil || *ev.ExitCode == 0 {
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-check", Color: "var(--success-color)", Priority: activityBadgePriority}
+			} else {
+				badge = &baseds.Badge{BadgeId: badgeId, Icon: "circle-xmark", Color: "var(--error-color)", Priority: activityBadgePriority}
+			}
+		}
+	}
+	// Single event per transition: a set with the stable badgeid updates the badge in
+	// place (the store applies same-id updates), and a clear-by-id removes it. Avoids
+	// the clear-then-set broker race that wiped the badge the instant it appeared.
+	if badge != nil {
+		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, Badge: badge})
+	} else {
+		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, ClearById: badgeId})
 	}
 }

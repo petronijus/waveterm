@@ -220,7 +220,9 @@ function setupBadgesSubscription() {
                 return;
             }
             const existing = globalStore.get(curAtom);
-            if (existing == null || cmpBadge(data.badge, existing) > 0) {
+            // Same badgeid ⇒ an in-place update of the same badge (e.g. a terminal's
+            // spinner→check), so always apply it; otherwise only a higher badge wins.
+            if (existing == null || existing.badgeid === data.badge.badgeid || cmpBadge(data.badge, existing) > 0) {
                 globalStore.set(curAtom, data.badge);
             }
         },
