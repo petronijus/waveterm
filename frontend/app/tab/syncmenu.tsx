@@ -121,7 +121,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
                             <ExpandableMenuItemRightElement>
                                 <div className="flex items-center gap-2">
                                     <i
-                                        className="fa fa-arrows-rotate text-secondary hover:text-accent cursor-pointer"
+                                        className="fa fa-floppy-disk text-secondary hover:text-accent cursor-pointer"
                                         title="Re-save this layout (overwrite with the current layout)"
                                         onClick={(e) => {
                                             e.stopPropagation();
