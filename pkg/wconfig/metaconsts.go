@@ -62,6 +62,7 @@ const (
 	ConfigKey_TermDurable                    = "term:durable"
 	ConfigKey_TermShowSplitButtons           = "term:showsplitbuttons"
 	ConfigKey_TermTrimTrailingWhitespace     = "term:trimtrailingwhitespace"
+	ConfigKey_TermActivityDebug              = "term:activitydebug"
 
 	ConfigKey_EditorMinimapEnabled           = "editor:minimapenabled"
 	ConfigKey_EditorStickyScrollEnabled      = "editor:stickyscrollenabled"

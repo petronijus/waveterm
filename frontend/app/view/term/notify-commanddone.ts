@@ -5,6 +5,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { atoms, globalStore } from "@/store/global";
 import { fireAndForget } from "@/util/util";
+import { activityLog } from "./activity-log";
 
 // Native OS notifications for terminal activity, driven by the global
 // term-activity subscriber (which derives state from backend Event_TermActivity).
@@ -59,12 +60,14 @@ function flush(): void {
     }
     // refocused during the coalesce window — they're back, don't interrupt.
     if (globalStore.get(atoms.documentHasFocus)) {
+        activityLog(`notify flush SUPPRESSED (window refocused during ${CoalesceWindowMs}ms coalesce, dropped ${events.length})`);
         return;
     }
     const last = events[events.length - 1];
     const single = events.length === 1;
     const title = single ? last.tabName : `${events.length} commands finished`;
     const body = single ? last.message : events.map((e) => `${e.tabName}: ${e.message}`).join("\n");
+    activityLog(`notify flush FIRE (${events.length} event(s)) title=${JSON.stringify(title)}`);
     // route to the electron main process (where handle_notify lives) — the
     // default route is wavesrv, which has no "notify" handler.
     fireAndForget(() =>
@@ -96,6 +99,7 @@ export function queueCommandDoneNotification(event: DoneEvent): void {
 // confirmed the window is unfocused. Clicking it jumps to the tab.
 export function fireAgentWaitingNotification(target: NotifyTarget, agentKind: string): void {
     const label = agentKind ? agentKind[0].toUpperCase() + agentKind.slice(1) : "Agent";
+    activityLog(`notify agent-waiting FIRE (label=${label} tab=${target.tabName})`);
     fireAndForget(() =>
         RpcApi.NotifyCommand(
             TabRpcClient,

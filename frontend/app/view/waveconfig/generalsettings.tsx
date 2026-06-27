@@ -131,6 +131,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
     const thresholdMs = useAtomValue(getSettingsKeyAtom("notify:commanddonethresholdms")) ?? DefaultThresholdMs;
     const syncEnabled = useAtomValue(getSettingsKeyAtom("sync:enabled")) ?? false;
     const syncFolderPath = useAtomValue(getSettingsKeyAtom("sync:folderpath")) ?? "";
+    const activityDebug = useAtomValue(getSettingsKeyAtom("term:activitydebug")) ?? false;
 
     const [syncMode, setSyncMode] = useState<"folder" | "webdav">(syncFolderPath ? "folder" : "webdav");
 
@@ -361,6 +362,23 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                         )}
                     </div>
                 </div>
+            </section>
+
+            <section className="flex flex-col gap-2">
+                <h2 className="text-base font-semibold">Debug</h2>
+                <Toggle
+                    id="term-activitydebug"
+                    checked={activityDebug}
+                    onChange={(v) => setConfigKey("term:activitydebug", v)}
+                    label="Debug mode (tab activity logging)"
+                    className="!justify-start -ml-[5px]"
+                />
+                <p className="text-xs text-muted-foreground ml-0.5">
+                    Writes detailed <code>[tabactivity]</code> diagnostics for the tab
+                    working/done indicator and command-done notifications to{" "}
+                    <code>waveapp.log</code>. Leave off unless you're chasing an
+                    indicator/notification bug — it's verbose.
+                </p>
             </section>
         </div>
     );

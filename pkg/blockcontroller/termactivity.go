@@ -22,7 +22,9 @@ package blockcontroller
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +32,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 )
 
@@ -133,7 +136,55 @@ type termActivityTracker struct {
 
 	curState string // last published state
 
+	// debug-only throttled output logging (term:activitydebug)
+	lastFeedLogTs time.Time
+	bytesSinceLog int
+	chunksSinceLog int
+
 	outbox []baseds.TermActivityData
+}
+
+// activityDebugEnabled reports whether the term:activitydebug setting is on. Cheap
+// (the watcher returns a cached *FullConfigType) so it's fine to gate hot-path logs.
+func activityDebugEnabled() bool {
+	w := wconfig.GetWatcher()
+	if w == nil {
+		return false
+	}
+	return w.GetFullConfig().Settings.TermActivityDebug
+}
+
+// dbg emits a single tagged diagnostic line when term:activitydebug is on. The
+// "[tabactivity]" tag (under wavesrv's "[wavesrv]" prefix) lands in waveapp.log and is
+// grep-friendly. Assumes t.lock held by the caller (it only reads tracker fields the
+// caller already owns). blk is shortened so lines stay scannable.
+func (t *termActivityTracker) dbg(format string, args ...any) {
+	if !activityDebugEnabled() {
+		return
+	}
+	log.Printf("[tabactivity] blk=%s "+format, append([]any{shortBlk(t.blockId)}, args...)...)
+}
+
+func shortBlk(blockId string) string {
+	if len(blockId) > 8 {
+		return blockId[:8]
+	}
+	return blockId
+}
+
+func truncCmd(cmd string) string {
+	cmd = strings.ReplaceAll(cmd, "\n", " ")
+	if len(cmd) > 60 {
+		return cmd[:60] + "…"
+	}
+	return cmd
+}
+
+func exitCodeStr(ec *int) string {
+	if ec == nil {
+		return "nil"
+	}
+	return strconv.Itoa(*ec)
 }
 
 func makeTermActivityTracker(blockId string) *termActivityTracker {
@@ -176,6 +227,7 @@ func ResetTermActivity(blockId string) {
 		return
 	}
 	t.lock.Lock()
+	t.dbg("reset tracker (prevState=%s running=%v visible=%v)", t.curState, t.running, t.visible)
 	t.stopIdleTimer()
 	var out []baseds.TermActivityData
 	if t.curState != termActivityNone {
@@ -350,6 +402,7 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stretchBytes = 0
 	t.command = decodeCmd64(cmd64)
 	t.agentKind = agentKindForCommand(t.command)
+	t.dbg("osc-C start command=%q agent=%q", truncCmd(t.command), t.agentKind)
 	// Show the working spinner the instant a command starts (shell-integration C
 	// marker), not only once the output heuristic trips — so even quick/quiet commands
 	// get an indicator. This also replaces any leftover done badge from the last command.
@@ -362,6 +415,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 	// broken but the precmd D marker still fires, so a command with output still gets a
 	// ✓/✗. A bare prompt with no activity is ignored, and a second A after D no-ops.
 	if !t.running && !t.everShown {
+		t.dbg("osc-D/A end ignored (no command tracked, never shown) exit=%s", exitCodeStr(exitCode))
 		return
 	}
 	t.running = false
@@ -388,6 +442,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 	// tells the frontend whether to show a badge; DurationMs lets it duration-gate the
 	// OS notification even for a long but silent command that never showed a spinner.
 	t.curState = termActivityDone
+	t.dbg("osc-D/A end -> done exit=%s durMs=%d command=%q (emit visible=%v)", exitCodeStr(exitCode), durMs, truncCmd(t.command), visible)
 	t.outbox = append(t.outbox, baseds.TermActivityData{
 		BlockId:    t.blockId,
 		State:      termActivityDone,
@@ -400,6 +455,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 }
 
 func (t *termActivityTracker) cancelCommand() {
+	t.dbg("osc-R cancel (was running=%v visible=%v)", t.running, t.visible)
 	t.stopIdleTimer()
 	t.running = false
 	t.outputDriven = false
@@ -415,6 +471,9 @@ func (t *termActivityTracker) cancelCommand() {
 // "sustained output ⇒ working" heuristic. Assumes t.lock held.
 func (t *termActivityTracker) markOutput(n int) {
 	now := time.Now()
+	t.bytesSinceLog += n
+	t.chunksSinceLog++
+	t.maybeFeedLog(now)
 	// For a shell-integration-tracked command (C marker fired) skip the first burst so a
 	// quick command doesn't flash. With no C marker (e.g. bash preexec is broken in the
 	// user's shell) we drive the spinner purely off output.
@@ -441,6 +500,8 @@ func (t *termActivityTracker) markOutput(n int) {
 				t.startTs = t.activeSince // anchor duration to when this output run began
 			}
 		}
+		t.dbg("spinner on (stretch=%dms bytes=%d running=%v outputDriven=%v)",
+			now.Sub(t.activeSince).Milliseconds(), t.stretchBytes, t.running, t.outputDriven)
 		t.setState(termActivityWorking)
 	}
 	if t.visible {
@@ -448,13 +509,43 @@ func (t *termActivityTracker) markOutput(n int) {
 	}
 }
 
+// maybeFeedLog emits at most one throttled "output still flowing" line per second when
+// term:activitydebug is on. This is the line that reveals a spinner kept alive by a TUI
+// or agent dribbling output (each chunk re-arms the idle timer), which presents to the
+// user as "spinner spinning but terminal idle". Assumes t.lock held.
+func (t *termActivityTracker) maybeFeedLog(now time.Time) {
+	if !activityDebugEnabled() {
+		return
+	}
+	if t.lastFeedLogTs.IsZero() {
+		t.lastFeedLogTs = now
+		return
+	}
+	if now.Sub(t.lastFeedLogTs) < time.Second {
+		return
+	}
+	sinceOut := int64(0)
+	if !t.lastOutputTs.IsZero() {
+		sinceOut = now.Sub(t.lastOutputTs).Milliseconds()
+	}
+	t.dbg("feed %dB/%dchunks in %dms state=%s running=%v outputDriven=%v visible=%v waiting=%v sinceLastOut=%dms",
+		t.bytesSinceLog, t.chunksSinceLog, now.Sub(t.lastFeedLogTs).Milliseconds(),
+		t.curState, t.running, t.outputDriven, t.visible, t.waiting, sinceOut)
+	t.lastFeedLogTs = now
+	t.bytesSinceLog = 0
+	t.chunksSinceLog = 0
+}
+
 func (t *termActivityTracker) markWaiting() {
 	if !t.running {
+		t.dbg("bell/osc9 ignored (no command running)")
 		return // no command active — a bare-shell bell, not an agent waiting
 	}
 	if t.agentKind == "" {
+		t.dbg("bell/osc9 ignored (command %q is not an AI agent)", truncCmd(t.command))
 		return // scoped to AI agents' "your turn" signal, not arbitrary program bells
 	}
+	t.dbg("bell/osc9 -> waiting (agent=%q)", t.agentKind)
 	t.stopIdleTimer()
 	t.waiting = true
 	t.visible = false
@@ -484,11 +575,13 @@ func (t *termActivityTracker) armIdleTimer() {
 		t.idleTimer = nil
 		t.activeSince = time.Time{}
 		if !t.visible {
+			t.dbg("idle-fire after %dms but not visible — no-op", idleDur.Milliseconds())
 			t.lock.Unlock()
 			return
 		}
 		t.visible = false
 		if t.outputDriven {
+			t.dbg("idle-fire after %dms -> done (output-only, no command boundary)", idleDur.Milliseconds())
 			// Output stopped with no shell-integration command to bound it (broken C/D
 			// markers, or an interactive agent like Claude between turns). The spinner has
 			// already ridden out a longer quiet window (cmdActivityDoneIdle) without new
@@ -511,6 +604,7 @@ func (t *termActivityTracker) armIdleTimer() {
 				DurationMs: durMs,
 			})
 		} else {
+			t.dbg("idle-fire after %dms -> thinking (command still running, output paused)", idleDur.Milliseconds())
 			t.setState(termActivityThinking) // command still running, output just paused
 		}
 		out := t.outbox
@@ -534,6 +628,8 @@ func (t *termActivityTracker) setState(state string) {
 	if t.curState == state {
 		return
 	}
+	t.dbg("transition %s -> %s (running=%v outputDriven=%v visible=%v waiting=%v agent=%q)",
+		t.curState, state, t.running, t.outputDriven, t.visible, t.waiting, t.agentKind)
 	t.curState = state
 	t.outbox = append(t.outbox, baseds.TermActivityData{
 		BlockId:   t.blockId,
@@ -621,8 +717,14 @@ func publishActivityBadge(ev baseds.TermActivityData) {
 	// place (the store applies same-id updates), and a clear-by-id removes it. Avoids
 	// the clear-then-set broker race that wiped the badge the instant it appeared.
 	if badge != nil {
+		if activityDebugEnabled() {
+			log.Printf("[tabactivity] blk=%s badge set icon=%s (state=%s)", shortBlk(ev.BlockId), badge.Icon, ev.State)
+		}
 		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, Badge: badge})
 	} else {
+		if activityDebugEnabled() {
+			log.Printf("[tabactivity] blk=%s badge clear (state=%s)", shortBlk(ev.BlockId), ev.State)
+		}
 		publishBadgeEvent(oref, baseds.BadgeEvent{ORef: oref, ClearById: badgeId})
 	}
 }
