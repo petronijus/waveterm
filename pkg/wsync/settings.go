@@ -137,12 +137,32 @@ func applyConfigFiles(files map[string]json.RawMessage) error {
 				return err
 			}
 			data = merged
+		} else {
+			// Other synced config JSON (connections.json, projects.json, …) is written
+			// through as-is from the bundle; pretty-print it so it lands one key per line
+			// like Wave's own writes instead of a minified single-line blob.
+			data = prettyConfigBytes(data)
 		}
 		if err := atomicWriteFile(filepath.Join(dir, filepath.FromSlash(rel)), data); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// prettyConfigBytes re-marshals a config JSON object the way Wave writes its config
+// files (key-ordered, indented). A non-object body (or a marshal error) is returned
+// unchanged so anything unexpected still round-trips.
+func prettyConfigBytes(raw []byte) []byte {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	out, err := wconfig.MarshalConfigJSON(m)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // stripSyncKeys removes sync:* keys from a settings.json body. A non-object body is
