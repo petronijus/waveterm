@@ -157,7 +157,7 @@ func stripSyncKeys(raw []byte) []byte {
 			delete(m, k)
 		}
 	}
-	out, err := json.Marshal(m)
+	out, err := wconfig.MarshalConfigJSON(m)
 	if err != nil {
 		return raw
 	}
@@ -179,7 +179,9 @@ func mergeSettings(localPath string, incoming json.RawMessage) ([]byte, error) {
 	for k, v := range in {
 		local[k] = v
 	}
-	return json.Marshal(local)
+	// Pretty-print (key-ordered, indented) so a synced settings.json stays readable —
+	// one key per line — instead of collapsing to a single minified noodle.
+	return wconfig.MarshalConfigJSON(local)
 }
 
 // isSafeRelConfigPath allows files inside the config dir (subdirs ok) but rejects

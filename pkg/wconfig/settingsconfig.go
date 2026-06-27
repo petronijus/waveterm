@@ -881,6 +881,14 @@ func jsonMarshalConfigInOrder(m waveobj.MetaMapType) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// MarshalConfigJSON pretty-prints a config map the same way Wave writes its config
+// files (key-ordered, 2-space indented, one key per line). Exported so other writers
+// (e.g. the settings-sync merge) produce the same readable layout instead of a
+// single-line json.Marshal blob.
+func MarshalConfigJSON(m map[string]any) ([]byte, error) {
+	return jsonMarshalConfigInOrder(waveobj.MetaMapType(m))
+}
+
 var dummyNumber json.Number
 
 func convertJsonNumber(num json.Number, ctype reflect.Type) (interface{}, error) {
