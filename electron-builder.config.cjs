@@ -117,9 +117,16 @@ const config = {
         // this should remove /usr/lib/.build-id/ links which can conflict with other electron apps like slack
         fpm: ["--rpm-rpmbuild-define", "_build_id_links none"],
     },
+    // pj fork: point auto-update at THIS fork's own GitHub releases, never the official
+    // Wave server (dl.waveterm.dev). The official feed would hand the fork a stock-Wave
+    // build and silently overwrite the fork's frontend (lost sync button / activity
+    // indicator / theme work). With the feed scoped to petronijus/waveterm the updater
+    // can only ever offer fork builds — upstream changes still reach the fork through git
+    // merges + a fork release, so we always run the fork and never revert to stock.
     publish: {
-        provider: "generic",
-        url: "https://dl.waveterm.dev/releases-w2",
+        provider: "github",
+        owner: "petronijus",
+        repo: "waveterm",
     },
     afterPack: (context) => {
         // This is a workaround to restore file permissions to the wavesrv binaries on macOS after packaging the universal binary.
