@@ -15,11 +15,6 @@ import { cn, fireAndForget } from "@/util/util";
 import { memo, useCallback, useState } from "react";
 import "./syncmenu.scss";
 
-// Match the left-hand tab-bar buttons (Wave AI / workspace): same height, padding,
-// radius, hover treatment, and accent-colored icon.
-const SyncButtonClass =
-    "flex h-[22px] px-3.5 mb-1 items-center justify-center rounded-md box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] text-accent";
-
 type SyncMenuProps = {
     tabId: string;
 };
@@ -89,7 +84,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
 
     return (
         <Popover className="sync-menu-popover" placement="bottom-end" onDismiss={() => setNaming(false)}>
-            <PopoverButton className={SyncButtonClass} as="div" title="Sync settings & layouts" onClick={refresh}>
+            <PopoverButton className="sync-button" as="div" title="Sync settings & layouts" onClick={refresh}>
                 <i className={cn("fa", busy ? "fa-spinner fa-spin" : "fa-cloud")} />
             </PopoverButton>
             <PopoverContent className="sync-menu-content">

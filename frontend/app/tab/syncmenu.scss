@@ -1,6 +1,35 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// The trigger is a PopoverButton, which renders the shared <Button> ("wave-button solid")
+// — that solid styling is why plain Tailwind classes couldn't make it match the toolbar.
+// Override it here to look 1:1 like the Wave AI button to its left: slim 22px pill, accent
+// icon, bg-hover base, bg-hoverbg on hover and while the popover is open (is-active).
+.popover.sync-menu-popover .sync-button {
+    display: flex;
+    height: 22px;
+    padding: 0 14px !important;
+    margin: 0 4px 4px 0;
+    justify-content: flex-end;
+    align-items: center;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--accent-color) !important;
+    background-color: var(--color-hover) !important;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: var(--color-hoverbg) !important;
+    }
+
+    &.is-active {
+        background-color: var(--color-hoverbg) !important;
+    }
+}
+
 .sync-menu-content {
     min-height: auto;
     display: flex;
