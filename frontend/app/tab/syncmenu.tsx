@@ -15,8 +15,10 @@ import { cn, fireAndForget } from "@/util/util";
 import { memo, useCallback, useState } from "react";
 import "./syncmenu.scss";
 
+// Match the left-hand tab-bar buttons (Wave AI / workspace): same height, padding,
+// radius, hover treatment, and accent-colored icon.
 const SyncButtonClass =
-    "flex h-[22px] px-3.5 mb-1 items-center justify-center rounded-md box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] text-secondary";
+    "flex h-[22px] px-3.5 mb-1 items-center justify-center rounded-md box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] text-accent";
 
 type SyncMenuProps = {
     tabId: string;
@@ -62,6 +64,8 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
     const saveSettings = () => run(() => RpcApi.SaveSettingsCommand(TabRpcClient), "Settings saved");
     const loadSettings = () => run(() => RpcApi.LoadSettingsCommand(TabRpcClient), "Settings loaded");
     const loadLayout = (name: string) => run(() => RpcApi.LoadLayoutCommand(TabRpcClient, { tabid: tabId, name }));
+    const resaveLayout = (name: string) =>
+        run(() => RpcApi.SaveLayoutCommand(TabRpcClient, { tabid: tabId, name }), `Layout "${name}" re-saved`);
     const deleteLayout = (name: string) =>
         run(async () => {
             await RpcApi.DeleteLayoutCommand(TabRpcClient, name);
@@ -112,14 +116,24 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
                             </ExpandableMenuItemLeftElement>
                             <div className="content">{name}</div>
                             <ExpandableMenuItemRightElement>
-                                <i
-                                    className="fa fa-trash text-secondary hover:text-error cursor-pointer"
-                                    title="Delete layout"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        deleteLayout(name);
-                                    }}
-                                />
+                                <div className="flex items-center gap-2">
+                                    <i
+                                        className="fa fa-arrows-rotate text-secondary hover:text-accent cursor-pointer"
+                                        title="Re-save this layout (overwrite with the current layout)"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            resaveLayout(name);
+                                        }}
+                                    />
+                                    <i
+                                        className="fa fa-trash text-secondary hover:text-error cursor-pointer"
+                                        title="Delete layout"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteLayout(name);
+                                        }}
+                                    />
+                                </div>
                             </ExpandableMenuItemRightElement>
                         </ExpandableMenuItem>
                     ))}
