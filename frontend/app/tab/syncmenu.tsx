@@ -3,6 +3,7 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { createBlock } from "@/store/global";
 import {
     ExpandableMenu,
     ExpandableMenuItem,
@@ -58,6 +59,7 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
 
     const saveSettings = () => run(() => RpcApi.SaveSettingsCommand(TabRpcClient), "Settings saved");
     const loadSettings = () => run(() => RpcApi.LoadSettingsCommand(TabRpcClient), "Settings loaded");
+    const openSyncSettings = () => fireAndForget(() => createBlock({ meta: { view: "waveconfig" } }, false, true));
     const loadLayout = (name: string) => run(() => RpcApi.LoadLayoutCommand(TabRpcClient, { tabid: tabId, name }));
     const resaveLayout = (name: string) =>
         run(() => RpcApi.SaveLayoutCommand(TabRpcClient, { tabid: tabId, name }), `Layout "${name}" re-saved`);
@@ -101,6 +103,12 @@ const SyncMenu = memo(({ tabId }: SyncMenuProps) => {
                             <i className="fa fa-cloud-arrow-down" />
                         </ExpandableMenuItemLeftElement>
                         <div className="content">Load settings</div>
+                    </ExpandableMenuItem>
+                    <ExpandableMenuItem onClick={openSyncSettings}>
+                        <ExpandableMenuItemLeftElement>
+                            <i className="fa fa-gear" />
+                        </ExpandableMenuItemLeftElement>
+                        <div className="content">Sync settings…</div>
                     </ExpandableMenuItem>
 
                     <ExpandableMenuItemGroupTitle>Layouts</ExpandableMenuItemGroupTitle>
