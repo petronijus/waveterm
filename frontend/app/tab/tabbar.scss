@@ -11,8 +11,11 @@
     width: 100vw;
     -webkit-app-region: drag;
     height: max(33px, calc(33px * var(--zoomfactor-inv)));
-    backdrop-filter: blur(20px);
-    background: var(--tabbar-bg-color, rgba(0, 0, 0, 0.35));
+    // Match the widgets sidebar / window background. NOTE: themes (e.g. dracula) DEFINE
+    // --tabbar-bg-color to a lighter translucent overlay, so var(--tabbar-bg-color, …) can't
+    // be overridden via its fallback — use --main-bg-color directly. Themable: follows the
+    // theme's main background, same colour the (transparent) widgets sidebar shows.
+    background: var(--main-bg-color);
     flex-shrink: 0;
 
     button {
