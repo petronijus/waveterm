@@ -455,7 +455,7 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
         return null;
     }
     return (
-        <div ref={blockRef} className="flex flex-col w-full h-full min-h-0">
+        <div ref={blockRef} className="flex flex-col grow min-h-0">
             <SysinfoViewInner key={connStatus?.connection ?? "local"} blockId={blockId} model={model} />
             <BlockHeaderSuggestionControl
                 blockRef={blockRef}
