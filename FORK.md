@@ -84,6 +84,25 @@ git checkout feat/<task> && git rebase main
   into `wavesrv` startup, a "Sync now" RPC, status UI, and a native folder picker.
 - **Folder bookmarks ("projects")** — bookmark folders, surfaced across the Files view, the
   connection dropdown, and a two-pane Connections & Projects settings panel.
+- **System monitor — project resource attribution** — the sysinfo (CPU/Mem) block can show how
+  much of the system load is *the project you're building*, not just global totals. It attributes
+  the tracked project's **host processes** (those whose cwd is under the project path) **and its
+  containers** (Docker **and** Podman, spoken to directly over the engine unix socket — no CLI/SDK
+  dep — matched by the `com.docker.compose.project` label *or* an image/container-name token, so
+  plain `docker run` builds are caught too) into dedicated series (`cpu/mem:proj:host` in accent,
+  `cpu/mem:proj:docker` in docker-blue). Per-process and per-container CPU% is normalized to a
+  share of *total* capacity, so it overlays/stacks under the system line. New plot views: "CPU +
+  Project", "Mem + Project", and a combined **"CPU & Mem + Project"** dual-chart view. A crosshairs
+  button in the block header opens a folder picker that sets the tracked project
+  (`sysinfo:trackpath` / `sysinfo:dockerproject`) — no hand-editing `settings.json`.
+- **UI & robustness polish** — renderer-crash **auto-recovery** (a crashed tab reloads its
+  renderer in place, with a loop guard, while the backend/shells survive) + logging; autoupdate
+  feed pointed at the fork's **own GitHub Releases** (otherwise the fork silently reverts to stock
+  Wave); the top tab bar themed to match the widgets sidebar; the cloud-sync button restyled to the
+  accent style, flush to the window edge, with a per-layout save action and a "Sync settings…"
+  link; the terminal header cwd shown as `~/…` for local connections (matching the files/git
+  panels); synced config files pretty-printed instead of one long line; and a Wave Config
+  **Debug-mode** toggle for the tab-activity logging.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
   Linux & Windows builds run on local machines — no hosted CI).
 
@@ -91,6 +110,11 @@ git checkout feat/<task> && git rebase main
 
 - **Sync — window/tab layout** — `wsync` currently converges settings; extend it to also sync
   open tabs and window layout between machines.
+- **System monitor — manual tracker** — an escape-hatch to also count a process tree / container /
+  cgroup that the cwd + container heuristics miss (e.g. `abuild`/`fakeroot`/`chroot` sandboxes,
+  whose cwd is inside the sandbox and which aren't Docker). Remaining out-of-scope blind spots:
+  remote/VM builds, short-lived compiler swarms (1 s sampling undercounts them), and
+  kernel-IO/GPU/network load (not captured by CPU + mem).
 
 ## Known upstream bug to fix / report
 
