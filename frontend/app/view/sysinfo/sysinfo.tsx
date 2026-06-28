@@ -69,10 +69,13 @@ const PlotTypes: object = {
         return ["cpu", "mem:used"];
     },
     "CPU + Project": function (_dataItem: DataItem): Array<string> {
-        return ["cpu", "cpu:proj:host"];
+        return ["cpu+cpu:proj:host"];
     },
     "Mem + Project": function (_dataItem: DataItem): Array<string> {
-        return ["mem:used", "mem:proj:host"];
+        return ["mem:used+mem:proj:host"];
+    },
+    "CPU & Mem + Project": function (_dataItem: DataItem): Array<string> {
+        return ["cpu+cpu:proj:host", "mem:used+mem:proj:host"];
     },
     "All CPU": function (dataItem: DataItem): Array<string> {
         return Object.keys(dataItem)
@@ -417,10 +420,12 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
     return <SysinfoViewInner key={connStatus?.connection ?? "local"} blockId={blockId} model={model} />;
 }
 
-type SingleLinePlotProps = {
+type MultiLinePlotProps = {
     plotData: Array<DataItem>;
-    yval: string;
-    yvalMeta: TimeSeriesMeta;
+    // a chart group: a single series name, or several joined with "+" to overlay them in ONE
+    // chart (e.g. "cpu+cpu:proj:host" = system CPU with the tracked project's CPU on top).
+    yvalGroup: string;
+    plotMeta: Map<string, TimeSeriesMeta>;
     blockId: string;
     defaultColor: string;
     title?: boolean;
@@ -428,72 +433,81 @@ type SingleLinePlotProps = {
     targetLen: number;
 };
 
-function SingleLinePlot({
+function MultiLinePlot({
     plotData,
-    yval,
-    yvalMeta,
+    yvalGroup,
+    plotMeta,
     blockId,
     defaultColor,
     title = false,
     sparkline = false,
     targetLen,
-}: SingleLinePlotProps) {
+}: MultiLinePlotProps) {
     const containerRef = React.useRef<HTMLInputElement>(null);
     const domRect = useDimensionsWithExistingRef(containerRef, 300);
     const plotHeight = domRect?.height ?? 0;
     const plotWidth = domRect?.width ?? 0;
     const marks: Plot.Markish[] = [];
-    const decimalPlaces = yvalMeta?.decimalPlaces ?? 0;
-    let color = yvalMeta?.color;
-    if (!color) {
-        color = defaultColor;
-    }
+
+    const yvals = yvalGroup.split("+");
+    const primary = yvals[0];
+    const primaryMeta = plotMeta.get(primary);
+    const primaryColor = primaryMeta?.color || defaultColor;
+    const decimalPlaces = primaryMeta?.decimalPlaces ?? 0;
+    const labelY = primaryMeta?.label ?? "?";
+
+    // gradient fill under the primary (total) series so the overlaid project line reads clearly.
     marks.push(
         () => htl.svg`<defs>
-      <linearGradient id="gradient-${blockId}-${yval}" gradientTransform="rotate(90)">
-        <stop offset="0%" stop-color="${color}" stop-opacity="0.7" />
-        <stop offset="100%" stop-color="${color}" stop-opacity="0" />
+      <linearGradient id="gradient-${blockId}-${primary}" gradientTransform="rotate(90)">
+        <stop offset="0%" stop-color="${primaryColor}" stop-opacity="0.7" />
+        <stop offset="100%" stop-color="${primaryColor}" stop-opacity="0" />
       </linearGradient>
 	      </defs>`
     );
-
-    marks.push(
-        Plot.lineY(plotData, {
-            stroke: color,
-            strokeWidth: 2,
-            x: "ts",
-            y: yval,
-        })
-    );
-
-    // only add the gradient for single items
     marks.push(
         Plot.areaY(plotData, {
-            fill: `url(#gradient-${blockId}-${yval})`,
+            fill: `url(#gradient-${blockId}-${primary})`,
             x: "ts",
-            y: yval,
+            y: primary,
         })
     );
-    if (title) {
+    // one line per series in the group (the project overlay gets its own meta colour).
+    for (const yv of yvals) {
+        const m = plotMeta.get(yv);
         marks.push(
-            Plot.text([yvalMeta?.name], {
+            Plot.lineY(plotData, {
+                stroke: m?.color || defaultColor,
+                strokeWidth: 2,
+                x: "ts",
+                y: yv,
+            })
+        );
+    }
+    if (title) {
+        const groupTitle = yvals
+            .map((yv) => plotMeta.get(yv)?.name)
+            .filter((n) => n)
+            .join("  ·  ");
+        marks.push(
+            Plot.text([groupTitle], {
                 frameAnchor: "top-left",
                 dx: 4,
                 fill: "var(--grey-text-color)",
             })
         );
     }
-    const labelY = yvalMeta?.label ?? "?";
+    // hover interactions track the primary (total) series.
     marks.push(
         Plot.ruleX(
             plotData,
-            Plot.pointerX({ x: "ts", py: yval, stroke: "var(--grey-text-color)", strokeWidth: 1, strokeDasharray: 2 })
+            Plot.pointerX({ x: "ts", py: primary, stroke: "var(--grey-text-color)", strokeWidth: 1, strokeDasharray: 2 })
         )
     );
     marks.push(
         Plot.ruleY(
             plotData,
-            Plot.pointerX({ px: "ts", y: yval, stroke: "var(--grey-text-color)", strokeWidth: 1, strokeDasharray: 2 })
+            Plot.pointerX({ px: "ts", y: primary, stroke: "var(--grey-text-color)", strokeWidth: 1, strokeDasharray: 2 })
         )
     );
     marks.push(
@@ -501,12 +515,17 @@ function SingleLinePlot({
             plotData,
             Plot.pointerX({
                 x: "ts",
-                y: yval,
+                y: primary,
                 fill: "var(--main-bg-color)",
                 anchor: "middle",
                 dy: -30,
                 title: (d) =>
-                    `${dayjs.unix(d.ts / 1000).format("HH:mm:ss")} ${Number(d[yval]).toFixed(decimalPlaces)}${labelY}`,
+                    yvals
+                        .map((yv) => {
+                            const m = plotMeta.get(yv);
+                            return `${m?.name ?? yv}: ${Number(d[yv] ?? 0).toFixed(m?.decimalPlaces ?? decimalPlaces)}${m?.label ?? labelY}`;
+                        })
+                        .join("\n"),
                 textPadding: 3,
             })
         )
@@ -514,11 +533,11 @@ function SingleLinePlot({
     marks.push(
         Plot.dot(
             plotData,
-            Plot.pointerX({ x: "ts", y: yval, fill: color, r: 3, stroke: "var(--main-text-color)", strokeWidth: 1 })
+            Plot.pointerX({ x: "ts", y: primary, fill: primaryColor, r: 3, stroke: "var(--main-text-color)", strokeWidth: 1 })
         )
     );
-    const maxY = resolveDomainBound(yvalMeta?.maxy, plotData[plotData.length - 1]) ?? 100;
-    const minY = resolveDomainBound(yvalMeta?.miny, plotData[plotData.length - 1]) ?? 0;
+    const maxY = resolveDomainBound(primaryMeta?.maxy, plotData[plotData.length - 1]) ?? 100;
+    const minY = resolveDomainBound(primaryMeta?.miny, plotData[plotData.length - 1]) ?? 0;
     const maxX = plotData[plotData.length - 1].ts;
     const minX = maxX - targetLen * 1000;
     const plot = Plot.plot({
@@ -576,11 +595,11 @@ const SysinfoViewInner = React.memo(({ model }: SysinfoViewProps) => {
                     plotData.length > 0 &&
                     yvals.map((yval, _idx) => {
                         return (
-                            <SingleLinePlot
+                            <MultiLinePlot
                                 key={`plot-${model.blockId}-${yval}`}
                                 plotData={plotData}
-                                yval={yval}
-                                yvalMeta={plotMeta.get(yval)}
+                                yvalGroup={yval}
+                                plotMeta={plotMeta}
                                 blockId={model.blockId}
                                 defaultColor={"var(--accent-color)"}
                                 title={title}
