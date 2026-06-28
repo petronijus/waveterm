@@ -1,0 +1,156 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package wshremote
+
+// Per-project Docker attribution for the sysmonitor (phase 2). Host-process attribution
+// (projinfo.go) misses Docker builds entirely — the container work runs under dockerd, not
+// under the project's shell/cwd. Here we talk to the Docker Engine API directly over the unix
+// socket (no docker CLI, no SDK dependency: just net/http + JSON), list the containers that
+// belong to the tracked project (matched by the com.docker.compose.project label), read each
+// container's stats, and sum CPU% (as a share of total host capacity, comparable to the system
+// "cpu" series) + memory. Gracefully no-ops when there's no Docker / no permission.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+const dockerSocket = "/var/run/docker.sock"
+
+type dockerCpuSample struct {
+	containerUsage float64 // cpu_usage.total_usage (ns), cumulative
+	systemUsage    float64 // system_cpu_usage (ns), cumulative
+}
+
+type dockerSampler struct {
+	lock    sync.Mutex
+	httpc   *http.Client
+	lastCpu map[string]dockerCpuSample // container id -> previous cumulative cpu reading
+}
+
+func makeDockerSampler() *dockerSampler {
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", dockerSocket)
+		},
+	}
+	return &dockerSampler{
+		httpc:   &http.Client{Transport: tr, Timeout: 2 * time.Second},
+		lastCpu: make(map[string]dockerCpuSample),
+	}
+}
+
+func (d *dockerSampler) get(path string, out any) error {
+	req, err := http.NewRequest("GET", "http://docker"+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := d.httpc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("docker api %s: status %d", path, resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+type dockerContainer struct {
+	Id string `json:"Id"`
+}
+
+type dockerStats struct {
+	CpuStats struct {
+		CpuUsage struct {
+			TotalUsage float64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCpuUsage float64 `json:"system_cpu_usage"`
+	} `json:"cpu_stats"`
+	MemoryStats struct {
+		Usage float64 `json:"usage"`
+		Stats struct {
+			Cache        float64 `json:"cache"`
+			InactiveFile float64 `json:"inactive_file"`
+		} `json:"stats"`
+	} `json:"memory_stats"`
+}
+
+// listProjectContainers returns the ids of running containers whose compose-project label
+// matches project.
+func (d *dockerSampler) listProjectContainers(project string) ([]string, error) {
+	filters, _ := json.Marshal(map[string][]string{
+		"label": {"com.docker.compose.project=" + project},
+	})
+	var containers []dockerContainer
+	if err := d.get("/containers/json?filters="+url.QueryEscape(string(filters)), &containers); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(containers))
+	for _, c := range containers {
+		ids = append(ids, c.Id)
+	}
+	return ids, nil
+}
+
+// sampleDocker aggregates CPU%/mem for the tracked project's Docker containers. CPU% is the
+// container's share of total host CPU capacity (delta container cpu-ns / delta system cpu-ns *
+// 100), computed against the previous tick's cumulative reading. Returns zero usage (no error)
+// when Docker is unavailable, so the caller just omits the docker series.
+func (d *dockerSampler) sampleDocker(project string) (cpuPct float64, memGB float64, found int, reachable bool) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return 0, 0, 0, false
+	}
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	ids, err := d.listProjectContainers(project)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	reachable = true
+	live := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		live[id] = true
+		var st dockerStats
+		if err := d.get("/containers/"+id+"/stats?stream=false", &st); err != nil {
+			continue
+		}
+		found++
+		// memory: usage minus reclaimable page cache (matches `docker stats`).
+		mem := st.MemoryStats.Usage - st.MemoryStats.Stats.InactiveFile
+		if mem < 0 {
+			mem = st.MemoryStats.Usage
+		}
+		memGB += mem / BYTES_PER_GB
+		cur := dockerCpuSample{
+			containerUsage: st.CpuStats.CpuUsage.TotalUsage,
+			systemUsage:    st.CpuStats.SystemCpuUsage,
+		}
+		if prev, ok := d.lastCpu[id]; ok {
+			cDelta := cur.containerUsage - prev.containerUsage
+			sDelta := cur.systemUsage - prev.systemUsage
+			if cDelta > 0 && sDelta > 0 {
+				cpuPct += (cDelta / sDelta) * 100
+			}
+		}
+		d.lastCpu[id] = cur
+	}
+	// drop bookkeeping for containers that went away.
+	for id := range d.lastCpu {
+		if !live[id] {
+			delete(d.lastCpu, id)
+		}
+	}
+	return cpuPct, memGB, found, reachable
+}

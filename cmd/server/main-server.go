@@ -390,8 +390,14 @@ func createMainWshClient() {
 	sockName := wavebase.GetDomainSocketName()
 	remoteImpl := wshremote.MakeRemoteRpcServerImpl(nil, wshutil.DefaultRouter, wshclient.GetBareRpcClient(), true, localInitialEnv, sockName)
 	localConnWsh := wshutil.MakeWshRpc(wshrpc.RpcContext{Conn: wshrpc.LocalConnName}, remoteImpl, "conn:local")
-	go wshremote.RunSysInfoLoop(localConnWsh, wshrpc.LocalConnName, func() string {
-		return wconfig.GetWatcher().GetFullConfig().Settings.SysinfoTrackPath
+	go wshremote.RunSysInfoLoop(localConnWsh, wshrpc.LocalConnName, func() (string, string) {
+		s := wconfig.GetWatcher().GetFullConfig().Settings
+		path := s.SysinfoTrackPath
+		dockerProject := s.SysinfoDockerProject
+		if dockerProject == "" && path != "" {
+			dockerProject = wshremote.DockerProjectFromPath(path)
+		}
+		return path, dockerProject
 	})
 	wshutil.DefaultRouter.RegisterTrustedLeaf(localConnWsh, wshutil.MakeConnectionRouteId(wshrpc.LocalConnName))
 	wshfs.RpcClient = localConnWsh

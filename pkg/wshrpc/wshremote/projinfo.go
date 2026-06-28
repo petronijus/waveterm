@@ -111,9 +111,20 @@ func (s *projSampler) sample(projPath string, extraPids map[int32]bool) ProjUsag
 	return usage
 }
 
-// localProjSampler is the single sampler used by the local sysinfo loop (one tracked project
-// app-wide for now; per-block tracking lands in a later phase).
+// localProjSampler / localDockerSampler are the samplers used by the local sysinfo loop (one
+// tracked project app-wide for now; per-block tracking lands in a later phase).
 var localProjSampler = makeProjSampler()
+var localDockerSampler = makeDockerSampler()
+
+// DockerProjectFromPath derives the default docker-compose project name for a tracked path: the
+// basename lowercased, which is compose's default when no explicit project name is configured.
+func DockerProjectFromPath(p string) string {
+	p = strings.TrimRight(expandHome(strings.TrimSpace(p)), "/")
+	if p == "" {
+		return ""
+	}
+	return strings.ToLower(filepath.Base(p))
+}
 
 func expandHome(p string) string {
 	if p == "~" || strings.HasPrefix(p, "~/") {
@@ -132,12 +143,17 @@ func expandHome(p string) string {
 // AddProjData attributes host process resource use under projPath into the sysinfo values map
 // as the cpu:proj:host / mem:proj:host series, so the frontend can stack the project's share
 // under the system totals. No-op (and no process walk) when projPath is blank.
-func AddProjData(values map[string]float64, projPath string) {
-	projPath = strings.TrimSpace(projPath)
-	if projPath == "" {
-		return
+func AddProjData(values map[string]float64, projPath string, dockerProject string) {
+	if strings.TrimSpace(projPath) != "" {
+		u := localProjSampler.sample(expandHome(projPath), nil)
+		values["cpu:proj:host"] = u.HostCpuPct
+		values["mem:proj:host"] = u.HostMemGB
 	}
-	u := localProjSampler.sample(expandHome(projPath), nil)
-	values["cpu:proj:host"] = u.HostCpuPct
-	values["mem:proj:host"] = u.HostMemGB
+	if strings.TrimSpace(dockerProject) != "" {
+		cpu, mem, _, reachable := localDockerSampler.sampleDocker(dockerProject)
+		if reachable {
+			values["cpu:proj:docker"] = cpu
+			values["mem:proj:docker"] = mem
+		}
+	}
 }

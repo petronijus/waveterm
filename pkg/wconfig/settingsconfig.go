@@ -118,7 +118,8 @@ type SettingsType struct {
 	TermTrimTrailingWhitespace     *bool    `json:"term:trimtrailingwhitespace,omitempty"`
 	TermActivityDebug              bool     `json:"term:activitydebug,omitempty"`
 
-	SysinfoTrackPath string `json:"sysinfo:trackpath,omitempty"`
+	SysinfoTrackPath     string `json:"sysinfo:trackpath,omitempty"`
+	SysinfoDockerProject string `json:"sysinfo:dockerproject,omitempty"`
 
 	EditorMinimapEnabled      bool    `json:"editor:minimapenabled,omitempty"`
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`

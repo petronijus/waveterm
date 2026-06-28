@@ -183,6 +183,9 @@
         "sysinfo:trackpath": {
           "type": "string"
         },
+        "sysinfo:dockerproject": {
+          "type": "string"
+        },
         "editor:minimapenabled": {
           "type": "boolean"
         },

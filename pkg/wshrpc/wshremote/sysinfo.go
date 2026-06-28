@@ -46,16 +46,19 @@ func getMemData(values map[string]float64) {
 	values["mem:free"] = float64(memData.Free) / BYTES_PER_GB
 }
 
-func generateSingleServerData(client *wshutil.WshRpc, connName string, projPathFn func() string) {
+func generateSingleServerData(client *wshutil.WshRpc, connName string, projInfoFn func() (string, string)) {
 	now := time.Now()
 	values := make(map[string]float64)
 	getCpuData(values)
 	getMemData(values)
-	// projPathFn is injected by the local caller (which has app config access); remote callers
-	// pass nil. When it returns a non-empty path, attribute that project's host processes into
-	// cpu:proj:host / mem:proj:host so the frontend can stack the build's share under the totals.
-	if projPathFn != nil {
-		AddProjData(values, projPathFn())
+	// projInfoFn is injected by the local caller (which has app config access); remote callers
+	// pass nil. It returns the tracked project's host path and its docker-compose project name;
+	// AddProjData attributes that project's host processes (cpu:proj:host / mem:proj:host) and
+	// Docker containers (cpu:proj:docker / mem:proj:docker) so the frontend can show the build's
+	// share against the system totals.
+	if projInfoFn != nil {
+		path, dockerProject := projInfoFn()
+		AddProjData(values, path, dockerProject)
 	}
 	tsData := wshrpc.TimeSeriesData{Ts: now.UnixMilli(), Values: values}
 	event := wps.WaveEvent{
@@ -67,12 +70,12 @@ func generateSingleServerData(client *wshutil.WshRpc, connName string, projPathF
 	wshclient.EventPublishCommand(client, event, &wshrpc.RpcOpts{NoResponse: true})
 }
 
-func RunSysInfoLoop(client *wshutil.WshRpc, connName string, projPathFn func() string) {
+func RunSysInfoLoop(client *wshutil.WshRpc, connName string, projInfoFn func() (string, string)) {
 	defer func() {
 		log.Printf("sysinfo loop ended conn:%s\n", connName)
 	}()
 	for {
-		generateSingleServerData(client, connName, projPathFn)
+		generateSingleServerData(client, connName, projInfoFn)
 		time.Sleep(1 * time.Second)
 	}
 }

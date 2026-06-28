@@ -1611,6 +1611,7 @@ declare global {
         "term:trimtrailingwhitespace"?: boolean;
         "term:activitydebug"?: boolean;
         "sysinfo:trackpath"?: string;
+        "sysinfo:dockerproject"?: string;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
         "editor:wordwrap"?: boolean;

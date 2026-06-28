@@ -65,6 +65,7 @@ const (
 	ConfigKey_TermActivityDebug              = "term:activitydebug"
 
 	ConfigKey_SysinfoTrackPath               = "sysinfo:trackpath"
+	ConfigKey_SysinfoDockerProject           = "sysinfo:dockerproject"
 
 	ConfigKey_EditorMinimapEnabled           = "editor:minimapenabled"
 	ConfigKey_EditorStickyScrollEnabled      = "editor:stickyscrollenabled"

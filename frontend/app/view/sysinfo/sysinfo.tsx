@@ -69,13 +69,13 @@ const PlotTypes: object = {
         return ["cpu", "mem:used"];
     },
     "CPU + Project": function (_dataItem: DataItem): Array<string> {
-        return ["cpu+cpu:proj:host"];
+        return ["cpu+cpu:proj:host+cpu:proj:docker"];
     },
     "Mem + Project": function (_dataItem: DataItem): Array<string> {
-        return ["mem:used+mem:proj:host"];
+        return ["mem:used+mem:proj:host+mem:proj:docker"];
     },
     "CPU & Mem + Project": function (_dataItem: DataItem): Array<string> {
-        return ["cpu+cpu:proj:host", "mem:used+mem:proj:host"];
+        return ["cpu+cpu:proj:host+cpu:proj:docker", "mem:used+mem:proj:host+mem:proj:docker"];
     },
     "All CPU": function (dataItem: DataItem): Array<string> {
         return Object.keys(dataItem)
@@ -110,6 +110,16 @@ const DefaultPlotMeta = {
         miny: 0,
         maxy: "mem:total",
         color: "var(--accent-color)",
+        decimalPlaces: 1,
+    },
+    // project Docker attribution — distinct (docker-blue) so host vs container share is clear.
+    "cpu:proj:docker": { name: "Project CPU (Docker) %", label: "%", miny: 0, maxy: 100, color: "#38bdf8", decimalPlaces: 0 },
+    "mem:proj:docker": {
+        name: "Project Memory (Docker)",
+        label: "GB",
+        miny: 0,
+        maxy: "mem:total",
+        color: "#38bdf8",
         decimalPlaces: 1,
     },
 };
