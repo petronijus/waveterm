@@ -173,6 +173,53 @@ export class WaveTabView extends WebContentsView {
             removeWaveTabView(this.waveTabId);
             this.isDestroyed = true;
         });
+        // Renderer crash recovery: if a tab's render process dies (crash/oom), auto-reload it
+        // so the tab doesn't go black and stay black. The backend (wavesrv) and any running
+        // shells survive a renderer reload — only the web UI is re-created — so terminals and
+        // long-running sessions persist. A loop guard (max 3 reloads / 60s) keeps a fatal
+        // render bug from reload-thrashing. All transitions are logged to waveapp.log under
+        // "[renderer-recovery]" so a recurrence can be diagnosed after the fact.
+        let recoveryWindowStart = Date.now();
+        let recoveryCount = 0;
+        this.webContents.on("render-process-gone", (_event, details) => {
+            console.log(
+                `[renderer-recovery] tab=${this.waveTabId} wcId=${wcId} render-process-gone reason=${details.reason} exitCode=${details.exitCode}`
+            );
+            if (this.isDestroyed) {
+                return;
+            }
+            // clean-exit / killed are intentional teardown, not a crash — don't fight them.
+            if (details.reason === "clean-exit" || details.reason === "killed") {
+                return;
+            }
+            const now = Date.now();
+            if (now - recoveryWindowStart > 60000) {
+                recoveryWindowStart = now;
+                recoveryCount = 0;
+            }
+            recoveryCount++;
+            if (recoveryCount > 3) {
+                console.log(
+                    `[renderer-recovery] tab=${this.waveTabId} GAVE UP after ${recoveryCount} reloads in <60s — manual reload needed (View > Force Reload)`
+                );
+                return;
+            }
+            console.log(`[renderer-recovery] tab=${this.waveTabId} reloading (attempt ${recoveryCount})`);
+            try {
+                this.webContents.reload();
+            } catch (e) {
+                console.log(`[renderer-recovery] tab=${this.waveTabId} reload failed: ${e}`);
+            }
+        });
+        // A hung (not crashed) renderer also blacks out the tab — log it so we can see it, but
+        // don't auto-reload here: a renderer can be "unresponsive" while doing heavy legit work,
+        // and reloading would throw that away. render-process-gone above handles real crashes.
+        this.webContents.on("unresponsive", () => {
+            console.log(`[renderer-recovery] tab=${this.waveTabId} wcId=${wcId} UNRESPONSIVE`);
+        });
+        this.webContents.on("responsive", () => {
+            console.log(`[renderer-recovery] tab=${this.waveTabId} wcId=${wcId} responsive again`);
+        });
         this.setBackgroundColor(computeBgColor(fullConfig));
     }
 
