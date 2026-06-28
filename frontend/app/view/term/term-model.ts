@@ -58,6 +58,33 @@ function projectNameFromPath(p: string): string {
     return parts[parts.length - 1] || p;
 }
 
+let cachedLocalHomeDir: string | undefined;
+function localHomeDir(): string {
+    if (cachedLocalHomeDir === undefined) {
+        try {
+            cachedLocalHomeDir = getApi().getHomeDir() || "";
+        } catch {
+            cachedLocalHomeDir = "";
+        }
+    }
+    return cachedLocalHomeDir;
+}
+
+// Show an absolute local cwd as ~/… so the terminal header matches the files/git panels
+// (which work in tilde-space). The shell reports its cwd absolutely via OSC 7, so without
+// this the terminal header was the odd one out. Only the LOCAL home is tildified — a remote
+// path is left as-is (we don't have the remote $HOME here, and the local home won't match it).
+function tildifyLocalCwd(p: string): string {
+    if (isBlank(p) || p.startsWith("~")) {
+        return p;
+    }
+    const home = localHomeDir();
+    if (home && (p === home || p.startsWith(home + "/"))) {
+        return "~" + p.slice(home.length);
+    }
+    return p;
+}
+
 function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
     if (projects[base] == null) {
         return base;
@@ -244,9 +271,10 @@ export class TermViewModel implements ViewModel {
                 // clickable cwd — opens the in-app path picker to cd the shell
                 const cwd = get(getBlockMetaKeyAtom(this.blockId, "cmd:cwd"));
                 if (!isBlank(cwd)) {
+                    const conn = get(getBlockMetaKeyAtom(this.blockId, "connection"));
                     rtn.push({
                         elemtype: "text",
-                        text: cwd,
+                        text: isBlank(conn) ? tildifyLocalCwd(cwd) : cwd,
                         className: "cursor-pointer hover:text-primary",
                         onClick: () => globalStore.set(this.openCwdPickerAtom, true),
                     });
