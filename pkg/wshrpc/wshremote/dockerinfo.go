@@ -17,12 +17,22 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
-const dockerSocket = "/var/run/docker.sock"
+// candidateSockets are the Docker-compatible engine sockets we probe: Docker, plus Podman's
+// rootful and rootless sockets (Podman exposes the same /containers API), so a containerised
+// build is caught regardless of which engine ran it.
+func candidateSockets() []string {
+	socks := []string{"/var/run/docker.sock", "/run/podman/podman.sock"}
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		socks = append(socks, xdg+"/podman/podman.sock")
+	}
+	return socks
+}
 
 type dockerCpuSample struct {
 	containerUsage float64 // cpu_usage.total_usage (ns), cumulative
@@ -31,29 +41,37 @@ type dockerCpuSample struct {
 
 type dockerSampler struct {
 	lock    sync.Mutex
-	httpc   *http.Client
+	clients []*http.Client             // one per candidate engine socket
 	lastCpu map[string]dockerCpuSample // container id -> previous cumulative cpu reading
 }
 
-func makeDockerSampler() *dockerSampler {
+func makeSocketClient(socket string) *http.Client {
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
-			return d.DialContext(ctx, "unix", dockerSocket)
+			return d.DialContext(ctx, "unix", socket)
 		},
 	}
+	return &http.Client{Transport: tr, Timeout: 2 * time.Second}
+}
+
+func makeDockerSampler() *dockerSampler {
+	var clients []*http.Client
+	for _, sock := range candidateSockets() {
+		clients = append(clients, makeSocketClient(sock))
+	}
 	return &dockerSampler{
-		httpc:   &http.Client{Transport: tr, Timeout: 2 * time.Second},
+		clients: clients,
 		lastCpu: make(map[string]dockerCpuSample),
 	}
 }
 
-func (d *dockerSampler) get(path string, out any) error {
+func dockerGet(client *http.Client, path string, out any) error {
 	req, err := http.NewRequest("GET", "http://docker"+path, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := d.httpc.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -110,12 +128,12 @@ type dockerStats struct {
 	} `json:"memory_stats"`
 }
 
-// listProjectContainers returns the ids of running containers that belong to the tracked project
-// (see containerMatches). All running containers are listed and matched client-side so plain
-// `docker run` builds are caught, not just docker-compose projects.
-func (d *dockerSampler) listProjectContainers(token string) ([]string, error) {
+// listMatchingContainers returns the ids of running containers on one engine socket that belong
+// to the tracked project (see containerMatches). All running containers are listed and matched
+// client-side so plain `docker run` builds are caught, not just docker-compose projects.
+func listMatchingContainers(client *http.Client, token string) ([]string, error) {
 	var containers []dockerContainer
-	if err := d.get("/containers/json", &containers); err != nil {
+	if err := dockerGet(client, "/containers/json", &containers); err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(containers))
@@ -139,37 +157,39 @@ func (d *dockerSampler) sampleDocker(project string) (cpuPct float64, memGB floa
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	ids, err := d.listProjectContainers(project)
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	reachable = true
-	live := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		live[id] = true
-		var st dockerStats
-		if err := d.get("/containers/"+id+"/stats?stream=false", &st); err != nil {
-			continue
+	live := make(map[string]bool)
+	for _, client := range d.clients {
+		ids, err := listMatchingContainers(client, project)
+		if err != nil {
+			continue // this engine socket isn't there / not reachable
 		}
-		found++
-		// memory: usage minus reclaimable page cache (matches `docker stats`).
-		mem := st.MemoryStats.Usage - st.MemoryStats.Stats.InactiveFile
-		if mem < 0 {
-			mem = st.MemoryStats.Usage
-		}
-		memGB += mem / BYTES_PER_GB
-		cur := dockerCpuSample{
-			containerUsage: st.CpuStats.CpuUsage.TotalUsage,
-			systemUsage:    st.CpuStats.SystemCpuUsage,
-		}
-		if prev, ok := d.lastCpu[id]; ok {
-			cDelta := cur.containerUsage - prev.containerUsage
-			sDelta := cur.systemUsage - prev.systemUsage
-			if cDelta > 0 && sDelta > 0 {
-				cpuPct += (cDelta / sDelta) * 100
+		reachable = true
+		for _, id := range ids {
+			live[id] = true
+			var st dockerStats
+			if err := dockerGet(client, "/containers/"+id+"/stats?stream=false", &st); err != nil {
+				continue
 			}
+			found++
+			// memory: usage minus reclaimable page cache (matches `docker stats`).
+			mem := st.MemoryStats.Usage - st.MemoryStats.Stats.InactiveFile
+			if mem < 0 {
+				mem = st.MemoryStats.Usage
+			}
+			memGB += mem / BYTES_PER_GB
+			cur := dockerCpuSample{
+				containerUsage: st.CpuStats.CpuUsage.TotalUsage,
+				systemUsage:    st.CpuStats.SystemCpuUsage,
+			}
+			if prev, ok := d.lastCpu[id]; ok {
+				cDelta := cur.containerUsage - prev.containerUsage
+				sDelta := cur.systemUsage - prev.systemUsage
+				if cDelta > 0 && sDelta > 0 {
+					cpuPct += (cDelta / sDelta) * 100
+				}
+			}
+			d.lastCpu[id] = cur
 		}
-		d.lastCpu[id] = cur
 	}
 	// drop bookkeeping for containers that went away.
 	for id := range d.lastCpu {

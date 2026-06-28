@@ -12,6 +12,7 @@ import * as jotai from "jotai";
 import * as React from "react";
 
 import { useDimensionsWithExistingRef } from "@/app/hook/useDimensions";
+import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { MetaKeyAtomFnType, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -21,6 +22,9 @@ export type SysinfoEnv = WaveEnvSubset<{
     rpc: {
         EventReadHistoryCommand: WaveEnv["rpc"]["EventReadHistoryCommand"];
         SetMetaCommand: WaveEnv["rpc"]["SetMetaCommand"];
+        SetConfigCommand: WaveEnv["rpc"]["SetConfigCommand"];
+        FetchSuggestionsCommand: WaveEnv["rpc"]["FetchSuggestionsCommand"];
+        DisposeSuggestionsCommand: WaveEnv["rpc"]["DisposeSuggestionsCommand"];
     };
     atoms: {
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
@@ -161,6 +165,7 @@ class SysinfoViewModel implements ViewModel {
     plotMetaAtom: jotai.PrimitiveAtom<Map<string, TimeSeriesMeta>>;
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     plotTypeSelectedAtom: jotai.Atom<string>;
+    openTrackPickerAtom: jotai.PrimitiveAtom<boolean>;
     env: SysinfoEnv;
 
     constructor({ blockId, waveEnv }: ViewModelInitType) {
@@ -259,6 +264,27 @@ class SysinfoViewModel implements ViewModel {
         });
         this.viewName = jotai.atom((get) => {
             return get(this.plotTypeSelectedAtom);
+        });
+        this.openTrackPickerAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
+        this.viewText = jotai.atom((get) => {
+            const cfg = get(this.env.atoms.fullConfigAtom);
+            const p = cfg?.settings?.["sysinfo:trackpath"];
+            if (util.isBlank(p)) {
+                return "";
+            }
+            return "▸ " + p.replace(/[/\\]+$/, "").split(/[/\\]/).pop();
+        });
+        this.endIconButtons = jotai.atom((get) => {
+            const cfg = get(this.env.atoms.fullConfigAtom);
+            const tracking = !util.isBlank(cfg?.settings?.["sysinfo:trackpath"]);
+            return [
+                {
+                    elemtype: "iconbutton",
+                    icon: "crosshairs",
+                    title: tracking ? "Change tracked project" : "Track a project's CPU/mem in this graph",
+                    click: () => globalStore.set(this.openTrackPickerAtom, true),
+                },
+            ] as IconButtonDecl[];
         });
         this.incrementCount = jotai.atom(null, async (get, _set) => {
             const count = get(this.env.getBlockMetaKeyAtom(blockId, "count")) ?? 0;
@@ -382,6 +408,7 @@ function resolveDomainBound(value: number | string, dataItem: DataItem): number 
 }
 
 function SysinfoView({ model, blockId }: SysinfoViewProps) {
+    const blockRef = React.useRef<HTMLDivElement>(null);
     const connName = jotai.useAtomValue(model.connection);
     const lastConnName = React.useRef(connName);
     const connStatus = jotai.useAtomValue(model.connStatus);
@@ -427,7 +454,52 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
     if (loading) {
         return null;
     }
-    return <SysinfoViewInner key={connStatus?.connection ?? "local"} blockId={blockId} model={model} />;
+    return (
+        <div ref={blockRef} className="flex flex-col w-full h-full min-h-0">
+            <SysinfoViewInner key={connStatus?.connection ?? "local"} blockId={blockId} model={model} />
+            <BlockHeaderSuggestionControl
+                blockRef={blockRef}
+                openAtom={model.openTrackPickerAtom}
+                onClose={() => globalStore.set(model.openTrackPickerAtom, false)}
+                onSelect={(s, queryStr) => {
+                    const path = s == null ? queryStr : s["file:path"];
+                    if (util.isBlank(path)) {
+                        globalStore.set(model.openTrackPickerAtom, false);
+                        return true;
+                    }
+                    // clear the docker token so it re-derives from the new path's basename
+                    model.env.rpc.SetConfigCommand(TabRpcClient, {
+                        "sysinfo:trackpath": path,
+                        "sysinfo:dockerproject": "",
+                    });
+                    globalStore.set(model.openTrackPickerAtom, false);
+                    return true;
+                }}
+                onTab={(s) => (s["file:mimetype"] == "directory" ? s["file:name"] + "/" : s["file:name"])}
+                fetchSuggestions={async (query, reqContext) => {
+                    if (reqContext?.dispose) {
+                        model.env.rpc.DisposeSuggestionsCommand(TabRpcClient, reqContext.widgetid, { noresponse: true });
+                        return null;
+                    }
+                    const cfg = globalStore.get(model.env.atoms.fullConfigAtom);
+                    const cwd = cfg?.settings?.["sysinfo:trackpath"] || "~";
+                    return await model.env.rpc.FetchSuggestionsCommand(
+                        TabRpcClient,
+                        {
+                            suggestiontype: "file",
+                            "file:cwd": cwd,
+                            query,
+                            widgetid: reqContext.widgetid,
+                            reqnum: reqContext.reqnum,
+                            "file:connection": "local",
+                        },
+                        {}
+                    );
+                }}
+                placeholderText="Track project folder…"
+            />
+        </div>
+    );
 }
 
 type MultiLinePlotProps = {
