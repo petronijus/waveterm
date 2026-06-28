@@ -656,12 +656,29 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             </button>
             <div className="flex-1" />
             <div ref={rightContainerRef} className="flex flex-row gap-1 items-end">
-                <SyncMenu tabId={activeTabId} />
-                <UpdateStatusBanner />
-                <div
-                    className="h-full shrink-0 z-window-drag"
-                    style={{ width: windowDragRightWidth, WebkitAppRegion: "drag" } as any}
-                />
+                {env.isWindows() ? (
+                    // Windows: keep the drag/control reserve to the RIGHT of the sync button so
+                    // it clears the native window controls (min/max/close).
+                    <>
+                        <SyncMenu tabId={activeTabId} />
+                        <UpdateStatusBanner />
+                        <div
+                            className="h-full shrink-0 z-window-drag"
+                            style={{ width: windowDragRightWidth, WebkitAppRegion: "drag" } as any}
+                        />
+                    </>
+                ) : (
+                    // Linux/macOS: drag strip sits to the LEFT so the sync button hugs the
+                    // window's right edge (the button is no-drag anyway, so no drag area is lost).
+                    <>
+                        <div
+                            className="h-full shrink-0 z-window-drag"
+                            style={{ width: windowDragRightWidth, WebkitAppRegion: "drag" } as any}
+                        />
+                        <UpdateStatusBanner />
+                        <SyncMenu tabId={activeTabId} />
+                    </>
+                )}
             </div>
         </div>
     );
