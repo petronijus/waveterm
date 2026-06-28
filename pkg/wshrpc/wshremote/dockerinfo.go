@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -66,7 +65,33 @@ func (d *dockerSampler) get(path string, out any) error {
 }
 
 type dockerContainer struct {
-	Id string `json:"Id"`
+	Id     string            `json:"Id"`
+	Names  []string          `json:"Names"`
+	Image  string            `json:"Image"`
+	Labels map[string]string `json:"Labels"`
+}
+
+// containerMatches decides whether a container belongs to the tracked project. The token (from
+// sysinfo:dockerproject, or the path basename) matches when it equals the compose-project label
+// (compose builds) OR is a substring of the image or container name (plain `docker run` builds,
+// e.g. an image named "<project>-builder" — which the compose-label filter alone would miss).
+func containerMatches(c dockerContainer, token string) bool {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return false
+	}
+	if strings.EqualFold(c.Labels["com.docker.compose.project"], token) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(c.Image), token) {
+		return true
+	}
+	for _, n := range c.Names {
+		if strings.Contains(strings.ToLower(strings.TrimPrefix(n, "/")), token) {
+			return true
+		}
+	}
+	return false
 }
 
 type dockerStats struct {
@@ -85,19 +110,19 @@ type dockerStats struct {
 	} `json:"memory_stats"`
 }
 
-// listProjectContainers returns the ids of running containers whose compose-project label
-// matches project.
-func (d *dockerSampler) listProjectContainers(project string) ([]string, error) {
-	filters, _ := json.Marshal(map[string][]string{
-		"label": {"com.docker.compose.project=" + project},
-	})
+// listProjectContainers returns the ids of running containers that belong to the tracked project
+// (see containerMatches). All running containers are listed and matched client-side so plain
+// `docker run` builds are caught, not just docker-compose projects.
+func (d *dockerSampler) listProjectContainers(token string) ([]string, error) {
 	var containers []dockerContainer
-	if err := d.get("/containers/json?filters="+url.QueryEscape(string(filters)), &containers); err != nil {
+	if err := d.get("/containers/json", &containers); err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(containers))
 	for _, c := range containers {
-		ids = append(ids, c.Id)
+		if containerMatches(c, token) {
+			ids = append(ids, c.Id)
+		}
 	}
 	return ids, nil
 }
