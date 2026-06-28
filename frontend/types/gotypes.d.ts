@@ -1610,6 +1610,7 @@ declare global {
         "term:showsplitbuttons"?: boolean;
         "term:trimtrailingwhitespace"?: boolean;
         "term:activitydebug"?: boolean;
+        "sysinfo:trackpath"?: string;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;
         "editor:wordwrap"?: boolean;

@@ -19,6 +19,8 @@ package wshremote
 // remote/VM builds. See the manual-tracker + container phases.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -107,4 +109,35 @@ func (s *projSampler) sample(projPath string, extraPids map[int32]bool) ProjUsag
 	s.lastCpu = newCpu
 	s.lastWall = now
 	return usage
+}
+
+// localProjSampler is the single sampler used by the local sysinfo loop (one tracked project
+// app-wide for now; per-block tracking lands in a later phase).
+var localProjSampler = makeProjSampler()
+
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return p
+		}
+		if p == "~" {
+			return home
+		}
+		return filepath.Join(home, p[2:])
+	}
+	return p
+}
+
+// AddProjData attributes host process resource use under projPath into the sysinfo values map
+// as the cpu:proj:host / mem:proj:host series, so the frontend can stack the project's share
+// under the system totals. No-op (and no process walk) when projPath is blank.
+func AddProjData(values map[string]float64, projPath string) {
+	projPath = strings.TrimSpace(projPath)
+	if projPath == "" {
+		return
+	}
+	u := localProjSampler.sample(expandHome(projPath), nil)
+	values["cpu:proj:host"] = u.HostCpuPct
+	values["mem:proj:host"] = u.HostMemGB
 }

@@ -46,11 +46,17 @@ func getMemData(values map[string]float64) {
 	values["mem:free"] = float64(memData.Free) / BYTES_PER_GB
 }
 
-func generateSingleServerData(client *wshutil.WshRpc, connName string) {
+func generateSingleServerData(client *wshutil.WshRpc, connName string, projPathFn func() string) {
 	now := time.Now()
 	values := make(map[string]float64)
 	getCpuData(values)
 	getMemData(values)
+	// projPathFn is injected by the local caller (which has app config access); remote callers
+	// pass nil. When it returns a non-empty path, attribute that project's host processes into
+	// cpu:proj:host / mem:proj:host so the frontend can stack the build's share under the totals.
+	if projPathFn != nil {
+		AddProjData(values, projPathFn())
+	}
 	tsData := wshrpc.TimeSeriesData{Ts: now.UnixMilli(), Values: values}
 	event := wps.WaveEvent{
 		Event:   wps.Event_SysInfo,
@@ -61,12 +67,12 @@ func generateSingleServerData(client *wshutil.WshRpc, connName string) {
 	wshclient.EventPublishCommand(client, event, &wshrpc.RpcOpts{NoResponse: true})
 }
 
-func RunSysInfoLoop(client *wshutil.WshRpc, connName string) {
+func RunSysInfoLoop(client *wshutil.WshRpc, connName string, projPathFn func() string) {
 	defer func() {
 		log.Printf("sysinfo loop ended conn:%s\n", connName)
 	}()
 	for {
-		generateSingleServerData(client, connName)
+		generateSingleServerData(client, connName, projPathFn)
 		time.Sleep(1 * time.Second)
 	}
 }

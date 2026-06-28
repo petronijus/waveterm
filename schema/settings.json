@@ -180,6 +180,9 @@
         "term:activitydebug": {
           "type": "boolean"
         },
+        "sysinfo:trackpath": {
+          "type": "string"
+        },
         "editor:minimapenabled": {
           "type": "boolean"
         },

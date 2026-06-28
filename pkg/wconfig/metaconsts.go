@@ -64,6 +64,8 @@ const (
 	ConfigKey_TermTrimTrailingWhitespace     = "term:trimtrailingwhitespace"
 	ConfigKey_TermActivityDebug              = "term:activitydebug"
 
+	ConfigKey_SysinfoTrackPath               = "sysinfo:trackpath"
+
 	ConfigKey_EditorMinimapEnabled           = "editor:minimapenabled"
 	ConfigKey_EditorStickyScrollEnabled      = "editor:stickyscrollenabled"
 	ConfigKey_EditorWordWrap                 = "editor:wordwrap"

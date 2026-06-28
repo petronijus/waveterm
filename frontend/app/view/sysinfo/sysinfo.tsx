@@ -68,9 +68,15 @@ const PlotTypes: object = {
     "CPU + Mem": function (_dataItem: DataItem): Array<string> {
         return ["cpu", "mem:used"];
     },
+    "CPU + Project": function (_dataItem: DataItem): Array<string> {
+        return ["cpu", "cpu:proj:host"];
+    },
+    "Mem + Project": function (_dataItem: DataItem): Array<string> {
+        return ["mem:used", "mem:proj:host"];
+    },
     "All CPU": function (dataItem: DataItem): Array<string> {
         return Object.keys(dataItem)
-            .filter((item) => item.startsWith("cpu") && item != "cpu")
+            .filter((item) => /^cpu:\d+$/.test(item))
             .sort((a, b) => {
                 const valA = parseInt(a.replace("cpu:", ""));
                 const valB = parseInt(b.replace("cpu:", ""));
@@ -85,6 +91,24 @@ const DefaultPlotMeta = {
     "mem:used": defaultMemMeta("Memory Used", "mem:total"),
     "mem:free": defaultMemMeta("Memory Free", "mem:total"),
     "mem:available": defaultMemMeta("Memory Available", "mem:total"),
+    // project attribution (sysinfo:trackpath) — accent colour so the tracked project's share
+    // stands out against the system totals.
+    "cpu:proj:host": {
+        name: "Project CPU %",
+        label: "%",
+        miny: 0,
+        maxy: 100,
+        color: "var(--accent-color)",
+        decimalPlaces: 0,
+    },
+    "mem:proj:host": {
+        name: "Project Memory",
+        label: "GB",
+        miny: 0,
+        maxy: "mem:total",
+        color: "var(--accent-color)",
+        decimalPlaces: 1,
+    },
 };
 for (let i = 0; i < 32; i++) {
     DefaultPlotMeta[`cpu:${i}`] = defaultCpuMeta(`Core ${i}`);

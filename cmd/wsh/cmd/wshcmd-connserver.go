@@ -278,7 +278,7 @@ func serverRunRouter() error {
 		defer func() {
 			panichandler.PanicHandler("serverRunRouter:RunSysInfoLoop", recover())
 		}()
-		wshremote.RunSysInfoLoop(client, connServerConnName)
+		wshremote.RunSysInfoLoop(client, connServerConnName, nil)
 	}()
 	startJobLogCleanup()
 	log.Printf("running server, successfully started")
@@ -386,7 +386,7 @@ func serverRunRouterDomainSocket(jwtToken string) error {
 		defer func() {
 			panichandler.PanicHandler("serverRunRouterDomainSocket:RunSysInfoLoop", recover())
 		}()
-		wshremote.RunSysInfoLoop(client, connServerConnName)
+		wshremote.RunSysInfoLoop(client, connServerConnName, nil)
 	}()
 	startJobLogCleanup()
 
@@ -410,7 +410,7 @@ func serverRunNormal(jwtToken string) error {
 		defer func() {
 			panichandler.PanicHandler("serverRunNormal:RunSysInfoLoop", recover())
 		}()
-		wshremote.RunSysInfoLoop(RpcClient, RpcContext.Conn)
+		wshremote.RunSysInfoLoop(RpcClient, RpcContext.Conn, nil)
 	}()
 	startJobLogCleanup()
 	select {} // run forever
