@@ -87,6 +87,98 @@ func extractHunkPatch(diff string, index int) (string, error) {
 	return strings.Join(out, "\n") + "\n", nil
 }
 
+// runGitEnv is runGit with extra environment entries (e.g. GIT_ASKPASS + creds).
+func runGitEnv(ctx context.Context, gitRoot string, extraEnv []string, args ...string) (string, string, error) {
+	fullArgs := append([]string{"-C", gitRoot}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_SSH_COMMAND=ssh -oBatchMode=yes",
+		"GIT_PAGER=cat",
+	)
+	cmd.Env = append(cmd.Env, extraEnv...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+// writeAskpassScript drops a short GIT_ASKPASS helper on the (remote) host that
+// answers git's credential prompts from WAVE_GIT_USER / WAVE_GIT_PASS in the env,
+// so the token never appears on a command line. Returns the path + a cleanup func.
+func writeAskpassScript() (string, func(), error) {
+	f, err := os.CreateTemp("", "wave-git-askpass-*.sh")
+	if err != nil {
+		return "", func() {}, err
+	}
+	const script = "#!/bin/sh\ncase \"$1\" in\n*[Uu]sername*) printf '%s' \"$WAVE_GIT_USER\" ;;\n*) printf '%s' \"$WAVE_GIT_PASS\" ;;\nesac\n"
+	if _, err := f.WriteString(script); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", func() {}, err
+	}
+	f.Close()
+	if err := os.Chmod(f.Name(), 0700); err != nil {
+		os.Remove(f.Name())
+		return "", func() {}, err
+	}
+	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
+// isGitAuthError reports whether git output indicates an authentication failure.
+func isGitAuthError(out string) bool {
+	lower := strings.ToLower(out)
+	for _, marker := range []string{
+		"authentication failed",
+		"could not read username",
+		"could not read password",
+		"permission denied",
+		"invalid username or password",
+		"remote: invalid credentials",
+		"terminal prompts disabled",
+		"fatal: authentication",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// gitRemoteHost returns the host portion of the remote URL (github.com, …) so
+// stored credentials can be keyed per host. Empty if it can't be determined.
+func gitRemoteHost(ctx context.Context, gitRoot string, remote string) string {
+	stdout, _, err := runGit(ctx, gitRoot, "remote", "get-url", remote)
+	if err != nil {
+		return ""
+	}
+	url := strings.TrimSpace(stdout)
+	if url == "" {
+		return ""
+	}
+	if i := strings.Index(url, "://"); i >= 0 {
+		rest := url[i+3:]
+		if at := strings.Index(rest, "@"); at >= 0 {
+			rest = rest[at+1:]
+		}
+		rest = strings.TrimSuffix(rest, "/")
+		if slash := strings.IndexAny(rest, "/:"); slash >= 0 {
+			return rest[:slash]
+		}
+		return rest
+	}
+	// scp-like syntax: git@host:owner/repo
+	if at := strings.Index(url, "@"); at >= 0 {
+		rest := url[at+1:]
+		if colon := strings.Index(rest, ":"); colon >= 0 {
+			return rest[:colon]
+		}
+	}
+	return ""
+}
+
 func gitAction(ctx context.Context, gitRoot string, timeout time.Duration, args ...string) (*wshrpc.GitActionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -469,10 +561,41 @@ func (impl *ServerImpl) RemoteGitSyncCommand(ctx context.Context, data wshrpc.Co
 		} else {
 			args = []string{"push"}
 		}
+		return gitPush(ctx, data.GitRoot, remote, args, data.Username, data.Token)
 	default:
 		return &wshrpc.GitActionResult{Success: false, Output: "unknown sync action: " + data.Action}, nil
 	}
 	return gitAction(ctx, data.GitRoot, gitSyncTimeout, args...)
+}
+
+// gitPush runs a push, wiring GIT_ASKPASS when credentials are supplied and
+// reporting an auth failure (with the remote host) so the UI can prompt.
+func gitPush(ctx context.Context, gitRoot string, remote string, args []string, username string, token string) (*wshrpc.GitActionResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitSyncTimeout)
+	defer cancel()
+	var extraEnv []string
+	if username != "" || token != "" {
+		scriptPath, cleanup, err := writeAskpassScript()
+		if err != nil {
+			return &wshrpc.GitActionResult{Success: false, Output: "askpass setup failed: " + err.Error()}, nil
+		}
+		defer cleanup()
+		extraEnv = []string{"GIT_ASKPASS=" + scriptPath, "WAVE_GIT_USER=" + username, "WAVE_GIT_PASS=" + token}
+	}
+	stdout, stderr, err := runGitEnv(ctx, gitRoot, extraEnv, args...)
+	out := strings.TrimSpace(strings.TrimRight(stdout, "\n") + "\n" + strings.TrimRight(stderr, "\n"))
+	if err == nil {
+		return &wshrpc.GitActionResult{Success: true, Output: out}, nil
+	}
+	if isGitAuthError(out) {
+		return &wshrpc.GitActionResult{
+			Success:      false,
+			Output:       out,
+			AuthRequired: true,
+			AuthHost:     gitRemoteHost(ctx, gitRoot, remote),
+		}, nil
+	}
+	return &wshrpc.GitActionResult{Success: false, Output: out}, nil
 }
 
 func (impl *ServerImpl) RemoteGitStashCommand(ctx context.Context, data wshrpc.CommandGitStashData) (*wshrpc.GitActionResult, error) {

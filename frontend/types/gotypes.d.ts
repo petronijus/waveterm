@@ -489,6 +489,8 @@ declare global {
         action: string;
         remote?: string;
         setupstream?: boolean;
+        username?: string;
+        token?: string;
     };
 
     // wshrpc.CommandJobCmdExitedData
@@ -1130,6 +1132,8 @@ declare global {
     type GitActionResult = {
         success: boolean;
         output?: string;
+        authrequired?: boolean;
+        authhost?: string;
     };
 
     // wshrpc.GitBranch

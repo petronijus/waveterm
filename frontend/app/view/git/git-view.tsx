@@ -582,6 +582,83 @@ const ActionStatusBar = React.memo(function ActionStatusBar({ model }: { model: 
 });
 ActionStatusBar.displayName = "ActionStatusBar";
 
+const GitAuthDialog = React.memo(function GitAuthDialog({ model }: { model: GitViewModel }) {
+    const open = jotai.useAtomValue(model.authOpenAtom);
+    const host = jotai.useAtomValue(model.authHostAtom);
+    const initialUser = jotai.useAtomValue(model.authUsernameAtom);
+    const error = jotai.useAtomValue(model.authErrorAtom);
+    const busy = jotai.useAtomValue(model.authBusyAtom);
+    const [username, setUsername] = React.useState("");
+    const [token, setToken] = React.useState("");
+    const [save, setSave] = React.useState(true);
+    React.useEffect(() => {
+        if (open) {
+            setUsername(initialUser ?? "");
+            setToken("");
+            setSave(true);
+        }
+    }, [open, initialUser]);
+    if (!open) return null;
+    const canSubmit = !busy && !isBlank(username) && !isBlank(token);
+    const submit = () => {
+        if (canSubmit) {
+            model.submitPushAuth(username, token, save);
+        }
+    };
+    return (
+        <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/50"
+            onMouseDown={() => !busy && model.closePushAuth()}
+        >
+            <div
+                className="w-72 rounded-md border border-border bg-panel p-3 text-xs shadow-lg"
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div className="mb-2 font-semibold text-primary">Authenticate{host ? ` — ${host}` : ""}</div>
+                <label className="mb-1 block text-secondary">Username</label>
+                <input
+                    className="mb-2 w-full rounded border border-border bg-background px-2 py-1 text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoFocus
+                />
+                <label className="mb-1 block text-secondary">Personal access token</label>
+                <input
+                    type="password"
+                    className="mb-2 w-full rounded border border-border bg-background px-2 py-1 text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") submit();
+                    }}
+                />
+                <label className="mb-2 flex items-center gap-2 cursor-pointer text-secondary">
+                    <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} />
+                    Save for {host || "this host"}
+                </label>
+                {error && <div className="mb-2 text-error">{error}</div>}
+                <div className="flex justify-end gap-2">
+                    <button
+                        className="rounded px-2 py-1 cursor-pointer text-secondary hover:text-primary disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => model.closePushAuth()}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        className="rounded bg-accent/80 px-2 py-1 text-primary transition-colors hover:bg-accent cursor-pointer disabled:opacity-50"
+                        disabled={!canSubmit}
+                        onClick={submit}
+                    >
+                        {busy ? "Pushing…" : "Push"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+});
+GitAuthDialog.displayName = "GitAuthDialog";
+
 export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(function GitView({ blockRef, model }) {
     const connStatus = jotai.useAtomValue(model.connStatus);
     const connection = jotai.useAtomValue(model.connection);
@@ -747,6 +824,7 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
 
                 <BranchSwitcher model={model} anchorRef={branchAnchorRef} blockRef={blockRef} />
                 <DiffPanel model={model} />
+                <GitAuthDialog model={model} />
             </div>
             {pathPicker}
         </>

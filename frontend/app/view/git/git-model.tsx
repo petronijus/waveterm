@@ -38,6 +38,11 @@ export type GitActionStatus = {
     isError: boolean;
 };
 
+// secret-store keys must match ^[A-Za-z][A-Za-z0-9_]*$, so encode the host.
+function gitSecretKey(host: string, field: string): string {
+    return `git_https_${host.replace(/[^A-Za-z0-9]/g, "_")}_${field}`;
+}
+
 export class GitViewModel implements ViewModel {
     viewType: string;
     blockId: string;
@@ -76,6 +81,13 @@ export class GitViewModel implements ViewModel {
     reviewActiveAtom: jotai.PrimitiveAtom<boolean>;
     reviewFilesAtom: jotai.PrimitiveAtom<GitFileStatus[]>;
     reviewIndexAtom: jotai.PrimitiveAtom<number>;
+    // push credential prompt
+    authOpenAtom: jotai.PrimitiveAtom<boolean>;
+    authHostAtom: jotai.PrimitiveAtom<string>;
+    authUsernameAtom: jotai.PrimitiveAtom<string>;
+    authErrorAtom: jotai.PrimitiveAtom<string>;
+    authBusyAtom: jotai.PrimitiveAtom<boolean>;
+    pendingPushUpstream = false;
 
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
@@ -120,6 +132,11 @@ export class GitViewModel implements ViewModel {
         this.reviewActiveAtom = jotai.atom<boolean>(false);
         this.reviewFilesAtom = jotai.atom<GitFileStatus[]>([]) as jotai.PrimitiveAtom<GitFileStatus[]>;
         this.reviewIndexAtom = jotai.atom<number>(0);
+        this.authOpenAtom = jotai.atom<boolean>(false);
+        this.authHostAtom = jotai.atom<string>("") as jotai.PrimitiveAtom<string>;
+        this.authUsernameAtom = jotai.atom<string>("") as jotai.PrimitiveAtom<string>;
+        this.authErrorAtom = jotai.atom<string>(null) as jotai.PrimitiveAtom<string>;
+        this.authBusyAtom = jotai.atom<boolean>(false);
 
         this.connection = jotai.atom((get) => {
             const connValue = get(this.env.getBlockMetaKeyAtom(blockId, "connection"));
@@ -594,6 +611,9 @@ export class GitViewModel implements ViewModel {
     // ---- sync & stash (F4) ----
 
     async sync(action: "pull" | "push" | "fetch", setUpstream = false) {
+        if (action === "push") {
+            return this.push(setUpstream);
+        }
         const root = globalStore.get(this.gitRootAtom);
         if (isBlank(root)) {
             return;
@@ -607,6 +627,128 @@ export class GitViewModel implements ViewModel {
         );
         if (ok) {
             await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+        }
+    }
+
+    // ---- push with credential handling ----
+
+    async push(setUpstream = false) {
+        const root = globalStore.get(this.gitRootAtom);
+        if (isBlank(root)) {
+            return;
+        }
+        const res = await this.runPush(root, setUpstream, null);
+        if (res?.success || !res?.authrequired) {
+            return;
+        }
+        // auth needed: try credentials stored for this host, else prompt
+        const host = res.authhost || "";
+        const stored = await this.loadStoredCreds(host);
+        if (stored != null) {
+            const retry = await this.runPush(root, setUpstream, stored);
+            if (retry?.success) {
+                return;
+            }
+        }
+        this.pendingPushUpstream = setUpstream;
+        globalStore.set(this.authHostAtom, host);
+        globalStore.set(this.authUsernameAtom, stored?.username ?? "");
+        globalStore.set(this.authErrorAtom, stored != null ? "Stored credentials were rejected" : null);
+        globalStore.set(this.authOpenAtom, true);
+    }
+
+    async submitPushAuth(username: string, token: string, save: boolean) {
+        const root = globalStore.get(this.gitRootAtom);
+        if (isBlank(root)) {
+            return;
+        }
+        globalStore.set(this.authBusyAtom, true);
+        try {
+            const res = await this.runPush(root, this.pendingPushUpstream, { username, token });
+            if (res?.success) {
+                if (save) {
+                    await this.saveStoredCreds(globalStore.get(this.authHostAtom), username, token);
+                }
+                this.closePushAuth();
+            } else if (res?.authrequired) {
+                globalStore.set(this.authErrorAtom, "Authentication failed — check your username and token");
+            } else {
+                globalStore.set(this.authErrorAtom, res?.output ?? "Push failed");
+            }
+        } finally {
+            globalStore.set(this.authBusyAtom, false);
+        }
+    }
+
+    closePushAuth() {
+        globalStore.set(this.authOpenAtom, false);
+        globalStore.set(this.authErrorAtom, null);
+    }
+
+    private async runPush(
+        root: string,
+        setUpstream: boolean,
+        creds: { username: string; token: string }
+    ): Promise<GitActionResult> {
+        globalStore.set(this.actionBusyAtom, true);
+        try {
+            const res = await this.env.rpc.RemoteGitSyncCommand(
+                TabRpcClient,
+                {
+                    gitroot: root,
+                    action: "push",
+                    setupstream: setUpstream,
+                    username: creds?.username,
+                    token: creds?.token,
+                },
+                { route: this.getRoute() }
+            );
+            if (res?.success) {
+                this.setActionStatus({ message: "push succeeded", isError: false });
+                await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+            } else if (!res?.authrequired) {
+                this.setActionStatus({ message: `push failed: ${res?.output ?? "unknown error"}`, isError: true });
+                await this.refreshStatus();
+            }
+            return res;
+        } catch (e) {
+            this.setActionStatus({ message: `push failed: ${String(e)}`, isError: true });
+            return { success: false } as GitActionResult;
+        } finally {
+            globalStore.set(this.actionBusyAtom, false);
+        }
+    }
+
+    private async loadStoredCreds(host: string): Promise<{ username: string; token: string }> {
+        if (isBlank(host)) {
+            return null;
+        }
+        try {
+            const uKey = gitSecretKey(host, "username");
+            const tKey = gitSecretKey(host, "token");
+            const secrets = await RpcApi.GetSecretsCommand(TabRpcClient, [uKey, tKey]);
+            const username = secrets?.[uKey];
+            const token = secrets?.[tKey];
+            if (!isBlank(username) && !isBlank(token)) {
+                return { username, token };
+            }
+        } catch (e) {
+            console.error("git: failed to load stored credentials", e);
+        }
+        return null;
+    }
+
+    private async saveStoredCreds(host: string, username: string, token: string) {
+        if (isBlank(host)) {
+            return;
+        }
+        try {
+            await RpcApi.SetSecretsCommand(TabRpcClient, {
+                [gitSecretKey(host, "username")]: username,
+                [gitSecretKey(host, "token")]: token,
+            });
+        } catch (e) {
+            console.error("git: failed to store credentials", e);
         }
     }
 

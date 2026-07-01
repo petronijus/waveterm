@@ -79,6 +79,8 @@ type CommandGitSyncData struct {
 	Action      string `json:"action"` // pull | push | fetch
 	Remote      string `json:"remote,omitempty"`
 	SetUpstream bool   `json:"setupstream,omitempty"`
+	Username    string `json:"username,omitempty"` // supplied for push over HTTPS when auth is needed
+	Token       string `json:"token,omitempty"`
 }
 
 type CommandGitStashData struct {
@@ -156,8 +158,10 @@ type GitCommit struct {
 }
 
 type GitActionResult struct {
-	Success bool   `json:"success"`
-	Output  string `json:"output,omitempty"` // combined stdout/stderr
+	Success      bool   `json:"success"`
+	Output       string `json:"output,omitempty"` // combined stdout/stderr
+	AuthRequired bool   `json:"authrequired,omitempty"`
+	AuthHost     string `json:"authhost,omitempty"` // remote host to key stored credentials by
 }
 
 type GitDiff struct {
