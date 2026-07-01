@@ -126,6 +126,7 @@ declare global {
         color?: string;
         priority: number;
         pidlinked?: boolean;
+        rotation?: number;
     };
 
     // baseds.BadgeEvent

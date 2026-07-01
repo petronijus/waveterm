@@ -19,6 +19,7 @@ type Badge struct {
 	Color     string  `json:"color,omitempty"`
 	Priority  float64 `json:"priority"`
 	PidLinked bool    `json:"pidlinked,omitempty"`
+	Rotation  float64 `json:"rotation,omitempty"` // degrees 0-360, applied via CSS transform
 }
 
 type BadgeEvent struct {
