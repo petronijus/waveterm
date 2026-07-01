@@ -38,6 +38,7 @@ type UserInputRequest struct {
 	PublicText   bool   `json:"publictext"`
 	OkLabel      string `json:"oklabel,omitempty"`
 	CancelLabel  string `json:"cancellabel,omitempty"`
+	BlockId      string `json:"blockid,omitempty"` // originating block; lets the UI show a scoped, non-blocking prompt
 }
 
 type UserInputResponse struct {
@@ -82,6 +83,16 @@ func (ui *UserInputHandler) sendRequestToFrontend(request *UserInputRequest, sco
 	})
 }
 
+// ClearPendingUserInput drops any buffered (not-yet-delivered) userinput event for
+// this request, so a window that subscribes late (e.g. after a reload) doesn't
+// re-show a prompt that was already answered.
+func ClearPendingUserInput(requestId string) {
+	wps.Broker.ClearPendingEvents(wps.Event_UserInput, func(event *wps.WaveEvent) bool {
+		req, ok := event.Data.(*UserInputRequest)
+		return ok && req.RequestId == requestId
+	})
+}
+
 func determineScopes(ctx context.Context) ([]string, error) {
 	connData := genconn.GetConnData(ctx)
 	if connData == nil {
@@ -109,6 +120,9 @@ func (p *FrontendProvider) GetUserInput(ctx context.Context, request *UserInputR
 	defer MainUserInputHandler.unregisterChannel(id)
 	request.RequestId = id
 	request.TimeoutMs = int(utilfn.TimeoutFromContext(ctx, 30*time.Second).Milliseconds())
+	if connData := genconn.GetConnData(ctx); connData != nil && request.BlockId == "" {
+		request.BlockId = connData.BlockId
+	}
 
 	scopes, scopesErr := determineScopes(ctx)
 	if scopesErr != nil {
