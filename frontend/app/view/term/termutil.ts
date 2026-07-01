@@ -5,6 +5,7 @@ export const DefaultTermTheme = "default-dark";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { elevate, getActiveUITheme } from "@/app/uitheme";
+import { makeConnRoute } from "@/util/util";
 import * as TermTypes from "@xterm/xterm";
 import base64 from "base64-js";
 import { colord } from "colord";
@@ -107,7 +108,7 @@ export const MIME_TO_EXT: Record<string, string> = {
  * @returns The path to the created temporary file
  * @throws Error if blob is too large (>5MB) or data URL is invalid
  */
-export async function createTempFileFromBlob(blob: Blob): Promise<string> {
+async function encodeBlobForTempFile(blob: Blob): Promise<{ filename: string; data64: string }> {
     // Check size limit (5MB)
     if (blob.size > 5 * 1024 * 1024) {
         throw new Error("Image too large (>5MB)");
@@ -131,15 +132,25 @@ export async function createTempFileFromBlob(blob: Blob): Promise<string> {
         reader.readAsArrayBuffer(blob);
     });
 
-    const base64Data = base64.fromByteArray(new Uint8Array(arrayBuffer));
+    return { filename, data64: base64.fromByteArray(new Uint8Array(arrayBuffer)) };
+}
 
-    // Write image to temp file and get path
-    const tempPath = await RpcApi.WriteTempFileCommand(TabRpcClient, {
-        filename,
-        data64: base64Data,
-    });
+export async function createTempFileFromBlob(blob: Blob): Promise<string> {
+    const { filename, data64 } = await encodeBlobForTempFile(blob);
+    // Write image to a temp file on the local host and get its path
+    return RpcApi.WriteTempFileCommand(TabRpcClient, { filename, data64 });
+}
 
-    return tempPath;
+// createRemoteTempFileFromBlob writes the blob to a temp file on the given
+// connection's remote host (routed to that connserver) and returns the remote
+// path, so a paste/drop over SSH references a file the remote shell can read.
+export async function createRemoteTempFileFromBlob(blob: Blob, connName: string): Promise<string> {
+    const { filename, data64 } = await encodeBlobForTempFile(blob);
+    return RpcApi.RemoteWriteTempFileCommand(
+        TabRpcClient,
+        { filename, data64 },
+        { route: makeConnRoute(connName) }
+    );
 }
 
 /**

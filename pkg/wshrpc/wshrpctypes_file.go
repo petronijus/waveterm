@@ -39,6 +39,12 @@ type WshRpcRemoteFileInterface interface {
 	RemoteWriteFileCommand(ctx context.Context, data FileData) error
 	RemoteFileJoinCommand(ctx context.Context, paths []string) (*FileInfo, error)
 	RemoteMkdirCommand(ctx context.Context, path string) error
+	RemoteWriteTempFileCommand(ctx context.Context, data CommandRemoteWriteTempFileData) (string, error)
+}
+
+type CommandRemoteWriteTempFileData struct {
+	FileName string `json:"filename"`
+	Data64   string `json:"data64"`
 }
 
 type FileDataAt struct {

@@ -9,6 +9,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     fetchWaveFile,
     getApi,
+    getBlockMetaKeyAtom,
     getOverrideConfigAtom,
     getSettingsKeyAtom,
     globalStore,
@@ -18,7 +19,7 @@ import {
 } from "@/store/global";
 import * as services from "@/store/services";
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
-import { base64ToArray, fireAndForget } from "@/util/util";
+import { base64ToArray, fireAndForget, isSshConnName } from "@/util/util";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
@@ -41,6 +42,7 @@ import {
 } from "./osc-handlers";
 import {
     bufferLinesToText,
+    createRemoteTempFileFromBlob,
     createTempFileFromBlob,
     extractAllClipboardData,
     normalizeCursorStyle,
@@ -731,13 +733,19 @@ export class TermWrap {
 
         try {
             const clipboardData = await extractAllClipboardData(e);
+            // On a remote terminal the temp file must live on the remote host so
+            // the shell running there can read it; local terminals write locally.
+            const connName = globalStore.get(getBlockMetaKeyAtom(this.blockId, "connection"));
+            const remote = isSshConnName(connName);
             let firstImage = true;
             for (const data of clipboardData) {
                 if (data.image && SupportsImageInput) {
                     if (!firstImage) {
                         await new Promise((r) => setTimeout(r, 150));
                     }
-                    const tempPath = await createTempFileFromBlob(data.image);
+                    const tempPath = remote
+                        ? await createRemoteTempFileFromBlob(data.image, connName)
+                        : await createTempFileFromBlob(data.image);
                     this.terminal.paste(tempPath + " ");
                     firstImage = false;
                 }

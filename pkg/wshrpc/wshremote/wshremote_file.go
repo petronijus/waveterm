@@ -477,6 +477,32 @@ func (impl *ServerImpl) RemoteMkdirCommand(ctx context.Context, path string) err
 	return nil
 }
 
+// RemoteWriteTempFileCommand writes base64 data to a fresh temp file on the
+// remote host and returns its path, so a pasted/dropped image can be referenced
+// by remote CLI tools running over the connection.
+func (*ServerImpl) RemoteWriteTempFileCommand(ctx context.Context, data wshrpc.CommandRemoteWriteTempFileData) (string, error) {
+	if data.FileName == "" {
+		return "", fmt.Errorf("filename is required")
+	}
+	name := filepath.Base(data.FileName)
+	if name == "" || name == "." || name == ".." {
+		return "", fmt.Errorf("invalid filename")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(data.Data64)
+	if err != nil {
+		return "", fmt.Errorf("error decoding base64 data: %w", err)
+	}
+	tempDir, err := os.MkdirTemp("", "waveterm-")
+	if err != nil {
+		return "", fmt.Errorf("error creating temp directory: %w", err)
+	}
+	tempPath := filepath.Join(tempDir, name)
+	if err := os.WriteFile(tempPath, decoded, 0600); err != nil {
+		return "", fmt.Errorf("error writing temp file: %w", err)
+	}
+	return tempPath, nil
+}
+
 func (*ServerImpl) RemoteWriteFileCommand(ctx context.Context, data wshrpc.FileData) error {
 	var truncate, append bool
 	var atOffset int64
