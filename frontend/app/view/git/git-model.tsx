@@ -72,6 +72,10 @@ export class GitViewModel implements ViewModel {
     diffLoadingAtom: jotai.PrimitiveAtom<boolean>;
     diffFileAtom: jotai.PrimitiveAtom<GitFileStatus>;
     diffStagedAtom: jotai.PrimitiveAtom<boolean>;
+    // multi-file review mode: step through all changed files in one diff panel
+    reviewActiveAtom: jotai.PrimitiveAtom<boolean>;
+    reviewFilesAtom: jotai.PrimitiveAtom<GitFileStatus[]>;
+    reviewIndexAtom: jotai.PrimitiveAtom<number>;
 
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
@@ -113,6 +117,9 @@ export class GitViewModel implements ViewModel {
         this.diffLoadingAtom = jotai.atom<boolean>(false);
         this.diffFileAtom = jotai.atom<GitFileStatus>(null) as jotai.PrimitiveAtom<GitFileStatus>;
         this.diffStagedAtom = jotai.atom<boolean>(false);
+        this.reviewActiveAtom = jotai.atom<boolean>(false);
+        this.reviewFilesAtom = jotai.atom<GitFileStatus[]>([]) as jotai.PrimitiveAtom<GitFileStatus[]>;
+        this.reviewIndexAtom = jotai.atom<number>(0);
 
         this.connection = jotai.atom((get) => {
             const connValue = get(this.env.getBlockMetaKeyAtom(blockId, "connection"));
@@ -652,6 +659,37 @@ export class GitViewModel implements ViewModel {
     closeDiff() {
         globalStore.set(this.diffAtom, null);
         globalStore.set(this.diffFileAtom, null);
+        globalStore.set(this.reviewActiveAtom, false);
+        globalStore.set(this.reviewFilesAtom, []);
+    }
+
+    // ---- multi-file review ----
+
+    async openReview(files: GitFileStatus[]) {
+        if (files == null || files.length === 0) {
+            return;
+        }
+        globalStore.set(this.reviewFilesAtom, files);
+        globalStore.set(this.reviewIndexAtom, 0);
+        globalStore.set(this.reviewActiveAtom, true);
+        await this.openDiff(files[0]);
+    }
+
+    async reviewGoto(index: number) {
+        const files = globalStore.get(this.reviewFilesAtom);
+        if (index < 0 || index >= files.length) {
+            return;
+        }
+        globalStore.set(this.reviewIndexAtom, index);
+        await this.openDiff(files[index]);
+    }
+
+    reviewNext() {
+        return this.reviewGoto(globalStore.get(this.reviewIndexAtom) + 1);
+    }
+
+    reviewPrev() {
+        return this.reviewGoto(globalStore.get(this.reviewIndexAtom) - 1);
     }
 
     // Stage or unstage a single hunk (by index into the currently-shown diff), then
@@ -693,13 +731,20 @@ export class GitViewModel implements ViewModel {
             if (this.disposed) {
                 return;
             }
+            const reviewing = globalStore.get(this.reviewActiveAtom);
             if (isBlank(diff?.diff)) {
-                this.closeDiff();
+                // in review mode keep the panel (as "no changes") so the file
+                // stepper stays; otherwise the diff is done, close it
+                if (reviewing) {
+                    globalStore.set(this.diffAtom, { path: file.path, diff: "" });
+                } else {
+                    this.closeDiff();
+                }
             } else {
                 globalStore.set(this.diffAtom, diff);
             }
         } catch (e) {
-            if (!this.disposed) {
+            if (!this.disposed && !globalStore.get(this.reviewActiveAtom)) {
                 this.closeDiff();
             }
         } finally {

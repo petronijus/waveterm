@@ -155,12 +155,14 @@ const ChangesSection = React.memo(function ChangesSection({ model }: { model: Gi
                 <>
                     <div className="git-section-header flex items-center justify-between px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel">
                         <span>Staged ({staged.length})</span>
-                        <button
-                            className="cursor-pointer hover:text-primary normal-case"
-                            onClick={() => model.unstage([])}
-                        >
-                            Unstage all
-                        </button>
+                        <div className="flex items-center gap-3 normal-case">
+                            <button className="cursor-pointer hover:text-primary" onClick={() => model.openReview(staged)}>
+                                Review
+                            </button>
+                            <button className="cursor-pointer hover:text-primary" onClick={() => model.unstage([])}>
+                                Unstage all
+                            </button>
+                        </div>
                     </div>
                     {staged.map((f) => (
                         <FileRow
@@ -179,12 +181,17 @@ const ChangesSection = React.memo(function ChangesSection({ model }: { model: Gi
                 <>
                     <div className="git-section-header flex items-center justify-between px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel">
                         <span>Changes ({unstaged.length})</span>
-                        <button
-                            className="cursor-pointer hover:text-primary normal-case"
-                            onClick={() => model.stage([])}
-                        >
-                            Stage all
-                        </button>
+                        <div className="flex items-center gap-3 normal-case">
+                            <button
+                                className="cursor-pointer hover:text-primary"
+                                onClick={() => model.openReview(unstaged)}
+                            >
+                                Review
+                            </button>
+                            <button className="cursor-pointer hover:text-primary" onClick={() => model.stage([])}>
+                                Stage all
+                            </button>
+                        </div>
                     </div>
                     {unstaged.map((f) => (
                         <FileRow
@@ -459,21 +466,69 @@ const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel
     const loading = jotai.useAtomValue(model.diffLoadingAtom);
     const staged = jotai.useAtomValue(model.diffStagedAtom);
     const untracked = !!jotai.useAtomValue(model.diffFileAtom)?.untracked;
+    const reviewActive = jotai.useAtomValue(model.reviewActiveAtom);
+    const reviewFiles = jotai.useAtomValue(model.reviewFilesAtom);
+    const reviewIndex = jotai.useAtomValue(model.reviewIndexAtom);
     const hunks = React.useMemo(() => (diff?.diff ? parseUnifiedDiffHunks(diff.diff) : []), [diff?.diff]);
     const onApply = React.useCallback((index: number) => model.applyHunk(index), [model]);
+
+    React.useEffect(() => {
+        if (diff == null) {
+            return undefined;
+        }
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                model.closeDiff();
+                e.preventDefault();
+            } else if (reviewActive && e.key === "F7") {
+                if (e.shiftKey) {
+                    model.reviewPrev();
+                } else {
+                    model.reviewNext();
+                }
+                e.preventDefault();
+            }
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [diff, reviewActive, model]);
+
     if (diff == null) return null;
     // hunk-level staging can't apply to untracked (whole-file) or binary diffs
     const canStageHunks = !untracked && !diff.binary;
     return (
         <div className="absolute inset-0 z-10 flex flex-col bg-background">
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs bg-background">
+                {reviewActive && (
+                    <>
+                        <button
+                            className="w-5 h-5 rounded hover:bg-white/10 cursor-pointer text-secondary hover:text-primary disabled:opacity-30 disabled:cursor-default"
+                            title="Previous file (Shift+F7)"
+                            disabled={reviewIndex <= 0}
+                            onClick={() => model.reviewPrev()}
+                        >
+                            <i className="fa-sharp fa-solid fa-chevron-left text-xs" />
+                        </button>
+                        <button
+                            className="w-5 h-5 rounded hover:bg-white/10 cursor-pointer text-secondary hover:text-primary disabled:opacity-30 disabled:cursor-default"
+                            title="Next file (F7)"
+                            disabled={reviewIndex >= reviewFiles.length - 1}
+                            onClick={() => model.reviewNext()}
+                        >
+                            <i className="fa-sharp fa-solid fa-chevron-right text-xs" />
+                        </button>
+                        <span className="shrink-0 text-secondary tabular-nums">
+                            {reviewIndex + 1}/{reviewFiles.length}
+                        </span>
+                    </>
+                )}
                 <i className="fa-sharp fa-solid fa-file-lines text-secondary" />
                 <span className="flex-1 truncate font-mono text-primary" title={diff.path}>
                     {diff.path}
                 </span>
                 <button
                     className="w-5 h-5 rounded hover:bg-white/10 cursor-pointer text-secondary hover:text-primary"
-                    title="Close diff"
+                    title={reviewActive ? "Exit review (Esc)" : "Close diff (Esc)"}
                     onClick={() => model.closeDiff()}
                 >
                     <i className="fa-sharp fa-solid fa-xmark text-xs" />
