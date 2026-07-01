@@ -22,6 +22,7 @@ import * as services from "@/store/services";
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
 import { base64ToArray, fireAndForget, isSshConnName } from "@/util/util";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -98,6 +99,7 @@ export class TermWrap {
     fitAddon: FitAddon;
     searchAddon: SearchAddon;
     serializeAddon: SerializeAddon;
+    imageAddon: ImageAddon | null = null;
     mainFileSubject: SubjectWithRef<WSFileEventData>;
     loaded: boolean;
     heldData: Uint8Array[];
@@ -205,6 +207,15 @@ export class TermWrap {
                 }
             )
         );
+        // Inline terminal images: Sixel + iTerm2 inline (IIP, PNG/JPEG). Best-effort —
+        // never let an addon-load failure take down the terminal.
+        try {
+            this.imageAddon = new ImageAddon({ sixelSupport: true });
+            this.terminal.loadAddon(this.imageAddon);
+        } catch (e) {
+            console.error("[termwrap] ImageAddon failed to load", e);
+            this.imageAddon = null;
+        }
         this.setTermRenderer(WebGLSupported && waveOptions.useWebGl ? "webgl" : "dom");
         // Register OSC handlers
         this.terminal.parser.registerOscHandler(7, (data: string) => {

@@ -312,7 +312,7 @@ const TerminalView = ({ blockId, blockRef, model }: ViewComponentProps<TermViewM
                 macOptionIsMeta: termMacOptionIsMeta,
                 cursorStyle: termCursorStyle,
                 cursorBlink: termCursorBlink,
-                overviewRuler: { width: 6 },
+                scrollbar: { width: 6 },
             },
             {
                 keydownHandler: model.handleTerminalKeydown.bind(model),
