@@ -141,9 +141,9 @@ export async function createTempFileFromBlob(blob: Blob): Promise<string> {
     return RpcApi.WriteTempFileCommand(TabRpcClient, { filename, data64 });
 }
 
-// createRemoteTempFileFromBlob writes the blob to a temp file on the given
+// createRemoteTempFileFromBlob writes a pasted image to a temp file on the given
 // connection's remote host (routed to that connserver) and returns the remote
-// path, so a paste/drop over SSH references a file the remote shell can read.
+// path, so a paste over SSH references a file the remote shell can read.
 export async function createRemoteTempFileFromBlob(blob: Blob, connName: string): Promise<string> {
     const { filename, data64 } = await encodeBlobForTempFile(blob);
     return RpcApi.RemoteWriteTempFileCommand(
@@ -151,6 +151,23 @@ export async function createRemoteTempFileFromBlob(blob: Blob, connName: string)
         { filename, data64 },
         { route: makeConnRoute(connName) }
     );
+}
+
+// uploadFileToRemoteTemp uploads an arbitrary dropped file (any type, up to 50MB)
+// to a temp file on the connection's remote host and returns the remote path.
+export async function uploadFileToRemoteTemp(file: File, connName: string): Promise<string> {
+    if (file.size > 50 * 1024 * 1024) {
+        throw new Error("File too large (>50MB)");
+    }
+    const filename = file.name || `waveterm_upload_${Date.now()}.bin`;
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+    const data64 = base64.fromByteArray(new Uint8Array(arrayBuffer));
+    return RpcApi.RemoteWriteTempFileCommand(TabRpcClient, { filename, data64 }, { route: makeConnRoute(connName) });
 }
 
 /**

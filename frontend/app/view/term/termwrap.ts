@@ -15,6 +15,7 @@ import {
     globalStore,
     isDev,
     openLink,
+    setBlockUploadState,
     WOS,
 } from "@/store/global";
 import * as services from "@/store/services";
@@ -48,6 +49,7 @@ import {
     normalizeCursorStyle,
     quoteForPosixShell,
     trimTerminalSelection,
+    uploadFileToRemoteTemp,
 } from "./termutil";
 
 const dlog = debug("wave:termwrap");
@@ -111,6 +113,7 @@ export class TermWrap {
     webglContextLossDisposable: TermTypes.IDisposable | null = null;
     webglEnabledAtom: jotai.PrimitiveAtom<boolean>;
     pasteActive: boolean = false;
+    uploadActive: boolean = false;
     lastUpdated: number;
     promptMarkers: TermTypes.IMarker[] = [];
     shellIntegrationStatusAtom: jotai.PrimitiveAtom<ShellIntegrationStatus | null>;
@@ -353,17 +356,35 @@ export class TermWrap {
                 e.dataTransfer.dropEffect = "copy";
             }
         };
-        const dropHandler = (e: DragEvent) => {
+        const dropHandler = async (e: DragEvent) => {
             e.preventDefault();
             if (!e.dataTransfer || e.dataTransfer.files.length === 0) {
                 return;
             }
+            // On a remote terminal, upload the dropped files to the remote host and
+            // paste the remote paths; locally, the OS path is directly usable.
+            const connName = globalStore.get(getBlockMetaKeyAtom(this.blockId, "connection"));
+            const remote = isSshConnName(connName);
             const paths: string[] = [];
             for (let i = 0; i < e.dataTransfer.files.length; i++) {
                 const file = e.dataTransfer.files[i];
-                const filePath = getApi().getPathForFile(file);
-                if (filePath) {
-                    paths.push(quoteForPosixShell(filePath));
+                if (!remote) {
+                    const filePath = getApi().getPathForFile(file);
+                    if (filePath) {
+                        paths.push(quoteForPosixShell(filePath));
+                    }
+                    continue;
+                }
+                this.uploadActive = true;
+                setBlockUploadState(this.blockId, { active: true, fileName: file.name, fileSize: file.size });
+                try {
+                    const tempPath = await uploadFileToRemoteTemp(file, connName);
+                    paths.push(quoteForPosixShell(tempPath));
+                } catch (err) {
+                    console.error("Failed to transfer dropped file to remote:", err);
+                } finally {
+                    this.uploadActive = false;
+                    setBlockUploadState(this.blockId, null);
                 }
             }
             if (paths.length > 0) {
@@ -531,6 +552,10 @@ export class TermWrap {
 
     handleTermData(data: string) {
         if (!this.loaded) {
+            return;
+        }
+        // swallow stray input while a dropped file is being uploaded to the remote
+        if (this.uploadActive) {
             return;
         }
 

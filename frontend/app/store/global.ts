@@ -657,6 +657,23 @@ function getConnStatusAtom(conn: string): PrimitiveAtom<ConnStatus> {
     return rtn;
 }
 
+export type BlockUploadState = { active: boolean; fileName?: string; fileSize?: number };
+
+const BlockUploadStateMap = new Map<string, PrimitiveAtom<BlockUploadState>>();
+
+function getBlockUploadStateAtom(blockId: string): PrimitiveAtom<BlockUploadState> {
+    let rtn = BlockUploadStateMap.get(blockId);
+    if (rtn == null) {
+        rtn = atom<BlockUploadState>({ active: false });
+        BlockUploadStateMap.set(blockId, rtn);
+    }
+    return rtn;
+}
+
+function setBlockUploadState(blockId: string, state: BlockUploadState | null) {
+    globalStore.set(getBlockUploadStateAtom(blockId), state ?? { active: false });
+}
+
 function createTab() {
     getApi().createTab();
 }
@@ -684,6 +701,7 @@ export {
     getApi,
     getBlockComponentModel,
     getBlockMetaKeyAtom,
+    getBlockUploadStateAtom,
     getBlockTermDurableAtom,
     getTabMetaKeyAtom,
     getConfigBackgroundAtom,
@@ -712,6 +730,7 @@ export {
     registerBlockComponentModel,
     replaceBlock,
     setActiveTab,
+    setBlockUploadState,
     setNodeFocus,
     setPlatform,
     subscribeToConnEvents,
