@@ -14,6 +14,7 @@ type WshRpcRemoteGitInterface interface {
 	RemoteGitCheckoutCommand(ctx context.Context, data CommandGitCheckoutData) (*GitActionResult, error)
 	RemoteGitStageCommand(ctx context.Context, data CommandGitFilesData) (*GitActionResult, error)
 	RemoteGitUnstageCommand(ctx context.Context, data CommandGitFilesData) (*GitActionResult, error)
+	RemoteGitApplyHunkCommand(ctx context.Context, data CommandGitApplyHunkData) (*GitActionResult, error)
 	RemoteGitCommitCommand(ctx context.Context, data CommandGitCommitData) (*GitActionResult, error)
 	RemoteGitDiscardCommand(ctx context.Context, data CommandGitFilesData) (*GitActionResult, error)
 	RemoteGitSyncCommand(ctx context.Context, data CommandGitSyncData) (*GitActionResult, error)
@@ -57,6 +58,13 @@ type CommandGitCheckoutData struct {
 type CommandGitFilesData struct {
 	GitRoot string   `json:"gitroot"`
 	Paths   []string `json:"paths,omitempty"` // repo-relative; empty = all
+}
+
+type CommandGitApplyHunkData struct {
+	GitRoot   string `json:"gitroot"`
+	Path      string `json:"path"`
+	HunkIndex int    `json:"hunkindex"` // 0-based, into the current working/staged diff
+	Unstage   bool   `json:"unstage"`   // true = unstage a staged hunk, false = stage a working hunk
 }
 
 type CommandGitCommitData struct {

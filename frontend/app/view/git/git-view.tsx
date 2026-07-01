@@ -347,18 +347,19 @@ type DiffRow =
     | { kind: "add"; newNo: number; text: string }
     | { kind: "del"; oldNo: number; text: string };
 
-// Parse a (full-context) unified diff into renderable rows with line numbers,
-// dropping the diff/hunk headers so the panel shows the whole file content with
-// +/- markers rather than just the changed hunks.
-function parseUnifiedDiff(diff: string): DiffRow[] {
-    const rows: DiffRow[] = [];
+type DiffHunk = { header: string; rows: DiffRow[] };
+
+// Parse a unified diff into hunks (each with its @@ header + renderable rows), so
+// the panel can show hunk boundaries and offer per-hunk stage/unstage actions.
+function parseUnifiedDiffHunks(diff: string): DiffHunk[] {
+    const hunks: DiffHunk[] = [];
+    let cur: DiffHunk = null;
     let oldNo = 0;
     let newNo = 0;
     // Everything before the first @@ is the diff/index/mode header. Once we're inside a
     // hunk, classify by the leading char only — never by header-looking prefixes — so a
     // file line that itself starts with "+++", "---", "@@" or "diff " isn't mistaken for
     // a header and dropped.
-    let inHunk = false;
     const lines = diff.split("\n");
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
@@ -368,10 +369,11 @@ function parseUnifiedDiff(diff: string): DiffRow[] {
                 oldNo = parseInt(m[1], 10);
                 newNo = parseInt(m[2], 10);
             }
-            inHunk = true;
+            cur = { header: raw, rows: [] };
+            hunks.push(cur);
             continue;
         }
-        if (!inHunk) {
+        if (cur == null) {
             continue; // pre-hunk header lines
         }
         if (raw.startsWith("\\")) {
@@ -383,18 +385,18 @@ function parseUnifiedDiff(diff: string): DiffRow[] {
         const tag = raw[0];
         const text = raw.slice(1);
         if (tag === "+") {
-            rows.push({ kind: "add", newNo, text });
+            cur.rows.push({ kind: "add", newNo, text });
             newNo++;
         } else if (tag === "-") {
-            rows.push({ kind: "del", oldNo, text });
+            cur.rows.push({ kind: "del", oldNo, text });
             oldNo++;
         } else {
-            rows.push({ kind: "context", oldNo, newNo, text });
+            cur.rows.push({ kind: "context", oldNo, newNo, text });
             oldNo++;
             newNo++;
         }
     }
-    return rows;
+    return hunks;
 }
 
 const DiffLine = React.memo(function DiffLine({ row }: { row: DiffRow }) {
@@ -420,11 +422,48 @@ const DiffLine = React.memo(function DiffLine({ row }: { row: DiffRow }) {
 });
 DiffLine.displayName = "DiffLine";
 
+const DiffHunkBlock = React.memo(function DiffHunkBlock({
+    hunk,
+    index,
+    staged,
+    onApply,
+}: {
+    hunk: DiffHunk;
+    index: number;
+    staged: boolean;
+    onApply: (index: number) => void;
+}) {
+    return (
+        <div className="border-b border-border/40">
+            <div className="sticky top-0 z-[1] flex items-center gap-2 bg-panel/80 px-2 py-0.5 backdrop-blur">
+                <span className="flex-1 truncate text-[10px] text-secondary/70">{hunk.header}</span>
+                <button
+                    className="rounded px-1.5 py-0.5 text-[10px] text-secondary hover:bg-white/10 hover:text-primary cursor-pointer"
+                    title={staged ? "Unstage this hunk" : "Stage this hunk"}
+                    onClick={() => onApply(index)}
+                >
+                    <i className={cn("fa-sharp fa-solid mr-1 text-[9px]", staged ? "fa-minus" : "fa-plus")} />
+                    {staged ? "Unstage" : "Stage"}
+                </button>
+            </div>
+            {hunk.rows.map((r, i) => (
+                <DiffLine key={i} row={r} />
+            ))}
+        </div>
+    );
+});
+DiffHunkBlock.displayName = "DiffHunkBlock";
+
 const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel }) {
     const diff = jotai.useAtomValue(model.diffAtom);
     const loading = jotai.useAtomValue(model.diffLoadingAtom);
-    const rows = React.useMemo(() => (diff?.diff ? parseUnifiedDiff(diff.diff) : []), [diff?.diff]);
+    const staged = jotai.useAtomValue(model.diffStagedAtom);
+    const untracked = !!jotai.useAtomValue(model.diffFileAtom)?.untracked;
+    const hunks = React.useMemo(() => (diff?.diff ? parseUnifiedDiffHunks(diff.diff) : []), [diff?.diff]);
+    const onApply = React.useCallback((index: number) => model.applyHunk(index), [model]);
     if (diff == null) return null;
+    // hunk-level staging can't apply to untracked (whole-file) or binary diffs
+    const canStageHunks = !untracked && !diff.binary;
     return (
         <div className="absolute inset-0 z-10 flex flex-col bg-background">
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs bg-background">
@@ -445,13 +484,17 @@ const DiffPanel = React.memo(function DiffPanel({ model }: { model: GitViewModel
                     <div className="p-3 text-xs text-secondary">Loading…</div>
                 ) : diff.binary ? (
                     <div className="p-3 text-xs text-secondary italic">Binary file — no text diff</div>
-                ) : rows.length === 0 ? (
+                ) : hunks.length === 0 ? (
                     <div className="p-3 text-xs text-secondary italic">No changes</div>
                 ) : (
-                    <div className="text-[11px] font-mono leading-relaxed py-1">
-                        {rows.map((r, i) => (
-                            <DiffLine key={i} row={r} />
-                        ))}
+                    <div className="text-[11px] font-mono leading-relaxed">
+                        {hunks.map((h, i) =>
+                            canStageHunks ? (
+                                <DiffHunkBlock key={i} hunk={h} index={i} staged={staged} onApply={onApply} />
+                            ) : (
+                                h.rows.map((r, j) => <DiffLine key={`${i}-${j}`} row={r} />)
+                            )
+                        )}
                     </div>
                 )}
             </div>

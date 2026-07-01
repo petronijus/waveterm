@@ -12,6 +12,7 @@ export type GitEnv = WaveEnvSubset<{
         RemoteGitCheckoutCommand: WaveEnv["rpc"]["RemoteGitCheckoutCommand"];
         RemoteGitStageCommand: WaveEnv["rpc"]["RemoteGitStageCommand"];
         RemoteGitUnstageCommand: WaveEnv["rpc"]["RemoteGitUnstageCommand"];
+        RemoteGitApplyHunkCommand: WaveEnv["rpc"]["RemoteGitApplyHunkCommand"];
         RemoteGitCommitCommand: WaveEnv["rpc"]["RemoteGitCommitCommand"];
         RemoteGitDiscardCommand: WaveEnv["rpc"]["RemoteGitDiscardCommand"];
         RemoteGitSyncCommand: WaveEnv["rpc"]["RemoteGitSyncCommand"];

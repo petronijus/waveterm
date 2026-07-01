@@ -768,6 +768,12 @@ export class RpcApiType {
         return client.wshRpcCall("remotegetinfo", null, opts);
     }
 
+    // command "remotegitapplyhunk" [call]
+    RemoteGitApplyHunkCommand(client: WshClient, data: CommandGitApplyHunkData, opts?: RpcOpts): Promise<GitActionResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitapplyhunk", data, opts);
+        return client.wshRpcCall("remotegitapplyhunk", data, opts);
+    }
+
     // command "remotegitbranches" [call]
     RemoteGitBranchesCommand(client: WshClient, data: CommandGitRootData, opts?: RpcOpts): Promise<GitBranchList> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "remotegitbranches", data, opts);

@@ -42,6 +42,51 @@ func runGit(ctx context.Context, gitRoot string, args ...string) (string, string
 	return stdout.String(), stderr.String(), err
 }
 
+// runGitStdin is runGit with a patch (or other content) fed to git's stdin.
+func runGitStdin(ctx context.Context, gitRoot string, stdin string, args ...string) (string, string, error) {
+	fullArgs := append([]string{"-C", gitRoot}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_SSH_COMMAND=ssh -oBatchMode=yes",
+		"GIT_PAGER=cat",
+	)
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+// extractHunkPatch pulls a single hunk (0-based) out of a unified diff, keeping
+// the file header so the result is a standalone patch that `git apply` accepts.
+func extractHunkPatch(diff string, index int) (string, error) {
+	lines := strings.Split(diff, "\n")
+	var header []string
+	var hunkStarts []int
+	for i, l := range lines {
+		if strings.HasPrefix(l, "@@") {
+			hunkStarts = append(hunkStarts, i)
+		} else if len(hunkStarts) == 0 {
+			header = append(header, l)
+		}
+	}
+	if index < 0 || index >= len(hunkStarts) {
+		return "", fmt.Errorf("hunk %d out of range (%d hunks)", index, len(hunkStarts))
+	}
+	end := len(lines)
+	if index+1 < len(hunkStarts) {
+		end = hunkStarts[index+1]
+	}
+	out := append(append([]string{}, header...), lines[hunkStarts[index]:end]...)
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return strings.Join(out, "\n") + "\n", nil
+}
+
 func gitAction(ctx context.Context, gitRoot string, timeout time.Duration, args ...string) (*wshrpc.GitActionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -342,6 +387,36 @@ func (impl *ServerImpl) RemoteGitUnstageCommand(ctx context.Context, data wshrpc
 		paths = []string{"."}
 	}
 	return gitAction(ctx, data.GitRoot, gitActionTimeout, append([]string{"restore", "--staged", "--"}, paths...)...)
+}
+
+func (impl *ServerImpl) RemoteGitApplyHunkCommand(ctx context.Context, data wshrpc.CommandGitApplyHunkData) (*wshrpc.GitActionResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitActionTimeout)
+	defer cancel()
+	// Re-derive the diff from git so hunk boundaries match what it will apply:
+	// the working-tree diff when staging, the staged diff when unstaging.
+	diffArgs := []string{"diff"}
+	if data.Unstage {
+		diffArgs = append(diffArgs, "--cached")
+	}
+	diffArgs = append(diffArgs, "--", data.Path)
+	stdout, stderr, err := runGit(ctx, data.GitRoot, diffArgs...)
+	if err != nil {
+		return &wshrpc.GitActionResult{Success: false, Output: strings.TrimSpace(stderr)}, nil
+	}
+	patch, perr := extractHunkPatch(stdout, data.HunkIndex)
+	if perr != nil {
+		return &wshrpc.GitActionResult{Success: false, Output: perr.Error()}, nil
+	}
+	applyArgs := []string{"apply", "--cached"}
+	if data.Unstage {
+		applyArgs = append(applyArgs, "--reverse")
+	}
+	aout, aerr, aErr := runGitStdin(ctx, data.GitRoot, patch, applyArgs...)
+	if aErr != nil {
+		out := strings.TrimSpace(strings.TrimRight(aout, "\n") + "\n" + strings.TrimRight(aerr, "\n"))
+		return &wshrpc.GitActionResult{Success: false, Output: out}, nil
+	}
+	return &wshrpc.GitActionResult{Success: true}, nil
 }
 
 func (impl *ServerImpl) RemoteGitCommitCommand(ctx context.Context, data wshrpc.CommandGitCommitData) (*wshrpc.GitActionResult, error) {

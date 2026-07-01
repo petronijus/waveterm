@@ -419,6 +419,14 @@ declare global {
         chatid: string;
     };
 
+    // wshrpc.CommandGitApplyHunkData
+    type CommandGitApplyHunkData = {
+        gitroot: string;
+        path: string;
+        hunkindex: number;
+        unstage: boolean;
+    };
+
     // wshrpc.CommandGitCheckoutData
     type CommandGitCheckoutData = {
         gitroot: string;

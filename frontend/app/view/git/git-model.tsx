@@ -70,6 +70,8 @@ export class GitViewModel implements ViewModel {
     // F5 inline diff
     diffAtom: jotai.PrimitiveAtom<GitDiff>;
     diffLoadingAtom: jotai.PrimitiveAtom<boolean>;
+    diffFileAtom: jotai.PrimitiveAtom<GitFileStatus>;
+    diffStagedAtom: jotai.PrimitiveAtom<boolean>;
 
     connection: jotai.Atom<string>;
     connStatus: jotai.Atom<ConnStatus>;
@@ -109,6 +111,8 @@ export class GitViewModel implements ViewModel {
         this.commitAmendAtom = jotai.atom<boolean>(false);
         this.diffAtom = jotai.atom<GitDiff>(null) as jotai.PrimitiveAtom<GitDiff>;
         this.diffLoadingAtom = jotai.atom<boolean>(false);
+        this.diffFileAtom = jotai.atom<GitFileStatus>(null) as jotai.PrimitiveAtom<GitFileStatus>;
+        this.diffStagedAtom = jotai.atom<boolean>(false);
 
         this.connection = jotai.atom((get) => {
             const connValue = get(this.env.getBlockMetaKeyAtom(blockId, "connection"));
@@ -623,10 +627,14 @@ export class GitViewModel implements ViewModel {
         const staged = file.staged && !file.unstaged;
         globalStore.set(this.diffLoadingAtom, true);
         globalStore.set(this.diffAtom, { path: file.path, diff: "" });
+        globalStore.set(this.diffFileAtom, file);
+        globalStore.set(this.diffStagedAtom, staged);
         try {
+            // normal context (not full-file) so the diff splits into real hunks that
+            // can be staged/unstaged individually via RemoteGitApplyHunkCommand
             const diff = await this.env.rpc.RemoteGitDiffCommand(
                 TabRpcClient,
-                { gitroot: root, path: file.path, staged, fullcontext: true, untracked: !!file.untracked },
+                { gitroot: root, path: file.path, staged, fullcontext: false, untracked: !!file.untracked },
                 { route: this.getRoute() }
             );
             if (!this.disposed) {
@@ -643,6 +651,60 @@ export class GitViewModel implements ViewModel {
 
     closeDiff() {
         globalStore.set(this.diffAtom, null);
+        globalStore.set(this.diffFileAtom, null);
+    }
+
+    // Stage or unstage a single hunk (by index into the currently-shown diff), then
+    // reload the same diff side so the remaining hunks re-index; close it once that
+    // side has no changes left.
+    async applyHunk(hunkIndex: number) {
+        const root = globalStore.get(this.gitRootAtom);
+        const file = globalStore.get(this.diffFileAtom);
+        if (isBlank(root) || file == null) {
+            return;
+        }
+        const unstage = globalStore.get(this.diffStagedAtom);
+        const ok = await this.runAction(unstage ? "Unstage hunk" : "Stage hunk", () =>
+            this.env.rpc.RemoteGitApplyHunkCommand(
+                TabRpcClient,
+                { gitroot: root, path: file.path, hunkindex: hunkIndex, unstage },
+                { route: this.getRoute() }
+            )
+        );
+        if (ok && !this.disposed) {
+            await this.reloadDiffSide();
+        }
+    }
+
+    private async reloadDiffSide() {
+        const root = globalStore.get(this.gitRootAtom);
+        const file = globalStore.get(this.diffFileAtom);
+        if (isBlank(root) || file == null) {
+            return;
+        }
+        const staged = globalStore.get(this.diffStagedAtom);
+        globalStore.set(this.diffLoadingAtom, true);
+        try {
+            const diff = await this.env.rpc.RemoteGitDiffCommand(
+                TabRpcClient,
+                { gitroot: root, path: file.path, staged, fullcontext: false, untracked: !!file.untracked },
+                { route: this.getRoute() }
+            );
+            if (this.disposed) {
+                return;
+            }
+            if (isBlank(diff?.diff)) {
+                this.closeDiff();
+            } else {
+                globalStore.set(this.diffAtom, diff);
+            }
+        } catch (e) {
+            if (!this.disposed) {
+                this.closeDiff();
+            }
+        } finally {
+            globalStore.set(this.diffLoadingAtom, false);
+        }
     }
 
     // ---- discard (F5) ----

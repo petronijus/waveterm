@@ -766,6 +766,12 @@ func RemoteGetInfoCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (wshrpc.Remot
 	return resp, err
 }
 
+// command "remotegitapplyhunk", wshserver.RemoteGitApplyHunkCommand
+func RemoteGitApplyHunkCommand(w *wshutil.WshRpc, data wshrpc.CommandGitApplyHunkData, opts *wshrpc.RpcOpts) (*wshrpc.GitActionResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.GitActionResult](w, "remotegitapplyhunk", data, opts)
+	return resp, err
+}
+
 // command "remotegitbranches", wshserver.RemoteGitBranchesCommand
 func RemoteGitBranchesCommand(w *wshutil.WshRpc, data wshrpc.CommandGitRootData, opts *wshrpc.RpcOpts) (*wshrpc.GitBranchList, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.GitBranchList](w, "remotegitbranches", data, opts)
