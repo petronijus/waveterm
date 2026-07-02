@@ -167,7 +167,11 @@ func (d *dockerSampler) sampleDocker(project string) (cpuPct float64, memGB floa
 		for _, id := range ids {
 			live[id] = true
 			var st dockerStats
-			if err := dockerGet(client, "/containers/"+id+"/stats?stream=false", &st); err != nil {
+			// one-shot skips the daemon's ~1-2s precpu priming delay per container (we keep our
+			// own cross-tick cpu deltas in lastCpu, so the precpu block is unused anyway).
+			// Without it the sysinfo tick stretches past the frontend's 2s gap threshold and
+			// every plot collapses into disconnected dots.
+			if err := dockerGet(client, "/containers/"+id+"/stats?stream=false&one-shot=true", &st); err != nil {
 				continue
 			}
 			found++
