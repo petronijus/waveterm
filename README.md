@@ -1,45 +1,25 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/waveterm-logo-horizontal-dark.png">
-  <img alt="Wave Terminal — petronijus fork" src="assets/waveterm-logo-horizontal-light.png" width="380">
-</picture>
+# Wave Terminal — petronijus fork
 
-### The open-source graphical terminal — with a hand-built power layer on top
+### A personal Wave build with a hand-built power layer on top
 
-A personal fork of [**Wave Terminal**](https://github.com/wavetermdev/waveterm) that tracks upstream
-and adds a curated set of features: a real **Git view**, **inline terminal images**, **remote
-file transfer**, cross-machine **config sync**, desktop **notifications**, live **UI theming**, and
-more — each reimplemented cleanly on Wave's own architecture.
+Tracks upstream [Wave Terminal](https://github.com/wavetermdev/waveterm) and adds a curated set of
+features — a real **Git view**, **inline terminal images**, **remote file transfer**, cross-machine
+**config sync**, desktop **notifications**, and live **UI theming** — each reimplemented cleanly on
+Wave's own architecture and built to work **locally and over SSH** alike.
 
 <br/>
 
 [![Latest release](https://img.shields.io/github/v/release/petronijus/waveterm?include_prereleases&sort=semver&label=release&color=6b5cff&style=for-the-badge)](https://github.com/petronijus/waveterm/releases)
 [![Platforms](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational?style=for-the-badge&color=00c2c7)](https://github.com/petronijus/waveterm/releases)
-[![Based on Wave](https://img.shields.io/badge/based%20on-Wave%20Terminal-00c2c7?style=for-the-badge)](https://github.com/wavetermdev/waveterm)
 [![License](https://img.shields.io/github/license/petronijus/waveterm?style=for-the-badge&color=444)](./LICENSE)
-
-<br/>
-
-<img alt="Wave Terminal screenshot" src="assets/wave-screenshot.webp" width="820">
 
 </div>
 
 ---
 
-## 🌊 What is this?
-
-Upstream **Wave** is an open-source terminal that fuses a classic shell with inline graphical
-widgets — web pages, file previews, code editors, and AI — laid out in a dynamic, tiling
-workspace. This fork keeps that foundation and layers on the tools I want in a daily driver,
-built to work **locally and over SSH** alike.
-
-> New to Wave? The [upstream README](https://github.com/wavetermdev/waveterm) has the full tour of
-> the base terminal. Everything below is what this fork adds on top.
-
----
-
-## ✨ Highlights
+## ✨ What this fork adds
 
 ### 🔀 A first-class Git workflow
 
@@ -94,8 +74,7 @@ built to work **locally and over SSH** alike.
 
 - **WPS broker** — user-input events are buffered so a password prompt fired during startup or a
   reconnect is never lost, and locked route-matching was split to remove a reentrant-lock deadlock.
-- **SSH** — tracks upstream's hardened reconnect / sleep-wake handling and port forwarding, plus
-  fork-side robustness fixes.
+- **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling.
 - Features that landed upstream in the meantime (SSH port forwarding, auto-reconnect, the base git
   RPCs) are intentionally **not** re-added — this fork builds on top of them rather than around
   them.
@@ -114,7 +93,7 @@ Grab the latest build from **[Releases](https://github.com/petronijus/waveterm/r
 | **Linux** | `.deb`, `.AppImage`, and `.zip`. |
 | **Windows** | NSIS installer (per release). |
 
-Want to run the fork **side by side** with a stock Wave? Each release also ships a **Wave (Dev)**
+Want to run this fork **side by side** with a stock Wave? Each release also ships a **Wave (Dev)**
 build with its own app identity and data directory — install both without conflict.
 
 ---
@@ -146,15 +125,7 @@ day-to-day build/release detail is in **[BUILDING.md](./BUILDING.md)**.
 
 ---
 
-## 🙏 Credits
-
-Built on the excellent [**Wave Terminal**](https://github.com/wavetermdev/waveterm) by Command Line
-Inc. and its contributors. Several terminal/git features here were inspired by
-[whoisjeremylam/waveterm-remote](https://github.com/whoisjeremylam/waveterm-remote) and
-reimplemented on Wave's own codebase.
-
 ## 📄 License
 
-Apache-2.0, same as upstream — see [LICENSE](./LICENSE).
-
-<div align="center"><sub>A personal fork · not affiliated with or endorsed by Command Line Inc.</sub></div>
+Apache-2.0, same as upstream Wave Terminal — see [LICENSE](./LICENSE). A personal, unofficial fork,
+not affiliated with or endorsed by Command Line Inc.
