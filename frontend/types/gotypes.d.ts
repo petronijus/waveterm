@@ -1706,6 +1706,7 @@ declare global {
         "window:magnifiedblockblursecondarypx"?: number;
         "window:confirmclose"?: boolean;
         "window:savelastwindow"?: boolean;
+        "window:restoreallwindows"?: boolean;
         "window:dimensions"?: string;
         "window:zoom"?: number;
         "telemetry:*"?: boolean;
