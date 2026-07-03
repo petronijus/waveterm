@@ -80,15 +80,22 @@ function sendRpcResponse(msg: RpcMessage) {
     DefaultRouter.recvRpcMessage(msg);
 }
 
+// clientTimeoutMs arms the local settle timer independently of msg.timeout (which is the
+// server-side handler deadline). Without it, a response lost in transit (ws reconnect,
+// sleep/wake, connserver restart) leaves the generator awaiting forever — any caller
+// serialized behind that await (e.g. a poll loop) is wedged until the block is recreated.
+// Streaming calls intentionally don't pass it: a long-lived stream must not be killed by
+// a one-shot deadline.
 function sendRpcCommand(
     openRpcs: Map<string, ClientRpcEntry>,
-    msg: RpcMessage
+    msg: RpcMessage,
+    clientTimeoutMs?: number
 ): AsyncGenerator<RpcMessage, void, boolean> {
     DefaultRouter.recvRpcMessage(msg);
     if (msg.reqid == null) {
         return null;
     }
-    const rtnGen = rpcResponseGenerator(openRpcs, msg.command, msg.reqid, msg.timeout);
+    const rtnGen = rpcResponseGenerator(openRpcs, msg.command, msg.reqid, clientTimeoutMs ?? msg.timeout);
     rtnGen.next();
     return rtnGen;
 }

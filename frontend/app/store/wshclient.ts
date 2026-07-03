@@ -6,6 +6,13 @@ import * as util from "@/util/util";
 
 const notFoundLogMap = new Map<string, boolean>();
 
+// The server applies its own 5s default handler deadline (wshutil.DefaultTimeoutMs) when a
+// message carries no timeout, so a live call always gets an answer by ~5s — these only guard
+// against the answer being *lost* (see sendRpcCommand). The grace keeps the server's more
+// specific timeout error winning over the client's generic EC-TIME when both fire.
+const DefaultCallTimeoutMs = 10000;
+const CallTimeoutGraceMs = 2000;
+
 class RpcResponseHelper {
     client: WshClient;
     cmdMsg: RpcMessage;
@@ -62,7 +69,8 @@ class WshClient {
         if (opts?.route) {
             msg.route = opts.route;
         }
-        const rpcGen = sendRpcCommand(this.openRpcs, msg);
+        const clientTimeout = opts?.timeout > 0 ? opts.timeout + CallTimeoutGraceMs : DefaultCallTimeoutMs;
+        const rpcGen = sendRpcCommand(this.openRpcs, msg, clientTimeout);
         if (rpcGen == null) {
             return null;
         }

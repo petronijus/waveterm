@@ -14,6 +14,14 @@ import { GitEnv } from "./gitenv";
 const StatusPollIntervalMs = 2000;
 const LogPageSize = 50;
 
+// Explicit rpc timeouts per operation class, mirroring the backend's gitReadTimeout /
+// gitActionTimeout / gitSyncTimeout with headroom. Without an explicit timeout the rpc
+// handler context defaults to 5s, which silently truncated slow status reads (busy repo)
+// and killed pushes/pulls longer than 5s despite the backend budgeting 90s for them.
+const GitReadTimeoutMs = 20000;
+const GitActionTimeoutMs = 40000;
+const GitSyncTimeoutMs = 120000;
+
 function projectNameFromPath(p: string): string {
     if (p === "~" || isBlank(p)) {
         return "home";
@@ -272,7 +280,7 @@ export class GitViewModel implements ViewModel {
             const info = await this.env.rpc.RemoteGitRepoInfoCommand(
                 TabRpcClient,
                 { path: cwd },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             globalStore.set(this.repoInfoAtom, info);
             globalStore.set(this.gitRootAtom, info?.isrepo ? info.gitroot : null);
@@ -294,7 +302,7 @@ export class GitViewModel implements ViewModel {
             const status = await this.env.rpc.RemoteGitStatusCommand(
                 TabRpcClient,
                 { gitroot: root },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (!this.disposed && this.fetchEpoch === epoch) {
                 globalStore.set(this.statusAtom, status);
@@ -316,7 +324,7 @@ export class GitViewModel implements ViewModel {
             const branches = await this.env.rpc.RemoteGitBranchesCommand(
                 TabRpcClient,
                 { gitroot: root },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (!this.disposed) {
                 globalStore.set(this.branchesAtom, branches);
@@ -336,7 +344,7 @@ export class GitViewModel implements ViewModel {
             const log = await this.env.rpc.RemoteGitLogCommand(
                 TabRpcClient,
                 { gitroot: root, offset, limit: LogPageSize },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (this.disposed) {
                 return;
@@ -388,7 +396,11 @@ export class GitViewModel implements ViewModel {
             cancelled = true;
         };
         const poll = async () => {
-            await this.refreshAll();
+            try {
+                await this.refreshAll();
+            } catch (e) {
+                console.error("git: initial refresh failed", e);
+            }
             while (!cancelled && !this.disposed) {
                 await new Promise<void>((resolve) => {
                     const timer = setTimeout(resolve, StatusPollIntervalMs);
@@ -404,29 +416,35 @@ export class GitViewModel implements ViewModel {
                 this.cancelPoll = () => {
                     cancelled = true;
                 };
-                if (!globalStore.get(this.actionBusyAtom)) {
-                    if (isBlank(globalStore.get(this.gitRootAtom))) {
-                        // No git root yet — the connection wasn't ready when polling
-                        // started, the path wasn't a repo, or a repo just appeared
-                        // (git init). Re-resolve so polling self-heals instead of
-                        // forever refreshing a status that can never load.
-                        const root = await this.resolveRoot();
-                        if (!isBlank(root)) {
-                            await Promise.all([
-                                this.refreshStatus(),
-                                this.refreshBranches(),
-                                this.refreshLog(true),
-                            ]);
-                            this.lastBranchHeadSig = this.branchHeadSig();
-                        }
-                    } else {
-                        await this.refreshStatus();
-                        const sig = this.branchHeadSig();
-                        if (sig != null && sig !== this.lastBranchHeadSig) {
-                            this.lastBranchHeadSig = sig;
-                            await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+                // the tick must never throw — an escaped rejection would end the while
+                // loop and silently kill auto-refresh for the lifetime of the block
+                try {
+                    if (!globalStore.get(this.actionBusyAtom)) {
+                        if (isBlank(globalStore.get(this.gitRootAtom))) {
+                            // No git root yet — the connection wasn't ready when polling
+                            // started, the path wasn't a repo, or a repo just appeared
+                            // (git init). Re-resolve so polling self-heals instead of
+                            // forever refreshing a status that can never load.
+                            const root = await this.resolveRoot();
+                            if (!isBlank(root)) {
+                                await Promise.all([
+                                    this.refreshStatus(),
+                                    this.refreshBranches(),
+                                    this.refreshLog(true),
+                                ]);
+                                this.lastBranchHeadSig = this.branchHeadSig();
+                            }
+                        } else {
+                            await this.refreshStatus();
+                            const sig = this.branchHeadSig();
+                            if (sig != null && sig !== this.lastBranchHeadSig) {
+                                this.lastBranchHeadSig = sig;
+                                await Promise.all([this.refreshBranches(), this.refreshLog(true)]);
+                            }
                         }
                     }
+                } catch (e) {
+                    console.error("git: poll tick failed", e);
                 }
             }
         };
@@ -553,7 +571,7 @@ export class GitViewModel implements ViewModel {
             this.env.rpc.RemoteGitCheckoutCommand(
                 TabRpcClient,
                 { gitroot: root, branch, create },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
             )
         );
         if (ok) {
@@ -569,7 +587,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         await this.runAction("Stage", () =>
-            this.env.rpc.RemoteGitStageCommand(TabRpcClient, { gitroot: root, paths }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitStageCommand(
+                TabRpcClient,
+                { gitroot: root, paths },
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
+            )
         );
     }
 
@@ -579,7 +601,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         await this.runAction("Unstage", () =>
-            this.env.rpc.RemoteGitUnstageCommand(TabRpcClient, { gitroot: root, paths }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitUnstageCommand(
+                TabRpcClient,
+                { gitroot: root, paths },
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
+            )
         );
     }
 
@@ -598,7 +624,7 @@ export class GitViewModel implements ViewModel {
             this.env.rpc.RemoteGitCommitCommand(
                 TabRpcClient,
                 { gitroot: root, message, amend },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
             )
         );
         if (ok) {
@@ -622,7 +648,7 @@ export class GitViewModel implements ViewModel {
             this.env.rpc.RemoteGitSyncCommand(
                 TabRpcClient,
                 { gitroot: root, action, setupstream: setUpstream },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitSyncTimeoutMs }
             )
         );
         if (ok) {
@@ -701,7 +727,7 @@ export class GitViewModel implements ViewModel {
                     username: creds?.username,
                     token: creds?.token,
                 },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitSyncTimeoutMs }
             );
             if (res?.success) {
                 this.setActionStatus({ message: "push succeeded", isError: false });
@@ -761,7 +787,7 @@ export class GitViewModel implements ViewModel {
             this.env.rpc.RemoteGitStashCommand(
                 TabRpcClient,
                 { gitroot: root, action, index, message },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
             )
         );
     }
@@ -784,7 +810,7 @@ export class GitViewModel implements ViewModel {
             const diff = await this.env.rpc.RemoteGitDiffCommand(
                 TabRpcClient,
                 { gitroot: root, path: file.path, staged, fullcontext: false, untracked: !!file.untracked },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (!this.disposed) {
                 globalStore.set(this.diffAtom, diff);
@@ -848,7 +874,7 @@ export class GitViewModel implements ViewModel {
             this.env.rpc.RemoteGitApplyHunkCommand(
                 TabRpcClient,
                 { gitroot: root, path: file.path, hunkindex: hunkIndex, unstage },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
             )
         );
         if (ok && !this.disposed) {
@@ -868,7 +894,7 @@ export class GitViewModel implements ViewModel {
             const diff = await this.env.rpc.RemoteGitDiffCommand(
                 TabRpcClient,
                 { gitroot: root, path: file.path, staged, fullcontext: false, untracked: !!file.untracked },
-                { route: this.getRoute() }
+                { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (this.disposed) {
                 return;
@@ -902,7 +928,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         await this.runAction("Discard", () =>
-            this.env.rpc.RemoteGitDiscardCommand(TabRpcClient, { gitroot: root, paths }, { route: this.getRoute() })
+            this.env.rpc.RemoteGitDiscardCommand(
+                TabRpcClient,
+                { gitroot: root, paths },
+                { route: this.getRoute(), timeout: GitActionTimeoutMs }
+            )
         );
     }
 

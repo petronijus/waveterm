@@ -666,6 +666,7 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
     const status = jotai.useAtomValue(model.statusAtom);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const busy = jotai.useAtomValue(model.actionBusyAtom);
+    const refreshError = jotai.useAtomValue(model.errorAtom);
     const branchAnchorRef = React.useRef<HTMLButtonElement>(null);
 
     const isFirstRender = React.useRef(true);
@@ -785,6 +786,12 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
                             {status?.ahead > 0 ? ` ↑${status.ahead}` : ""}
                             {status?.behind > 0 ? ` ↓${status.behind}` : ""}
                         </span>
+                    )}
+                    {refreshError != null && (
+                        <i
+                            className="fa-sharp fa-solid fa-triangle-exclamation text-[11px] text-warning"
+                            title={`Auto-refresh failing — shown data may be stale: ${refreshError}`}
+                        />
                     )}
                     <span className="flex-1" />
                     <ToolbarButton
