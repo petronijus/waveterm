@@ -77,7 +77,11 @@ git checkout feat/<task> && git rebase main
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH
-  connections. Backend git RPC test coverage included.
+  connections. Backend git RPC test coverage included. The 2s status auto-refresh is wedge-proof:
+  git RPCs carry explicit per-class timeouts (read/action/sync — so pushes get their full 90s
+  budget instead of a silent 5s default), a client-side settle timer catches responses lost to
+  sleep/wake or a ws reconnect, and a toolbar ⚠ shows when refresh is failing instead of silently
+  serving stale data.
 - **Config sync** — a per-install last-writer-wins merge engine (`wsync`) with tombstones that
   converges settings across machines. Transports: WebDAV (mtime-stamped change detection) or a
   credential-free local-folder mode (Nextcloud / Drive desktop client). Background scheduler wired
@@ -103,13 +107,21 @@ git checkout feat/<task> && git rebase main
   link; the terminal header cwd shown as `~/…` for local connections (matching the files/git
   panels); synced config files pretty-printed instead of one long line; and a Wave Config
   **Debug-mode** toggle for the tab-activity logging.
-- **Releases** — built per-platform and published on the fork's GitHub Releases (macOS first;
-  Linux & Windows builds run on local machines — no hosted CI).
+- **Session sync — manual Save/Load** — cloud Save (☁↑) / Load (☁↓) actions in the tab bar
+  snapshot every workspace's windows, tabs, blocks and window geometry to the sync transport
+  (WebDAV / local folder) and restore them on another machine: windows reopen at their saved
+  positions (clamped to the local display), surplus windows close (never the last one), and saved
+  layouts restore losslessly via a single `settree` layout action — nested splits, sizes, focus
+  and magnify survive exactly.
+- **Terminal write batching** — streaming pty output (an agent thinking, a build log) coalesces
+  into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
+  terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk
+  after a quiet period flushes immediately, so keystroke echo is unaffected.
+- **Releases** — built per-platform and published on the fork's GitHub Releases (macOS on the
+  MacBook, Windows & Linux on the homelab build VMs — no hosted CI).
 
 ## Planned
 
-- **Sync — window/tab layout** — `wsync` currently converges settings; extend it to also sync
-  open tabs and window layout between machines.
 - **System monitor — manual tracker** — an escape-hatch to also count a process tree / container /
   cgroup that the cwd + container heuristics miss (e.g. `abuild`/`fakeroot`/`chroot` sandboxes,
   whose cwd is inside the sandbox and which aren't Docker). Remaining out-of-scope blind spots:

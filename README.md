@@ -51,6 +51,9 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Config sync** — a last-writer-wins merge engine (`wsync`) that converges settings across
   machines over **WebDAV** or a credential-free **local-folder** mode (drop it in a Nextcloud /
   Drive folder). Background scheduler, a *Sync now* action, and a native folder picker.
+- **Session save / load** — snapshot all windows, tabs and block layouts to the same sync
+  transport and restore them on another machine — nested splits, sizes, focus and window
+  positions survive exactly.
 - **Folder bookmarks ("projects")** — bookmark folders and reach them from the Files view, the
   connection dropdown, and a Connections & Projects settings panel.
 - **Desktop notifications** — get a system notification when a long command finishes while the
@@ -72,6 +75,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 <br/>
 
+- **Terminal write batching** — streaming output (an agent thinking, a build log) coalesces into
+  ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
+  adding any typing latency.
+- **Git panel auto-refresh** — explicit RPC timeouts plus a client-side settle timer keep the 2s
+  status poll alive across sleep/wake and reconnects, with a toolbar warning when refresh fails.
 - **WPS broker** — user-input events are buffered so a password prompt fired during startup or a
   reconnect is never lost, and locked route-matching was split to remove a reentrant-lock deadlock.
 - **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling.
