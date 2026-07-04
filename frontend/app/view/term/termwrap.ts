@@ -61,6 +61,14 @@ const MinDataProcessedForCache = 100 * 1024;
 export const SupportsImageInput = true;
 const MaxRepaintTransactionMs = 2000;
 
+// Streaming output (an agent thinking, a build log) arrives as many small pty chunks; feeding
+// each one to xterm.write separately makes the renderer parse + repaint per chunk, which burns
+// 30-40% of a core per visible streaming terminal. Instead, coalesce chunks and flush at most
+// ~30x/s. The first chunk after a quiet period flushes immediately, so interactive echo
+// (keystrokes, prompt redraws) never waits on the timer.
+const TermWriteFlushIntervalMs = 33;
+const TermWriteFlushMaxBytes = 256 * 1024;
+
 // detect webgl support
 function detectWebGLSupport(): boolean {
     try {
@@ -103,6 +111,10 @@ export class TermWrap {
     mainFileSubject: SubjectWithRef<WSFileEventData>;
     loaded: boolean;
     heldData: Uint8Array[];
+    pendingWriteChunks: Uint8Array[] = [];
+    pendingWriteBytes: number = 0;
+    pendingWriteFlushTimer: NodeJS.Timeout = null;
+    lastWriteFlushTs: number = 0;
     handleResize_debounced: () => void;
     hasResized: boolean;
     multiInputCallback: (data: string) => void;
@@ -540,6 +552,12 @@ export class TermWrap {
     }
 
     dispose() {
+        if (this.pendingWriteFlushTimer != null) {
+            clearTimeout(this.pendingWriteFlushTimer);
+            this.pendingWriteFlushTimer = null;
+        }
+        this.pendingWriteChunks = [];
+        this.pendingWriteBytes = 0;
         this.promptMarkers.forEach((marker) => {
             try {
                 marker.dispose();
@@ -580,12 +598,14 @@ export class TermWrap {
 
     handleNewFileSubjectData(msg: WSFileEventData) {
         if (msg.fileop == "truncate") {
+            // flush (not drop) so ptyOffset still accounts for the pre-truncate bytes
+            this.flushPendingWrites();
             this.terminal.clear();
             this.heldData = [];
         } else if (msg.fileop == "append") {
             const decodedData = base64ToArray(msg.data64);
             if (this.loaded) {
-                this.doTerminalWrite(decodedData, null);
+                this.queueTerminalWrite(decodedData);
             } else {
                 this.heldData.push(decodedData);
             }
@@ -593,6 +613,52 @@ export class TermWrap {
             console.log("bad fileop for terminal", msg);
             return;
         }
+    }
+
+    queueTerminalWrite(data: Uint8Array) {
+        this.pendingWriteChunks.push(data);
+        this.pendingWriteBytes += data.length;
+        if (this.pendingWriteBytes >= TermWriteFlushMaxBytes) {
+            this.flushPendingWrites();
+            return;
+        }
+        if (this.pendingWriteFlushTimer != null) {
+            return;
+        }
+        const sinceLastFlush = Date.now() - this.lastWriteFlushTs;
+        if (sinceLastFlush >= TermWriteFlushIntervalMs) {
+            this.flushPendingWrites();
+            return;
+        }
+        this.pendingWriteFlushTimer = setTimeout(() => {
+            this.pendingWriteFlushTimer = null;
+            this.flushPendingWrites();
+        }, TermWriteFlushIntervalMs - sinceLastFlush);
+    }
+
+    flushPendingWrites() {
+        if (this.pendingWriteFlushTimer != null) {
+            clearTimeout(this.pendingWriteFlushTimer);
+            this.pendingWriteFlushTimer = null;
+        }
+        if (this.pendingWriteChunks.length == 0) {
+            return;
+        }
+        let data: Uint8Array;
+        if (this.pendingWriteChunks.length == 1) {
+            data = this.pendingWriteChunks[0];
+        } else {
+            data = new Uint8Array(this.pendingWriteBytes);
+            let offset = 0;
+            for (const chunk of this.pendingWriteChunks) {
+                data.set(chunk, offset);
+                offset += chunk.length;
+            }
+        }
+        this.pendingWriteChunks = [];
+        this.pendingWriteBytes = 0;
+        this.lastWriteFlushTs = Date.now();
+        this.doTerminalWrite(data, null);
     }
 
     doTerminalWrite(data: string | Uint8Array, setPtyOffset?: number): Promise<void> {
