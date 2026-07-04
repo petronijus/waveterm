@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
@@ -37,15 +38,21 @@ type LayoutSnapshot struct {
 	Blocks          map[string]waveobj.MetaMapType `json:"blocks"`
 }
 
-// layoutNodeJSON mirrors the parts of a frontend LayoutNode we need to walk the
-// arrangement tree: a leaf carries data.blockId; a branch carries children.
+// layoutNodeJSON mirrors the frontend LayoutNode JSON shape (camelCase fields —
+// this is frontend-owned data passing through, not a wave API type) so a saved
+// arrangement tree can be deep-copied with remapped ids. A leaf carries
+// data.blockId and must omit children; a branch carries children and omits data
+// (the frontend's validateNode rejects nodes with both or neither).
 type layoutNodeJSON struct {
-	Id   string `json:"id"`
-	Data *struct {
-		BlockId string `json:"blockId"`
-	} `json:"data"`
-	Children []layoutNodeJSON `json:"children"`
-	Size     *float64         `json:"size"`
+	Id            string           `json:"id,omitempty"`
+	Data          *layoutNodeData  `json:"data,omitempty"`
+	Children      []layoutNodeJSON `json:"children,omitempty"`
+	FlexDirection string           `json:"flexDirection,omitempty"`
+	Size          *float64         `json:"size,omitempty"`
+}
+
+type layoutNodeData struct {
+	BlockId string `json:"blockId"`
 }
 
 // SaveLayout snapshots the given tab's arrangement + block metas under a name.
@@ -128,8 +135,9 @@ func ListLayouts(ctx context.Context) ([]string, error) {
 
 // LoadLayout replaces the given tab's contents with the named saved layout —
 // recreating each panel (with its saved cwd/url/file) in the saved arrangement and
-// restoring the tab's background. The old blocks are cleaned up by the frontend once
-// ClearTree drops them from the layout.
+// restoring the tab's background. The whole tree is shipped to the frontend as one
+// settree action (per-panel insertatindex paths cannot express nested splits — see
+// remapLayoutTree); the queued cleanuporphaned action then drops the tab's old blocks.
 func LoadLayout(ctx context.Context, tabId string, name string) error {
 	store, err := loadSessionTransport()
 	if err != nil {
@@ -139,11 +147,41 @@ func LoadLayout(ctx context.Context, tabId string, name string) error {
 	if err != nil {
 		return err
 	}
-	portable, err := portableFromSnapshot(snap)
+	if snap.RootNode == nil {
+		return fmt.Errorf("layout %q has no arrangement", snap.Name)
+	}
+	raw, err := json.Marshal(snap.RootNode)
 	if err != nil {
 		return err
 	}
-	if err := wcore.ApplyPortableLayout(ctx, tabId, portable, false); err != nil {
+	var savedRoot layoutNodeJSON
+	if err := json.Unmarshal(raw, &savedRoot); err != nil {
+		return fmt.Errorf("parsing layout tree: %w", err)
+	}
+	root, nodeIdMap, err := remapLayoutTree(savedRoot, func(oldBlockId string) (string, error) {
+		meta := snap.Blocks[oldBlockId]
+		if meta == nil {
+			meta = waveobj.MetaMapType{}
+		}
+		block, err := wcore.CreateBlockWithTelemetry(ctx, tabId, &waveobj.BlockDef{Meta: meta}, &waveobj.RuntimeOpts{}, false)
+		if err != nil {
+			return "", err
+		}
+		return block.OID, nil
+	})
+	if err != nil {
+		return fmt.Errorf("instantiating layout %q: %w", snap.Name, err)
+	}
+	actions := []waveobj.LayoutActionData{
+		{
+			ActionType:      wcore.LayoutActionDataType_SetTree,
+			RootNode:        root,
+			FocusedNodeId:   nodeIdMap[snap.FocusedNodeId],
+			MagnifiedNodeId: nodeIdMap[snap.MagnifiedNodeId],
+		},
+		{ActionType: wcore.LayoutActionDataType_CleanupOrphaned},
+	}
+	if err := wcore.QueueLayoutActionForTab(ctx, tabId, actions...); err != nil {
 		return fmt.Errorf("applying layout: %w", err)
 	}
 	if len(snap.TabMeta) > 0 {
@@ -170,67 +208,55 @@ func DeleteLayout(ctx context.Context, name string) error {
 	return store.Delete(ctx, fileName)
 }
 
-// portableFromSnapshot converts a saved arrangement tree into a wcore.PortableLayout.
-// It walks the tree depth-first: the first child of a node inherits the parent's
-// index path (it lands in the parent's slot, then later siblings wrap it into a
-// branch), and each subsequent sibling appends its position. This reproduces the
-// same shapes the tiling engine builds (sizes preserved). Split direction is derived
-// by the engine's depth-alternation, so layouts built through normal use round-trip.
-func portableFromSnapshot(snap *LayoutSnapshot) (wcore.PortableLayout, error) {
-	if snap.RootNode == nil {
-		return nil, fmt.Errorf("layout %q has no arrangement", snap.Name)
-	}
-	raw, err := json.Marshal(snap.RootNode)
-	if err != nil {
-		return nil, err
-	}
-	var root layoutNodeJSON
-	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, fmt.Errorf("parsing layout tree: %w", err)
-	}
-	out := make(wcore.PortableLayout, 0)
-	var walk func(n layoutNodeJSON, path []int)
-	walk = func(n layoutNodeJSON, path []int) {
+// remapLayoutTree deep-copies a saved arrangement tree, giving every node a fresh
+// id (so repeated loads of one layout never alias nodes of the source tab) and
+// replacing each leaf's block id via makeBlock. Structure, sizes, and flex
+// directions carry over exactly. It returns the new tree plus the old→new node id
+// map so focus/magnify references can follow the rename.
+//
+// Shipping the whole tree (settree) is deliberate: the insertatindex encoding used
+// by wcore.PortableLayout resolves each index path against the partially built
+// tree, which cannot express nested splits — sibling paths collide and the replay
+// flattens the arrangement.
+func remapLayoutTree(root layoutNodeJSON, makeBlock func(oldBlockId string) (string, error)) (*layoutNodeJSON, map[string]string, error) {
+	nodeIdMap := make(map[string]string)
+	var walk func(n layoutNodeJSON) (layoutNodeJSON, error)
+	walk = func(n layoutNodeJSON) (layoutNodeJSON, error) {
+		out := layoutNodeJSON{
+			Id:            uuid.New().String(),
+			FlexDirection: n.FlexDirection,
+			Size:          n.Size,
+		}
+		if n.Id != "" {
+			nodeIdMap[n.Id] = out.Id
+		}
 		if len(n.Children) == 0 {
-			blockId := ""
+			oldBlockId := ""
 			if n.Data != nil {
-				blockId = n.Data.BlockId
+				oldBlockId = n.Data.BlockId
 			}
-			meta := snap.Blocks[blockId]
-			if meta == nil {
-				meta = waveobj.MetaMapType{}
+			newBlockId, err := makeBlock(oldBlockId)
+			if err != nil {
+				return layoutNodeJSON{}, fmt.Errorf("creating block for panel %q: %w", oldBlockId, err)
 			}
-			var size *uint
-			if n.Size != nil {
-				s := uint(*n.Size)
-				size = &s
-			}
-			idx := append([]int{}, path...)
-			if len(idx) == 0 {
-				idx = []int{0}
-			}
-			focused := n.Id != "" && n.Id == snap.FocusedNodeId
-			out = append(out, wcore.PortableLayout{{
-				IndexArr: idx,
-				Size:     size,
-				BlockDef: &waveobj.BlockDef{Meta: meta},
-				Focused:  focused,
-			}}...)
-			return
+			out.Data = &layoutNodeData{BlockId: newBlockId}
+			return out, nil
 		}
-		for i, child := range n.Children {
-			if i == 0 {
-				walk(child, path)
-			} else {
-				walk(child, append(append([]int{}, path...), i))
+		out.Children = make([]layoutNodeJSON, 0, len(n.Children))
+		for _, child := range n.Children {
+			newChild, err := walk(child)
+			if err != nil {
+				return layoutNodeJSON{}, err
 			}
+			out.Children = append(out.Children, newChild)
 		}
+		return out, nil
 	}
-	walk(root, []int{})
-	if len(out) == 0 {
-		return nil, fmt.Errorf("layout %q has no panels", snap.Name)
+	newRoot, err := walk(root)
+	if err != nil {
+		return nil, nil, err
 	}
-	return out, nil
+	return &newRoot, nodeIdMap, nil
 }
 
 // layoutFileForName returns the file to write a layout to: an existing file whose

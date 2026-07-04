@@ -23,6 +23,7 @@ import {
     moveNode,
     replaceNode,
     resizeNode,
+    setTree,
     splitHorizontal,
     splitVertical,
     swapNode,
@@ -45,6 +46,7 @@ import {
     LayoutTreeReplaceNodeAction,
     LayoutTreeResizeNodeAction,
     LayoutTreeSetPendingAction,
+    LayoutTreeSetTreeAction,
     LayoutTreeSplitHorizontalAction,
     LayoutTreeSplitVerticalAction,
     LayoutTreeState,
@@ -488,6 +490,20 @@ export class LayoutModel {
                 );
                 break;
             }
+            case LayoutTreeActionType.SetTree: {
+                if (!action.rootnode) {
+                    console.error("Cannot apply eventbus layout action SetTree, rootnode field is missing.");
+                    break;
+                }
+                const setTreeAction: LayoutTreeSetTreeAction = {
+                    type: LayoutTreeActionType.SetTree,
+                    rootNode: action.rootnode as LayoutNode,
+                    focusedNodeId: action.focusednodeid,
+                    magnifiedNodeId: action.magnifiednodeid,
+                };
+                this.treeReducer(setTreeAction, false);
+                break;
+            }
             case LayoutTreeActionType.ReplaceNode: {
                 const targetNode = this?.getNodeByBlockId(action.targetblockid);
                 if (!targetNode) {
@@ -676,6 +692,12 @@ export class LayoutModel {
                 break;
             case LayoutTreeActionType.ClearTree:
                 clearTree(this.treeState);
+                break;
+            case LayoutTreeActionType.SetTree:
+                setTree(this.treeState, action as LayoutTreeSetTreeAction);
+                if ((action as LayoutTreeSetTreeAction).focusedNodeId) {
+                    FocusManager.getInstance().requestNodeFocus();
+                }
                 break;
             case LayoutTreeActionType.ReplaceNode:
                 replaceNode(this.treeState, action as LayoutTreeReplaceNodeAction);

@@ -218,6 +218,11 @@ type LayoutActionData struct {
 	Ephemeral     bool   `json:"ephemeral"`
 	TargetBlockId string `json:"targetblockid,omitempty"`
 	Position      string `json:"position,omitempty"`
+	// settree only: a full frontend LayoutNode tree that replaces the tab's
+	// arrangement wholesale (block ids inside must reference already-created blocks)
+	RootNode        any    `json:"rootnode,omitempty"`
+	FocusedNodeId   string `json:"focusednodeid,omitempty"`
+	MagnifiedNodeId string `json:"magnifiednodeid,omitempty"`
 }
 
 type LeafOrderEntry struct {

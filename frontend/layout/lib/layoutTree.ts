@@ -24,6 +24,7 @@ import {
     LayoutTreeMagnifyNodeToggleAction,
     LayoutTreeMoveNodeAction,
     LayoutTreeResizeNodeAction,
+    LayoutTreeSetTreeAction,
     LayoutTreeState,
     LayoutTreeSwapNodeAction,
     MoveOperation,
@@ -421,6 +422,17 @@ export function clearTree(layoutState: LayoutTreeState) {
     layoutState.leafOrder = undefined;
     layoutState.focusedNodeId = undefined;
     layoutState.magnifiedNodeId = undefined;
+}
+
+export function setTree(layoutState: LayoutTreeState, action: LayoutTreeSetTreeAction) {
+    if (!action?.rootNode) {
+        console.error("setTree cannot run, rootNode field is missing");
+        return;
+    }
+    layoutState.rootNode = action.rootNode;
+    layoutState.leafOrder = undefined;
+    layoutState.focusedNodeId = action.focusedNodeId;
+    layoutState.magnifiedNodeId = action.magnifiedNodeId;
 }
 
 export function replaceNode(layoutState: LayoutTreeState, action: LayoutTreeReplaceNodeAction) {

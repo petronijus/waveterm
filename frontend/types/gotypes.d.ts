@@ -1254,6 +1254,9 @@ declare global {
         ephemeral: boolean;
         targetblockid?: string;
         position?: string;
+        rootnode?: any;
+        focusednodeid?: string;
+        magnifiednodeid?: string;
     };
 
     // waveobj.LayoutState

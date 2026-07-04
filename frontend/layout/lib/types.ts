@@ -88,6 +88,7 @@ export enum LayoutTreeActionType {
     ReplaceNode = "replace",
     SplitHorizontal = "splithorizontal",
     SplitVertical = "splitvertical",
+    SetTree = "settree",
 }
 
 /**
@@ -288,6 +289,17 @@ export interface LayoutTreeMagnifyNodeToggleAction extends LayoutTreeAction {
  */
 export interface LayoutTreeClearTreeAction extends LayoutTreeAction {
     type: LayoutTreeActionType.ClearTree;
+}
+
+/**
+ * Action for replacing the entire layout tree with a prebuilt one (backend-driven,
+ * e.g. restoring a saved layout). The tree's block ids must reference existing blocks.
+ */
+export interface LayoutTreeSetTreeAction extends LayoutTreeAction {
+    type: LayoutTreeActionType.SetTree;
+    rootNode: LayoutNode;
+    focusedNodeId?: string;
+    magnifiedNodeId?: string;
 }
 
 /**

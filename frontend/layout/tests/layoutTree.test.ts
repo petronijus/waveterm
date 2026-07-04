@@ -3,9 +3,10 @@
 
 import { assert, test } from "vitest";
 import { newLayoutNode } from "../lib/layoutNode";
-import { computeMoveNode, moveNode } from "../lib/layoutTree";
+import { computeMoveNode, moveNode, setTree } from "../lib/layoutTree";
 import {
     DropDirection,
+    FlexDirection,
     LayoutTreeActionType,
     LayoutTreeComputeMoveNodeAction,
     LayoutTreeMoveNodeAction,
@@ -82,4 +83,42 @@ test("computeMove - noop action", () => {
 
     pendingAction = computeMoveNode(treeState, moveAction);
     assert(pendingAction === undefined, "inserting a node to the right of itself should not produce a pendingAction");
+});
+
+test("setTree - replaces tree wholesale and carries focus/magnify", () => {
+    const oldNode = newLayoutNode(undefined, undefined, undefined, { blockId: "oldNode" });
+    const treeState = newLayoutTreeState(
+        newLayoutNode(undefined, undefined, [
+            oldNode,
+            newLayoutNode(undefined, undefined, undefined, { blockId: "otherOldNode" }),
+        ])
+    );
+    treeState.focusedNodeId = oldNode.id;
+
+    const newLeafA = newLayoutNode(FlexDirection.Column, 12.5, undefined, { blockId: "newA" });
+    const newLeafB = newLayoutNode(FlexDirection.Column, 7.5, undefined, { blockId: "newB" });
+    const newRoot = newLayoutNode(FlexDirection.Row, 20, [newLeafA, newLeafB]);
+    setTree(treeState, {
+        type: LayoutTreeActionType.SetTree,
+        rootNode: newRoot,
+        focusedNodeId: newLeafB.id,
+        magnifiedNodeId: undefined,
+    });
+
+    assert(treeState.rootNode === newRoot, "root node should be the new tree");
+    assert(treeState.rootNode.children!.length === 2, "new root should have two children");
+    assert(treeState.rootNode.children![0].size === 12.5, "sizes should carry over exactly");
+    assert(treeState.focusedNodeId === newLeafB.id, "focus should follow the new tree");
+    assert(treeState.magnifiedNodeId === undefined, "magnify should be cleared when not provided");
+    assert(treeState.leafOrder === undefined, "leafOrder must reset so updateTree recomputes it");
+});
+
+test("setTree - missing rootNode is a no-op", () => {
+    const existingRoot = newLayoutNode(undefined, undefined, undefined, { blockId: "existing" });
+    const treeState = newLayoutTreeState(existingRoot);
+    setTree(treeState, {
+        type: LayoutTreeActionType.SetTree,
+        rootNode: undefined,
+    });
+    assert(treeState.rootNode === existingRoot, "tree should be untouched when rootNode is missing");
 });
