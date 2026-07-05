@@ -66,7 +66,7 @@ let confirmQuit = true;
 const waveDataDir = getWaveDataDir();
 const waveConfigDir = getWaveConfigDir();
 
-electron.nativeTheme.themeSource = "dark";
+electron.nativeTheme.themeSource = "system";
 
 console.log = log;
 console.log(
