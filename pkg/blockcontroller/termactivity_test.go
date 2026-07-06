@@ -315,3 +315,84 @@ func TestTermActivity_CheckOnDoneWithoutCommandStart(t *testing.T) {
 		t.Fatalf("expected circle-check after D marker on an output-driven command; got %q; events=%+v", got, *badges)
 	}
 }
+
+// stubAgentProbe replaces the process-tree probe for the test's duration.
+func stubAgentProbe(t *testing.T, kind string) {
+	t.Helper()
+	orig := probeAgentKind
+	probeAgentKind = func(blockId string) string { return kind }
+	t.Cleanup(func() { probeAgentKind = orig })
+}
+
+// TestTermActivity_BellWithProbedAgent verifies a bell flips to "waiting" for a block
+// with no tracked command when the process-tree probe identifies a known agent —
+// the durable-session / broken-preexec case where the C marker was never seen.
+func TestTermActivity_BellWithProbedAgent(t *testing.T) {
+	stubAgentProbe(t, "claude")
+	events := captureEvents(t)
+	blockId := "test-bell-probed"
+	ResetTermActivity(blockId)
+	FeedTermActivity(blockId, []byte("\x07"))
+	if !hasState(*events, termActivityWaiting) {
+		t.Fatalf("expected waiting after bell with probed agent; got %+v", *events)
+	}
+	_, _, agentKind := trackerSnapshot(blockId)
+	if agentKind != "claude" {
+		t.Fatalf("expected probed agentKind to stick, got %q", agentKind)
+	}
+}
+
+// TestTermActivity_BellWithoutAgentStillIgnored verifies a bare-shell bell (no tracked
+// command, probe finds nothing) stays ignored.
+func TestTermActivity_BellWithoutAgentStillIgnored(t *testing.T) {
+	stubAgentProbe(t, "")
+	events := captureEvents(t)
+	blockId := "test-bell-noagent"
+	ResetTermActivity(blockId)
+	FeedTermActivity(blockId, []byte("\x07"))
+	if hasState(*events, termActivityWaiting) {
+		t.Fatalf("a bell with no tracked or probed agent should not produce waiting")
+	}
+}
+
+func TestSetExternalAgentState(t *testing.T) {
+	events := captureEvents(t)
+	blockId := "test-external-state"
+	ResetTermActivity(blockId)
+
+	if err := SetExternalAgentState(blockId, termActivityWaiting, "claude"); err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	if !hasState(*events, termActivityWaiting) {
+		t.Fatalf("expected waiting event; got %+v", *events)
+	}
+
+	*events = nil
+	if err := SetExternalAgentState(blockId, termActivityDone, "claude"); err != nil {
+		t.Fatalf("done: %v", err)
+	}
+	var doneEv *baseds.TermActivityData
+	for i := range *events {
+		if (*events)[i].State == termActivityDone {
+			doneEv = &(*events)[i]
+		}
+	}
+	if doneEv == nil {
+		t.Fatalf("expected done event; got %+v", *events)
+	}
+	if !doneEv.Visible || doneEv.AgentKind != "claude" {
+		t.Fatalf("expected visible done with agentkind claude; got %+v", *doneEv)
+	}
+	// post-turn TUI dribble must not re-trip the spinner: waiting stays set
+	tr := getActivityTracker(blockId)
+	tr.lock.Lock()
+	waiting := tr.waiting
+	tr.lock.Unlock()
+	if !waiting {
+		t.Fatalf("expected waiting volume-gate to stay set after external done")
+	}
+
+	if err := SetExternalAgentState(blockId, "bogus", ""); err == nil {
+		t.Fatalf("expected error for invalid state")
+	}
+}

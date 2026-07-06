@@ -735,6 +735,13 @@ declare global {
         delete?: boolean;
     };
 
+    // wshrpc.CommandSetTermAgentStateData
+    type CommandSetTermAgentStateData = {
+        blockid: string;
+        state: string;
+        agent?: string;
+    };
+
     // wshrpc.CommandStartBuilderData
     type CommandStartBuilderData = {
         builderid: string;

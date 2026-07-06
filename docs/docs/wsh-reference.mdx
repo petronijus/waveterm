@@ -173,6 +173,68 @@ wsh ai architecture.png api-spec.pdf server.go -m "review the system design"
 
 ---
 
+## agentstate
+
+Report an AI agent's activity state for the current terminal block, driving the
+tab activity badge: `waiting` shows the needs-attention badge (the agent is
+waiting for your input), `done` shows the turn-finished checkmark.
+
+```sh
+wsh agentstate waiting|done
+```
+
+Intended to be called from agent lifecycle hooks running inside a Wave terminal.
+For Claude Code, wire it to the `Notification` and `Stop` hooks; for codex, to
+its `notify` program.
+
+Flags:
+
+- `--agent <kind>` - agent kind reporting the state (e.g. `claude`, `codex`, `gemini`)
+- `-b, --block <blockid>` - specify target block (default: current block)
+
+Examples:
+
+```sh
+# Claude Code Notification hook (permission_prompt|idle_prompt)
+wsh agentstate waiting --agent claude
+
+# Claude Code Stop hook — the turn is finished
+wsh agentstate done --agent claude
+```
+
+Example Claude Code hook config (`~/.claude/settings.json`) — guarded so it
+no-ops outside Wave:
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$WAVETERM_BLOCKID\" ] && command -v wsh >/dev/null 2>&1 && wsh agentstate waiting --agent claude || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$WAVETERM_BLOCKID\" ] && command -v wsh >/dev/null 2>&1 && wsh agentstate done --agent claude || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## editconfig
 
 You can easily open up any of Wave's config files using this command.

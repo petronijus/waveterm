@@ -573,6 +573,13 @@ func (ws *WshServer) SetProjectsConfigCommand(ctx context.Context, data wshrpc.P
 	return wconfig.SetProjectsConfigValue(data.Name, data.MetaMapType)
 }
 
+func (ws *WshServer) SetTermAgentStateCommand(ctx context.Context, data wshrpc.CommandSetTermAgentStateData) error {
+	if data.BlockId == "" {
+		return fmt.Errorf("blockid is required")
+	}
+	return blockcontroller.SetExternalAgentState(data.BlockId, data.State, data.Agent)
+}
+
 func (ws *WshServer) SetUIThemeCommand(ctx context.Context, data wshrpc.UIThemeRequest) error {
 	return wconfig.SetUIThemeValue(data.ThemeName, data.MetaMapType)
 }

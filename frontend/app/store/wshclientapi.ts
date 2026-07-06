@@ -1020,6 +1020,12 @@ export class RpcApiType {
         return client.wshRpcCall("setsecrets", data, opts);
     }
 
+    // command "settermagentstate" [call]
+    SetTermAgentStateCommand(client: WshClient, data: CommandSetTermAgentStateData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "settermagentstate", data, opts);
+        return client.wshRpcCall("settermagentstate", data, opts);
+    }
+
     // command "setuitheme" [call]
     SetUIThemeCommand(client: WshClient, data: UIThemeRequest, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setuitheme", data, opts);

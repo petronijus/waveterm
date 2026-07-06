@@ -1016,6 +1016,12 @@ func SetSecretsCommand(w *wshutil.WshRpc, data map[string]*string, opts *wshrpc.
 	return err
 }
 
+// command "settermagentstate", wshserver.SetTermAgentStateCommand
+func SetTermAgentStateCommand(w *wshutil.WshRpc, data wshrpc.CommandSetTermAgentStateData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "settermagentstate", data, opts)
+	return err
+}
+
 // command "setuitheme", wshserver.SetUIThemeCommand
 func SetUIThemeCommand(w *wshutil.WshRpc, data wshrpc.UIThemeRequest, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setuitheme", data, opts)

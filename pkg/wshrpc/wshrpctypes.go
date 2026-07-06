@@ -98,6 +98,7 @@ type WshRpcInterface interface {
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
 	ActivityCommand(ctx context.Context, data ActivityUpdate) error
+	SetTermAgentStateCommand(ctx context.Context, data CommandSetTermAgentStateData) error
 	RecordTEventCommand(ctx context.Context, data telemetrydata.TEvent) error
 	GetVarCommand(ctx context.Context, data CommandVarData) (*CommandVarResponseData, error)
 	GetAllVarsCommand(ctx context.Context, data CommandVarData) ([]CommandVarResponseData, error)
@@ -360,7 +361,6 @@ type CommandEventReadHistoryData struct {
 	MaxItems int    `json:"maxitems"`
 }
 
-
 type CpuDataRequest struct {
 	Id    string `json:"id"`
 	Count int    `json:"count"`
@@ -430,6 +430,16 @@ func (m MetaSettingsType) MarshalJSON() ([]byte, error) {
 type ConnConfigRequest struct {
 	Host        string              `json:"host"`
 	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
+}
+
+// CommandSetTermAgentStateData is an explicit agent-activity signal pushed from
+// inside a terminal via `wsh agentstate` (wired to agent lifecycle hooks — e.g.
+// Claude Code's Notification/Stop). "waiting" shows the needs-attention badge,
+// "done" the turn-finished checkmark.
+type CommandSetTermAgentStateData struct {
+	BlockId string `json:"blockid"`
+	State   string `json:"state"`
+	Agent   string `json:"agent,omitempty"`
 }
 
 // ProjectConfigRequest writes (or, when MetaMapType is nil, deletes) a single

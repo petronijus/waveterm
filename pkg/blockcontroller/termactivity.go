@@ -22,6 +22,7 @@ package blockcontroller
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"regexp"
 	"strconv"
@@ -137,8 +138,8 @@ type termActivityTracker struct {
 	curState string // last published state
 
 	// debug-only throttled output logging (term:activitydebug)
-	lastFeedLogTs time.Time
-	bytesSinceLog int
+	lastFeedLogTs  time.Time
+	bytesSinceLog  int
 	chunksSinceLog int
 
 	outbox []baseds.TermActivityData
@@ -216,6 +217,66 @@ func FeedTermActivity(blockId string, data []byte) {
 	getActivityTracker(blockId).processBytes(data)
 }
 
+// SetExternalAgentState applies an explicit agent-reported activity state pushed
+// in-band via wsh (`wsh agentstate` — wired to agent lifecycle hooks like Claude
+// Code's Notification/Stop or codex's notify). Explicit signals beat the output
+// heuristics: "waiting" shows the needs-attention badge immediately, "done" shows
+// the turn-finished checkmark even though the agent process keeps running.
+func SetExternalAgentState(blockId string, state string, agent string) error {
+	t := getActivityTracker(blockId)
+	t.lock.Lock()
+	switch state {
+	case termActivityWaiting:
+		t.stopIdleTimer()
+		t.waiting = true
+		t.visible = false
+		t.activeSince = time.Time{}
+		t.stretchBytes = 0
+		if agent != "" {
+			t.agentKind = agent
+		}
+		t.dbg("external agentstate -> waiting (agent=%q)", t.agentKind)
+		t.setState(termActivityWaiting)
+	case termActivityDone:
+		t.stopIdleTimer()
+		// waiting stays true: the agent idles at its prompt after a turn ends and its
+		// TUI keeps repainting — the waiting flag keeps those dribbles from re-tripping
+		// the spinner over the ✓ until a real-volume stretch (the next turn) arrives.
+		t.waiting = true
+		t.visible = false
+		t.everShown = false
+		t.outputDriven = false
+		t.activeSince = time.Time{}
+		t.stretchBytes = 0
+		if agent != "" {
+			t.agentKind = agent
+		}
+		durMs := int64(0)
+		if !t.startTs.IsZero() {
+			durMs = time.Since(t.startTs).Milliseconds()
+		}
+		t.startTs = time.Time{}
+		t.curState = termActivityDone
+		t.dbg("external agentstate -> done (agent=%q durMs=%d)", t.agentKind, durMs)
+		t.outbox = append(t.outbox, baseds.TermActivityData{
+			BlockId:    t.blockId,
+			State:      termActivityDone,
+			Visible:    true,
+			AgentKind:  t.agentKind,
+			Command:    t.command,
+			DurationMs: durMs,
+		})
+	default:
+		t.lock.Unlock()
+		return fmt.Errorf("invalid agent state %q (want %q or %q)", state, termActivityWaiting, termActivityDone)
+	}
+	out := t.outbox
+	t.outbox = nil
+	t.lock.Unlock()
+	publishActivity(out)
+	return nil
+}
+
 // ResetTermActivity tears down a block's activity tracker (on block destroy,
 // controller replacement, or shell restart), clearing any lingering indicator.
 func ResetTermActivity(blockId string) {
@@ -223,6 +284,7 @@ func ResetTermActivity(blockId string) {
 	t := activityTrackers[blockId]
 	delete(activityTrackers, blockId)
 	activityTrackersLock.Unlock()
+	resetAgentProbeCache(blockId)
 	if t == nil {
 		return
 	}
@@ -537,15 +599,18 @@ func (t *termActivityTracker) maybeFeedLog(now time.Time) {
 }
 
 func (t *termActivityTracker) markWaiting() {
-	if !t.running {
-		t.dbg("bell/osc9 ignored (no command running)")
-		return // no command active — a bare-shell bell, not an agent waiting
-	}
 	if t.agentKind == "" {
-		t.dbg("bell/osc9 ignored (command %q is not an AI agent)", truncCmd(t.command))
-		return // scoped to AI agents' "your turn" signal, not arbitrary program bells
+		// No tracked agent command — the C marker never fired (broken preexec) or a
+		// durable session outlived the wavesrv that saw it. The pty's process tree is
+		// ground truth either way: identify the agent from the shell's descendants.
+		// Bells from non-agent programs (bare shell, random TUIs) still get ignored.
+		t.agentKind = probeAgentKind(t.blockId)
+		if t.agentKind == "" {
+			t.dbg("bell/osc9 ignored (no tracked or probed agent, running=%v command=%q)", t.running, truncCmd(t.command))
+			return
+		}
 	}
-	t.dbg("bell/osc9 -> waiting (agent=%q)", t.agentKind)
+	t.dbg("bell/osc9 -> waiting (agent=%q running=%v)", t.agentKind, t.running)
 	t.stopIdleTimer()
 	t.waiting = true
 	t.visible = false

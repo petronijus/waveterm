@@ -119,6 +119,14 @@ git checkout feat/<task> && git rebase main
   `{"dev": "~/Documents/Dev"}` on Linux vs `{"dev": "D:/Dev"}` on Windows), other home paths
   save as `~/rest`, and an unknown root falls back to `~` on load instead of erroring. Remote
   blocks keep their paths verbatim — they're valid from any machine that reaches the host.
+- **Agent waiting detection** — the tab activity badge now reliably flips to "waiting for you"
+  (💬) when an interactive AI agent needs input, through three layers: the agent's bell/OSC 9
+  "your turn" signal is honored even when the shell-integration command marker was never seen
+  (a durable session that outlived wavesrv, broken preexec) by identifying the agent from the
+  pty's process tree (foreground-process matching, the technique agent multiplexers use); and
+  `wsh agentstate waiting|done` lets agent lifecycle hooks (Claude Code `Notification`/`Stop`,
+  codex `notify`) push exact states in-band — precise turn semantics, no false "waiting" while
+  the agent runs subagents or long tools. Silence is deliberately *not* treated as waiting.
 - **Terminal write batching** — streaming pty output (an agent thinking, a build log) coalesces
   into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
   terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk
