@@ -113,6 +113,12 @@ git checkout feat/<task> && git rebase main
   positions (clamped to the local display), surplus windows close (never the last one), and saved
   layouts restore losslessly via a single `settree` layout action — nested splits, sizes, focus
   and magnify survive exactly.
+- **Portable layout paths** — saved layouts store block locations (terminal cwd, preview file)
+  machine-neutrally so a layout saved on one OS restores on another: paths under a named root
+  from the machine-local `sync:pathroots` setting save as `${name}/rest` (e.g.
+  `{"dev": "~/Documents/Dev"}` on Linux vs `{"dev": "D:/Dev"}` on Windows), other home paths
+  save as `~/rest`, and an unknown root falls back to `~` on load instead of erroring. Remote
+  blocks keep their paths verbatim — they're valid from any machine that reaches the host.
 - **Terminal write batching** — streaming pty output (an agent thinking, a build log) coalesces
   into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
   terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk

@@ -355,6 +355,12 @@
         "sync:intervalms": {
           "type": "integer"
         },
+        "sync:pathroots": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "conn:*": {
           "type": "boolean"
         },

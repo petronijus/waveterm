@@ -1689,6 +1689,7 @@ declare global {
         "sync:webdavuser"?: string;
         "sync:folder"?: string;
         "sync:intervalms"?: number;
+        "sync:pathroots"?: {[key: string]: string};
         "conn:*"?: boolean;
         "conn:askbeforewshinstall"?: boolean;
         "conn:wshenabled"?: boolean;

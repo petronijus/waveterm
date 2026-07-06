@@ -76,13 +76,14 @@ func SaveLayout(ctx context.Context, tabId string, name string) error {
 	if err != nil {
 		return fmt.Errorf("getting layout state: %w", err)
 	}
+	pathRoots := getPathRoots()
 	blocks := make(map[string]waveobj.MetaMapType, len(tab.BlockIds))
 	for _, blockId := range tab.BlockIds {
 		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
 		if err != nil {
 			return fmt.Errorf("getting block %s: %w", blockId, err)
 		}
-		blocks[blockId] = block.Meta
+		blocks[blockId] = portablizeBlockMeta(block.Meta, pathRoots)
 	}
 	snap := LayoutSnapshot{
 		Name:            name,
@@ -158,8 +159,9 @@ func LoadLayout(ctx context.Context, tabId string, name string) error {
 	if err := json.Unmarshal(raw, &savedRoot); err != nil {
 		return fmt.Errorf("parsing layout tree: %w", err)
 	}
+	pathRoots := getPathRoots()
 	root, nodeIdMap, err := remapLayoutTree(savedRoot, func(oldBlockId string) (string, error) {
-		meta := snap.Blocks[oldBlockId]
+		meta := localizeBlockMeta(snap.Blocks[oldBlockId], pathRoots)
 		if meta == nil {
 			meta = waveobj.MetaMapType{}
 		}

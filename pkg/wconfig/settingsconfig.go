@@ -94,29 +94,29 @@ type SettingsType struct {
 	WaveAiShowCloudModes bool   `json:"waveai:showcloudmodes,omitempty"`
 	WaveAiDefaultMode    string `json:"waveai:defaultmode,omitempty"`
 
-	TermClear               bool     `json:"term:*,omitempty"`
-	TermFontSize            float64  `json:"term:fontsize,omitempty"`
-	TermFontFamily          string   `json:"term:fontfamily,omitempty"`
-	TermTheme               string   `json:"term:theme,omitempty"`
-	TermDisableWebGl        bool     `json:"term:disablewebgl,omitempty"`
-	TermLocalShellPath      string   `json:"term:localshellpath,omitempty"`
-	TermLocalShellOpts      []string `json:"term:localshellopts,omitempty"`
-	TermGitBashPath         string   `json:"term:gitbashpath,omitempty"`
-	TermScrollback          *int64   `json:"term:scrollback,omitempty"`
-	TermCopyOnSelect        *bool    `json:"term:copyonselect,omitempty"`
-	TermTransparency        *float64 `json:"term:transparency,omitempty"`
-	TermAllowBracketedPaste *bool    `json:"term:allowbracketedpaste,omitempty"`
-	TermShiftEnterNewline   *bool    `json:"term:shiftenternewline,omitempty"`
-	TermMacOptionIsMeta     *bool    `json:"term:macoptionismeta,omitempty"`
-	TermCursor              string   `json:"term:cursor,omitempty"`
-	TermCursorBlink         *bool    `json:"term:cursorblink,omitempty"`
-	TermBellSound           *bool    `json:"term:bellsound,omitempty"`
-	TermBellIndicator       *bool    `json:"term:bellindicator,omitempty"`
-	TermOsc52               string   `json:"term:osc52,omitempty" jsonschema:"enum=focus,enum=always"`
-	TermDurable                    *bool    `json:"term:durable,omitempty"`
-	TermShowSplitButtons           bool     `json:"term:showsplitbuttons,omitempty"`
-	TermTrimTrailingWhitespace     *bool    `json:"term:trimtrailingwhitespace,omitempty"`
-	TermActivityDebug              bool     `json:"term:activitydebug,omitempty"`
+	TermClear                  bool     `json:"term:*,omitempty"`
+	TermFontSize               float64  `json:"term:fontsize,omitempty"`
+	TermFontFamily             string   `json:"term:fontfamily,omitempty"`
+	TermTheme                  string   `json:"term:theme,omitempty"`
+	TermDisableWebGl           bool     `json:"term:disablewebgl,omitempty"`
+	TermLocalShellPath         string   `json:"term:localshellpath,omitempty"`
+	TermLocalShellOpts         []string `json:"term:localshellopts,omitempty"`
+	TermGitBashPath            string   `json:"term:gitbashpath,omitempty"`
+	TermScrollback             *int64   `json:"term:scrollback,omitempty"`
+	TermCopyOnSelect           *bool    `json:"term:copyonselect,omitempty"`
+	TermTransparency           *float64 `json:"term:transparency,omitempty"`
+	TermAllowBracketedPaste    *bool    `json:"term:allowbracketedpaste,omitempty"`
+	TermShiftEnterNewline      *bool    `json:"term:shiftenternewline,omitempty"`
+	TermMacOptionIsMeta        *bool    `json:"term:macoptionismeta,omitempty"`
+	TermCursor                 string   `json:"term:cursor,omitempty"`
+	TermCursorBlink            *bool    `json:"term:cursorblink,omitempty"`
+	TermBellSound              *bool    `json:"term:bellsound,omitempty"`
+	TermBellIndicator          *bool    `json:"term:bellindicator,omitempty"`
+	TermOsc52                  string   `json:"term:osc52,omitempty" jsonschema:"enum=focus,enum=always"`
+	TermDurable                *bool    `json:"term:durable,omitempty"`
+	TermShowSplitButtons       bool     `json:"term:showsplitbuttons,omitempty"`
+	TermTrimTrailingWhitespace *bool    `json:"term:trimtrailingwhitespace,omitempty"`
+	TermActivityDebug          bool     `json:"term:activitydebug,omitempty"`
 
 	SysinfoTrackPath     string `json:"sysinfo:trackpath,omitempty"`
 	SysinfoDockerProject string `json:"sysinfo:dockerproject,omitempty"`
@@ -175,8 +175,8 @@ type SettingsType struct {
 	TelemetryClear   bool `json:"telemetry:*,omitempty"`
 	TelemetryEnabled bool `json:"telemetry:enabled,omitempty"`
 
-	NotifyClear                 bool  `json:"notify:*,omitempty"`
-	NotifyCommandDone           bool  `json:"notify:commanddone,omitempty"`
+	NotifyClear                  bool `json:"notify:*,omitempty"`
+	NotifyCommandDone            bool `json:"notify:commanddone,omitempty"`
 	NotifyCommandDoneThresholdMs *int `json:"notify:commanddonethresholdms,omitempty"`
 
 	SyncClear      bool   `json:"sync:*,omitempty"`
@@ -186,6 +186,12 @@ type SettingsType struct {
 	SyncWebDAVUser string `json:"sync:webdavuser,omitempty"`
 	SyncFolder     string `json:"sync:folder,omitempty"`
 	SyncIntervalMs *int   `json:"sync:intervalms,omitempty"`
+	// Named path roots for portable saved layouts: maps a root name to this
+	// machine's local directory (e.g. {"dev": "~/Documents/Dev"} here vs
+	// {"dev": "D:/Dev"} on Windows). Layout snapshots store ${name}/rest and
+	// each machine resolves it through its own map. Lives under sync: so the
+	// settings bundle never syncs it between machines.
+	SyncPathRoots map[string]string `json:"sync:pathroots,omitempty"`
 
 	ConnClear                bool    `json:"conn:*,omitempty"`
 	ConnAskBeforeWshInstall  *bool   `json:"conn:askbeforewshinstall,omitempty"`
@@ -400,21 +406,21 @@ type TermThemeType struct {
 // applier maps these to the :root CSS variables and derives the alpha-blended
 // variants (block bg, hover, highlight, accent bg, ...) at runtime.
 type UIThemeType struct {
-	DisplayName    string  `json:"display:name"`
-	DisplayOrder   float64 `json:"display:order"`
-	Background     string  `json:"background"`     // --main-bg-color (+ derived block bg)
-	Foreground     string  `json:"foreground"`     // --main-text-color
-	SecondaryText  string  `json:"secondaryText"`  // --secondary-text-color
-	GreyText       string  `json:"greyText"`       // --grey-text-color
-	Accent         string  `json:"accent"`         // --accent-color (+ tab/button/form accents)
-	Border         string  `json:"border"`         // base for --border-color / --hover-bg-color (alpha-blended)
-	PanelBg        string  `json:"panelBg"`        // base for --panel-bg-color
-	HighlightBg    string  `json:"highlightBg"`    // base for --highlight-bg-color (defaults to accent)
-	ModalBg        string  `json:"modalBg"`        // --modal-bg-color
-	Link           string  `json:"link"`           // --link-color
-	Error          string  `json:"error"`          // --error-color
-	Warning        string  `json:"warning"`        // --warning-color
-	Success        string  `json:"success"`        // --success-color
+	DisplayName   string  `json:"display:name"`
+	DisplayOrder  float64 `json:"display:order"`
+	Background    string  `json:"background"`    // --main-bg-color (+ derived block bg)
+	Foreground    string  `json:"foreground"`    // --main-text-color
+	SecondaryText string  `json:"secondaryText"` // --secondary-text-color
+	GreyText      string  `json:"greyText"`      // --grey-text-color
+	Accent        string  `json:"accent"`        // --accent-color (+ tab/button/form accents)
+	Border        string  `json:"border"`        // base for --border-color / --hover-bg-color (alpha-blended)
+	PanelBg       string  `json:"panelBg"`       // base for --panel-bg-color
+	HighlightBg   string  `json:"highlightBg"`   // base for --highlight-bg-color (defaults to accent)
+	ModalBg       string  `json:"modalBg"`       // --modal-bg-color
+	Link          string  `json:"link"`          // --link-color
+	Error         string  `json:"error"`         // --error-color
+	Warning       string  `json:"warning"`       // --warning-color
+	Success       string  `json:"success"`       // --success-color
 }
 
 // TabFlagType is a user-defined, named + colored tab flag (like macOS Finder tags).
@@ -446,13 +452,13 @@ type FullConfigType struct {
 }
 
 type ConnKeywords struct {
-	ConnWshEnabled          *bool  `json:"conn:wshenabled,omitempty"`
-	ConnAskBeforeWshInstall *bool  `json:"conn:askbeforewshinstall,omitempty"`
-	ConnWshPath             string `json:"conn:wshpath,omitempty"`
-	ConnShellPath           string `json:"conn:shellpath,omitempty"`
-	ConnIgnoreSshConfig          *bool `json:"conn:ignoresshconfig,omitempty"`
-	ConnStallAutoDisconnect      *bool `json:"conn:stallautodisconnect,omitempty"`
-	ConnStallDisconnectThreshold *int  `json:"conn:stalldisconnectthreshold,omitempty"`
+	ConnWshEnabled               *bool  `json:"conn:wshenabled,omitempty"`
+	ConnAskBeforeWshInstall      *bool  `json:"conn:askbeforewshinstall,omitempty"`
+	ConnWshPath                  string `json:"conn:wshpath,omitempty"`
+	ConnShellPath                string `json:"conn:shellpath,omitempty"`
+	ConnIgnoreSshConfig          *bool  `json:"conn:ignoresshconfig,omitempty"`
+	ConnStallAutoDisconnect      *bool  `json:"conn:stallautodisconnect,omitempty"`
+	ConnStallDisconnectThreshold *int   `json:"conn:stalldisconnectthreshold,omitempty"`
 
 	DisplayHidden *bool   `json:"display:hidden,omitempty"`
 	DisplayOrder  float32 `json:"display:order,omitempty"`
