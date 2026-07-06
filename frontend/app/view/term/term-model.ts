@@ -37,6 +37,7 @@ import {
 import * as services from "@/store/services";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
+import { getIsPathBookmarked, localHomeDir, tildifyPath, toggleProjectBookmark } from "@/util/projectutil";
 import { boundNumber, fireAndForget, isBlank, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
@@ -50,50 +51,12 @@ import {
 } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
-function projectNameFromPath(p: string): string {
-    if (p === "~" || isBlank(p)) {
-        return "home";
-    }
-    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
-    return parts[parts.length - 1] || p;
-}
-
-let cachedLocalHomeDir: string | undefined;
-function localHomeDir(): string {
-    if (cachedLocalHomeDir === undefined) {
-        try {
-            cachedLocalHomeDir = getApi().getHomeDir() || "";
-        } catch {
-            cachedLocalHomeDir = "";
-        }
-    }
-    return cachedLocalHomeDir;
-}
-
 // Show an absolute local cwd as ~/… so the terminal header matches the files/git panels
 // (which work in tilde-space). The shell reports its cwd absolutely via OSC 7, so without
 // this the terminal header was the odd one out. Only the LOCAL home is tildified — a remote
 // path is left as-is (we don't have the remote $HOME here, and the local home won't match it).
 function tildifyLocalCwd(p: string): string {
-    if (isBlank(p) || p.startsWith("~")) {
-        return p;
-    }
-    const home = localHomeDir();
-    if (home && (p === home || p.startsWith(home + "/"))) {
-        return "~" + p.slice(home.length);
-    }
-    return p;
-}
-
-function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
-    if (projects[base] == null) {
-        return base;
-    }
-    let i = 2;
-    while (projects[`${base} (${i})`] != null) {
-        i++;
-    }
-    return `${base} (${i})`;
+    return tildifyPath(p, localHomeDir());
 }
 
 export class TermViewModel implements ViewModel {
@@ -183,14 +146,8 @@ export class TermViewModel implements ViewModel {
         });
         this.openCwdPickerAtom = jotai.atom<boolean>(false);
         this.isCwdBookmarkedAtom = jotai.atom<boolean>((get) => {
-            const projects = get(atoms.fullConfigAtom)?.projects ?? {};
             const blockData = get(this.blockAtom);
-            const curPath = blockData?.meta?.["cmd:cwd"];
-            if (isBlank(curPath)) {
-                return false;
-            }
-            const curConn = blockData?.meta?.connection || "local";
-            return Object.values(projects).some((p) => p?.path === curPath && (p?.connection || "local") === curConn);
+            return getIsPathBookmarked(get, blockData?.meta?.["cmd:cwd"], blockData?.meta?.connection);
         });
         // When cmd:cwd is changed externally (e.g. picking a project in the connections
         // panel) rather than reported by the shell itself, cd the live shell there.
@@ -640,28 +597,7 @@ export class TermViewModel implements ViewModel {
     // the connections panel — same as the star button in the file preview and git view.
     async toggleProjectBookmark() {
         const blockData = globalStore.get(this.blockAtom);
-        const path = blockData?.meta?.["cmd:cwd"];
-        if (isBlank(path)) {
-            return;
-        }
-        const conn = blockData?.meta?.connection;
-        const connKey = conn || "local";
-        const projects = globalStore.get(atoms.fullConfigAtom)?.projects ?? {};
-        const existing = Object.entries(projects).find(
-            ([, p]) => p?.path === path && (p?.connection || "local") === connKey
-        );
-        if (existing) {
-            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name: existing[0], metamaptype: null });
-            return;
-        }
-        const name = uniqueProjectName(projectNameFromPath(path), projects);
-        const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
-        const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
-        const meta: ProjectConfigType = { path, "display:order": nextOrder };
-        if (conn && conn !== "local") {
-            meta.connection = conn;
-        }
-        await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
+        await toggleProjectBookmark(blockData?.meta?.["cmd:cwd"], blockData?.meta?.connection);
     }
 
     setTermMode(mode: "term" | "vdom") {

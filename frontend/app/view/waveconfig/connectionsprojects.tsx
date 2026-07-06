@@ -1,34 +1,16 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
 import { atoms, createBlock, getApi } from "@/store/global";
+import { addProjectBookmark } from "@/util/projectutil";
 import { base64ToString, cn, fireAndForget, stringToBase64 } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { SettingsSplit } from "./settingssplit";
 import type { WaveConfigViewModel } from "./waveconfig-model";
-
-function projectNameFromPath(p: string): string {
-    if (p === "~" || p == null || p === "") {
-        return "home";
-    }
-    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
-    return parts[parts.length - 1] || p;
-}
-
-function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
-    if (projects[base] == null) {
-        return base;
-    }
-    let i = 2;
-    while (projects[`${base} (${i})`] != null) {
-        i++;
-    }
-    return `${base} (${i})`;
-}
 
 // A live JSON editor bound to a single config file (projects.json / connections.json).
 // It re-reads from disk whenever the config changes elsewhere (e.g. the GUI buttons),
@@ -124,15 +106,12 @@ const ProjectsGui = memo(({ model }: { model: WaveConfigViewModel }) => {
             if (!picked) {
                 return;
             }
-            const name = uniqueProjectName(projectNameFromPath(picked), projects);
-            const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
-            const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
-            const meta: ProjectConfigType = { path: picked, "display:order": nextOrder };
-            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
+            await addProjectBookmark(picked, "");
         });
     };
 
-    const remove = (name: string) => fireAndForget(() => RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: null }));
+    const remove = (name: string) =>
+        fireAndForget(() => RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: null }));
 
     const open = (project: ProjectConfigType) =>
         fireAndForget(() =>
@@ -151,7 +130,9 @@ const ProjectsGui = memo(({ model }: { model: WaveConfigViewModel }) => {
                 </button>
             </div>
             {entries.length === 0 ? (
-                <div className="text-sm text-secondary italic">No projects yet. Click Add or use the ⭐ in a Files block.</div>
+                <div className="text-sm text-secondary italic">
+                    No projects yet. Click Add or use the ⭐ in a Files block.
+                </div>
             ) : (
                 <div className="flex flex-col gap-1">
                     {entries.map(([name, project]) => (

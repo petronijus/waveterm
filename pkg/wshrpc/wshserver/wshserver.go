@@ -561,6 +561,15 @@ func (ws *WshServer) SetConnectionsConfigCommand(ctx context.Context, data wshrp
 }
 
 func (ws *WshServer) SetProjectsConfigCommand(ctx context.Context, data wshrpc.ProjectConfigRequest) error {
+	// Canonicalize local project paths to ~-form so every writer produces the same
+	// format in projects.json (the FE panels already tildify; this catches any other
+	// caller). Remote paths are left alone — the local home dir doesn't apply there.
+	if data.MetaMapType != nil {
+		connVal, _ := data.MetaMapType["connection"].(string)
+		if pathVal, ok := data.MetaMapType["path"].(string); ok && (connVal == "" || connVal == "local") {
+			data.MetaMapType["path"] = wavebase.ReplaceHomeDir(pathVal)
+		}
+	}
 	return wconfig.SetProjectsConfigValue(data.Name, data.MetaMapType)
 }
 

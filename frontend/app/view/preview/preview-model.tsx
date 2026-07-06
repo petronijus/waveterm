@@ -5,13 +5,13 @@ import { BlockNodeModel } from "@/app/block/blocktypes";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
-import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { atoms, getOverrideConfigAtom, refocusNode } from "@/store/global";
+import { getOverrideConfigAtom, refocusNode } from "@/store/global";
 import * as WOS from "@/store/wos";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
 import { addOpenMenuItems } from "@/util/previewutil";
+import { getIsPathBookmarked, toggleProjectBookmark } from "@/util/projectutil";
 import { base64ToString, fireAndForget, isBlank, jotaiLoadableValue, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
@@ -115,26 +115,6 @@ function iconForFile(mimeType: string): string {
     } else {
         return "file";
     }
-}
-
-function projectNameFromPath(p: string): string {
-    if (p === "~" || isBlank(p)) {
-        return "home";
-    }
-    const parts = p.replace(/[/\\]+$/, "").split(/[/\\]/);
-    const last = parts[parts.length - 1];
-    return last || p;
-}
-
-function uniqueProjectName(base: string, projects: { [key: string]: ProjectConfigType }): string {
-    if (projects[base] == null) {
-        return base;
-    }
-    let i = 2;
-    while (projects[`${base} (${i})`] != null) {
-        i++;
-    }
-    return `${base} (${i})`;
 }
 
 export class PreviewModel implements ViewModel {
@@ -431,12 +411,7 @@ export class PreviewModel implements ViewModel {
             return get(this.blockAtom)?.meta?.connection;
         });
         this.isCurrentDirBookmarked = atom<boolean>((get) => {
-            const projects = get(atoms.fullConfigAtom)?.projects ?? {};
-            const curPath = get(this.metaFilePath);
-            const curConn = get(this.connectionImmediate) || "local";
-            return Object.values(projects).some(
-                (p) => p?.path === curPath && (p?.connection || "local") === curConn
-            );
+            return getIsPathBookmarked(get, get(this.metaFilePath), get(this.connectionImmediate));
         });
         this.statFile = atom<Promise<FileInfo>>(async (get) => {
             const fileName = get(this.metaFilePath);
@@ -537,27 +512,8 @@ export class PreviewModel implements ViewModel {
     // project stays meaningful when picked from another machine.
     async toggleProjectBookmark() {
         const path = globalStore.get(this.metaFilePath);
-        if (isBlank(path)) {
-            return;
-        }
         const conn = globalStore.get(this.connectionImmediate) || "";
-        const connKey = conn || "local";
-        const projects = globalStore.get(atoms.fullConfigAtom)?.projects ?? {};
-        const existing = Object.entries(projects).find(
-            ([, p]) => p?.path === path && (p?.connection || "local") === connKey
-        );
-        if (existing) {
-            await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name: existing[0], metamaptype: null });
-            return;
-        }
-        const name = uniqueProjectName(projectNameFromPath(path), projects);
-        const orders = Object.values(projects).map((p) => p?.["display:order"] ?? 0);
-        const nextOrder = orders.length ? Math.max(...orders) + 1 : 1;
-        const meta: ProjectConfigType = { path, "display:order": nextOrder };
-        if (conn) {
-            meta.connection = conn;
-        }
-        await RpcApi.SetProjectsConfigCommand(TabRpcClient, { name, metamaptype: meta });
+        await toggleProjectBookmark(path, conn);
     }
 
     get viewComponent(): ViewComponent {
