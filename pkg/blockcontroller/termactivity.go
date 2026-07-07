@@ -40,13 +40,12 @@ import (
 // Activity heuristic timings — must stay in sync with the documented behavior the
 // frontend used (see the old osc-handlers.ts CmdActivity* constants).
 const (
-	cmdActivityDelay     = 1200 * time.Millisecond // ignore the first burst so quick commands don't flash
-	cmdActivityIdle      = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle (command-tracked)
-	cmdActivityDoneIdle  = 4000 * time.Millisecond // output-only: quiet this long ⇒ "done" ✓ — long enough to ride out an agent's mid-turn pauses without flickering
-	cmdActivitySustain   = 700 * time.Millisecond  // output must flow this long continuously before we call it "working"
-	cmdActivityGap       = 1000 * time.Millisecond // a quiet gap longer than this ends the continuous stretch
-	cmdActivityWorkBytes = 512                     // after a "waiting" bell, a stretch must carry at least this many bytes to count as real work resuming
-	maxOscBufLen         = 8192                    // cap a single OSC payload so malformed input can't grow unbounded
+	cmdActivityDelay    = 1200 * time.Millisecond // ignore the first burst so quick commands don't flash
+	cmdActivityIdle     = 2500 * time.Millisecond // output quiet this long ⇒ "done thinking" / idle (command-tracked)
+	cmdActivityDoneIdle = 4000 * time.Millisecond // output-only: quiet this long ⇒ "done" ✓ — long enough to ride out an agent's mid-turn pauses without flickering
+	cmdActivitySustain  = 700 * time.Millisecond  // output must flow this long continuously before we call it "working"
+	cmdActivityGap      = 1000 * time.Millisecond // a quiet gap longer than this ends the continuous stretch
+	maxOscBufLen        = 8192                    // cap a single OSC payload so malformed input can't grow unbounded
 )
 
 // Event_TermActivity state values.
@@ -66,6 +65,8 @@ const (
 	scanOscEsc
 	scanString // DCS/APC/PM/SOS string payload — skipped so an embedded BEL isn't read as a terminal bell
 	scanStringEsc
+	scanInCsi // input-side: CSI parameter/intermediate bytes until a final byte
+	scanInSs3 // input-side: single byte after ESC O (SS3 function keys)
 )
 
 const (
@@ -118,6 +119,9 @@ type termActivityTracker struct {
 	// incremental scanner state
 	scanMode int
 	oscBuf   []byte
+
+	// input-side escape parser state (chunk boundaries must not split sequences)
+	inScanMode int
 
 	// command activity state machine
 	running      bool
@@ -217,6 +221,96 @@ func FeedTermActivity(blockId string, data []byte) {
 	getActivityTracker(blockId).processBytes(data)
 }
 
+// FeedTermUserInput inspects user input bound for a block's pty. A deliberate
+// keypress — printable text, Enter, Tab — is what actually ends an agent's
+// "waiting for you" state (the user answered), so it releases the sticky waiting
+// flag and lets the output heuristic take over again. The terminal's automatic
+// escape-sequence replies (DSR/DA/OSC responses), arrow-key browsing and bare
+// control chords don't count. Safe to call from the input paths.
+func FeedTermUserInput(blockId string, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	getActivityTracker(blockId).feedUserInput(data)
+}
+
+func (t *termActivityTracker) feedUserInput(data []byte) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	// always run the scanner — it must track sequence state even while not waiting,
+	// or a chunk boundary inside a sequence would desync the parser
+	acted := t.scanInputForUserAction(data)
+	if !acted || !t.waiting {
+		return
+	}
+	t.waiting = false
+	t.dbg("user input -> waiting released (state stays %q until output/markers move it)", t.curState)
+}
+
+// scanInputForUserAction advances the input-side escape parser across the chunk and
+// reports whether it carried a deliberate keypress: printable bytes (incl. UTF-8 and
+// bracketed-paste payload), CR/LF or Tab outside escape sequences. Arrow keys, focus
+// events and query replies are complete CSI/SS3/OSC sequences and don't count —
+// browsing a menu or the terminal answering a query must not release the waiting
+// state; confirming with Enter or typing text does. Assumes t.lock held.
+func (t *termActivityTracker) scanInputForUserAction(data []byte) bool {
+	acted := false
+	for _, b := range data {
+		switch t.inScanMode {
+		case scanNormal:
+			switch {
+			case b == byteEsc:
+				t.inScanMode = scanEsc
+			case b == '\r' || b == '\n' || b == '\t':
+				acted = true
+			case b >= 0x20 && b != 0x7f: // printable ASCII; >0x7f covers UTF-8 bytes
+				acted = true
+			}
+		case scanEsc:
+			switch b {
+			case '[':
+				t.inScanMode = scanInCsi
+			case 'O':
+				t.inScanMode = scanInSs3
+			case ']':
+				t.inScanMode = scanOsc
+			case 'P', 'X', '^', '_':
+				t.inScanMode = scanString
+			default:
+				// Alt+key chord — a keypress, but not an answer
+				t.inScanMode = scanNormal
+			}
+		case scanInCsi:
+			if b >= 0x40 && b <= 0x7e {
+				t.inScanMode = scanNormal
+			}
+		case scanInSs3:
+			t.inScanMode = scanNormal
+		case scanOsc:
+			switch b {
+			case byteBel:
+				t.inScanMode = scanNormal
+			case byteEsc:
+				t.inScanMode = scanOscEsc
+			}
+		case scanOscEsc, scanStringEsc:
+			if b == byteST {
+				t.inScanMode = scanNormal
+			} else if b != byteEsc {
+				t.inScanMode = scanNormal
+			}
+		case scanString:
+			switch b {
+			case byteBel:
+				t.inScanMode = scanNormal
+			case byteEsc:
+				t.inScanMode = scanStringEsc
+			}
+		}
+	}
+	return acted
+}
+
 // SetExternalAgentState applies an explicit agent-reported activity state pushed
 // in-band via wsh (`wsh agentstate` — wired to agent lifecycle hooks like Claude
 // Code's Notification/Stop or codex's notify). Explicit signals beat the output
@@ -240,8 +334,9 @@ func SetExternalAgentState(blockId string, state string, agent string) error {
 	case termActivityDone:
 		t.stopIdleTimer()
 		// waiting stays true: the agent idles at its prompt after a turn ends and its
-		// TUI keeps repainting — the waiting flag keeps those dribbles from re-tripping
-		// the spinner over the ✓ until a real-volume stretch (the next turn) arrives.
+		// TUI keeps repainting — the sticky waiting flag keeps that dribble from
+		// re-tripping the spinner over the ✓ until the user types the next prompt
+		// (feedUserInput releases it).
 		t.waiting = true
 		t.visible = false
 		t.everShown = false
@@ -548,12 +643,12 @@ func (t *termActivityTracker) markOutput(n int) {
 	}
 	t.lastOutputTs = now
 	t.stretchBytes += n
-	// While in the bell-driven "waiting for you" state an agent TUI keeps repainting
-	// its idle prompt — small bursts that must NOT look like work. Only a stretch
-	// carrying real volume flips us back to the spinner.
-	workVolumeOk := !t.waiting || t.stretchBytes >= cmdActivityWorkBytes
-	if !t.visible && workVolumeOk && now.Sub(t.activeSince) >= cmdActivitySustain {
-		t.waiting = false
+	// While in the bell/hook-driven "waiting for you" state an agent TUI keeps
+	// repainting its idle prompt — a continuous dribble (claude idles at ~350B/s in
+	// one unbroken stretch) that no cumulative volume threshold can tell apart from
+	// real work. Waiting is therefore sticky against output; only actual user input
+	// (the answer the agent asked for) releases it — see feedUserInput.
+	if !t.visible && !t.waiting && now.Sub(t.activeSince) >= cmdActivitySustain {
 		t.visible = true
 		t.everShown = true
 		if !t.running {

@@ -126,7 +126,10 @@ git checkout feat/<task> && git rebase main
   pty's process tree (foreground-process matching, the technique agent multiplexers use); and
   `wsh agentstate waiting|done` lets agent lifecycle hooks (Claude Code `Notification`/`Stop`,
   codex `notify`) push exact states in-band — precise turn semantics, no false "waiting" while
-  the agent runs subagents or long tools. Silence is deliberately *not* treated as waiting.
+  the agent runs subagents or long tools. Silence is deliberately *not* treated as waiting, and
+  waiting is sticky against output (an idle agent TUI repaints continuously — no volume
+  threshold separates that dribble from real work): only a deliberate keypress (text/Enter,
+  not arrow-browsing or the terminal's automatic escape replies) releases it.
 - **Terminal write batching** — streaming pty output (an agent thinking, a build log) coalesces
   into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
   terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk

@@ -152,6 +152,9 @@ func (sc *ShellController) SendInput(inputUnion *BlockInputUnion) error {
 	if shellInputCh == nil {
 		return fmt.Errorf("no shell input chan")
 	}
+	if len(inputUnion.InputData) > 0 {
+		FeedTermUserInput(sc.BlockId, inputUnion.InputData)
+	}
 	shellInputCh <- inputUnion
 	return nil
 }

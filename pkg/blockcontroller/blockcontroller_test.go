@@ -13,7 +13,6 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/shellexec"
 	"github.com/wavetermdev/waveterm/pkg/utilds"
-
 )
 
 // mockConnInterface implements shellexec.ConnInterface for testing.
@@ -30,9 +29,9 @@ type mockConnInterface struct {
 	nameVal           string
 }
 
-func (m *mockConnInterface) Fd() uintptr { return m.fdVal }
-func (m *mockConnInterface) Name() string { return m.nameVal }
-func (m *mockConnInterface) Read(p []byte) (int, error) { return 0, io.EOF }
+func (m *mockConnInterface) Fd() uintptr                 { return m.fdVal }
+func (m *mockConnInterface) Name() string                { return m.nameVal }
+func (m *mockConnInterface) Read(p []byte) (int, error)  { return 0, io.EOF }
 func (m *mockConnInterface) Write(p []byte) (int, error) { return len(p), nil }
 func (m *mockConnInterface) Close() error {
 	m.mu.Lock()
@@ -65,13 +64,13 @@ func (m *mockConnInterface) Wait() error {
 	return m.waitErr
 }
 
-func (m *mockConnInterface) Start() error { return nil }
-func (m *mockConnInterface) ExitCode() int { return 0 }
-func (m *mockConnInterface) ExitSignal() string { return "" }
+func (m *mockConnInterface) Start() error                       { return nil }
+func (m *mockConnInterface) ExitCode() int                      { return 0 }
+func (m *mockConnInterface) ExitSignal() string                 { return "" }
 func (m *mockConnInterface) StdinPipe() (io.WriteCloser, error) { return nil, nil }
 func (m *mockConnInterface) StdoutPipe() (io.ReadCloser, error) { return nil, nil }
 func (m *mockConnInterface) StderrPipe() (io.ReadCloser, error) { return nil, nil }
-func (m *mockConnInterface) SetSize(w int, h int) error { return nil }
+func (m *mockConnInterface) SetSize(w int, h int) error         { return nil }
 
 // slowMockConnInterface is like mockConnInterface but Wait() blocks for a
 // configurable duration, simulating a real SSH session that takes time to exit.
@@ -86,9 +85,9 @@ type slowMockConnInterface struct {
 	waitStarted       chan struct{} // signals when Wait() has been entered
 }
 
-func (m *slowMockConnInterface) Fd() uintptr { return 0 }
-func (m *slowMockConnInterface) Name() string { return "slow-mock" }
-func (m *slowMockConnInterface) Read(p []byte) (int, error) { return 0, io.EOF }
+func (m *slowMockConnInterface) Fd() uintptr                 { return 0 }
+func (m *slowMockConnInterface) Name() string                { return "slow-mock" }
+func (m *slowMockConnInterface) Read(p []byte) (int, error)  { return 0, io.EOF }
 func (m *slowMockConnInterface) Write(p []byte) (int, error) { return len(p), nil }
 func (m *slowMockConnInterface) Close() error {
 	m.mu.Lock()
@@ -131,13 +130,13 @@ func (m *slowMockConnInterface) Wait() error {
 	return nil
 }
 
-func (m *slowMockConnInterface) Start() error { return nil }
-func (m *slowMockConnInterface) ExitCode() int { return 0 }
-func (m *slowMockConnInterface) ExitSignal() string { return "" }
+func (m *slowMockConnInterface) Start() error                       { return nil }
+func (m *slowMockConnInterface) ExitCode() int                      { return 0 }
+func (m *slowMockConnInterface) ExitSignal() string                 { return "" }
 func (m *slowMockConnInterface) StdinPipe() (io.WriteCloser, error) { return nil, nil }
 func (m *slowMockConnInterface) StdoutPipe() (io.ReadCloser, error) { return nil, nil }
 func (m *slowMockConnInterface) StderrPipe() (io.ReadCloser, error) { return nil, nil }
-func (m *slowMockConnInterface) SetSize(w int, h int) error { return nil }
+func (m *slowMockConnInterface) SetSize(w int, h int) error         { return nil }
 
 func makeSlowMockShellProc() *shellexec.ShellProc {
 	mockCmd := &slowMockConnInterface{
@@ -733,29 +732,39 @@ func TestShellControllerStopDoesNotPanicOnClosedSession(t *testing.T) {
 // mockClosedConnInterface simulates a closed SSH session where operations
 // return errors (as would happen after the remote side has exited/closed).
 type mockClosedConnInterface struct {
-	mu sync.Mutex
+	mu         sync.Mutex
 	closeCount int
 }
 
-func (m *mockClosedConnInterface) Fd() uintptr { return 0 }
-func (m *mockClosedConnInterface) Name() string { return "closed-session" }
+func (m *mockClosedConnInterface) Fd() uintptr                { return 0 }
+func (m *mockClosedConnInterface) Name() string               { return "closed-session" }
 func (m *mockClosedConnInterface) Read(p []byte) (int, error) { return 0, io.EOF }
-func (m *mockClosedConnInterface) Write(p []byte) (int, error) { return 0, errors.New("session closed") }
+func (m *mockClosedConnInterface) Write(p []byte) (int, error) {
+	return 0, errors.New("session closed")
+}
 func (m *mockClosedConnInterface) Close() error {
 	m.mu.Lock()
 	m.closeCount++
 	m.mu.Unlock()
 	return errors.New("session already closed")
 }
-func (m *mockClosedConnInterface) WriteString(s string) (int, error) { return 0, errors.New("session closed") }
+func (m *mockClosedConnInterface) WriteString(s string) (int, error) {
+	return 0, errors.New("session closed")
+}
 
-func (m *mockClosedConnInterface) Kill() {}
+func (m *mockClosedConnInterface) Kill()                              {}
 func (m *mockClosedConnInterface) KillGraceful(timeout time.Duration) {}
-func (m *mockClosedConnInterface) Wait() error { return errors.New("session exited") }
-func (m *mockClosedConnInterface) Start() error { return errors.New("session closed") }
-func (m *mockClosedConnInterface) ExitCode() int { return 0 }
-func (m *mockClosedConnInterface) ExitSignal() string { return "" }
-func (m *mockClosedConnInterface) StdinPipe() (io.WriteCloser, error) { return nil, errors.New("session closed") }
-func (m *mockClosedConnInterface) StdoutPipe() (io.ReadCloser, error) { return nil, errors.New("session closed") }
-func (m *mockClosedConnInterface) StderrPipe() (io.ReadCloser, error) { return nil, errors.New("session closed") }
+func (m *mockClosedConnInterface) Wait() error                        { return errors.New("session exited") }
+func (m *mockClosedConnInterface) Start() error                       { return errors.New("session closed") }
+func (m *mockClosedConnInterface) ExitCode() int                      { return 0 }
+func (m *mockClosedConnInterface) ExitSignal() string                 { return "" }
+func (m *mockClosedConnInterface) StdinPipe() (io.WriteCloser, error) {
+	return nil, errors.New("session closed")
+}
+func (m *mockClosedConnInterface) StdoutPipe() (io.ReadCloser, error) {
+	return nil, errors.New("session closed")
+}
+func (m *mockClosedConnInterface) StderrPipe() (io.ReadCloser, error) {
+	return nil, errors.New("session closed")
+}
 func (m *mockClosedConnInterface) SetSize(w int, h int) error { return errors.New("session closed") }

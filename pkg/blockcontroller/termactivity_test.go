@@ -396,3 +396,75 @@ func TestSetExternalAgentState(t *testing.T) {
 		t.Fatalf("expected error for invalid state")
 	}
 }
+
+// TestTermActivity_WaitingStickyAgainstOutput verifies an idle agent TUI's repaint
+// dribble (continuous small chunks, no gap) can NOT flip waiting back to working —
+// only user input releases the state.
+func TestTermActivity_WaitingStickyAgainstOutput(t *testing.T) {
+	events := captureEvents(t)
+	blockId := "test-waiting-sticky"
+	ResetTermActivity(blockId)
+	if err := SetExternalAgentState(blockId, termActivityWaiting, "claude"); err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	*events = nil
+	// simulate the idle dribble: ~40B every 100ms for well past the sustain window
+	deadline := time.Now().Add(cmdActivitySustain + 800*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("\x1b[2K\x1b[1G idle prompt repaint chunk...\n"))
+		time.Sleep(50 * time.Millisecond)
+	}
+	if hasState(*events, termActivityWorking) {
+		t.Fatalf("idle dribble must not flip waiting back to working; got %+v", *events)
+	}
+
+	// terminal auto-replies and arrow keys must not release waiting either
+	FeedTermUserInput(blockId, []byte("\x1b[15;42R"))
+	FeedTermUserInput(blockId, []byte("\x1b[A\x1b[B"))
+	FeedTermUserInput(blockId, []byte{0x03})
+	tr := getActivityTracker(blockId)
+	tr.lock.Lock()
+	waiting := tr.waiting
+	tr.lock.Unlock()
+	if !waiting {
+		t.Fatalf("escape replies / arrows / ctrl-c must not release waiting")
+	}
+
+	// a real answer (printable + Enter) releases it; output may then drive again
+	FeedTermUserInput(blockId, []byte("y\r"))
+	tr.lock.Lock()
+	waiting = tr.waiting
+	tr.lock.Unlock()
+	if waiting {
+		t.Fatalf("printable input should release waiting")
+	}
+	*events = nil
+	deadline = time.Now().Add(cmdActivitySustain + 800*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("agent output resumes, plenty of bytes now\n"))
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !hasState(*events, termActivityWorking) {
+		t.Fatalf("after input released waiting, sustained output should flip to working")
+	}
+}
+
+// TestTermActivity_InputScannerChunkBoundary verifies a CSI reply split across input
+// chunks isn't misread as printable payload (its parameter bytes are digits).
+func TestTermActivity_InputScannerChunkBoundary(t *testing.T) {
+	captureEvents(t)
+	blockId := "test-input-chunks"
+	ResetTermActivity(blockId)
+	if err := SetExternalAgentState(blockId, termActivityWaiting, "claude"); err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	FeedTermUserInput(blockId, []byte("\x1b[15;"))
+	FeedTermUserInput(blockId, []byte("42R"))
+	tr := getActivityTracker(blockId)
+	tr.lock.Lock()
+	waiting := tr.waiting
+	tr.lock.Unlock()
+	if !waiting {
+		t.Fatalf("split CSI reply must not release waiting")
+	}
+}

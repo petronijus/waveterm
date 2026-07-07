@@ -220,6 +220,7 @@ func (dsc *DurableShellController) SendInput(inputUnion *BlockInputUnion) error 
 		SigName:        inputUnion.SigName,
 	}
 	if len(inputUnion.InputData) > 0 {
+		FeedTermUserInput(dsc.BlockId, inputUnion.InputData)
 		data.InputData64 = base64.StdEncoding.EncodeToString(inputUnion.InputData)
 	}
 	return jobcontroller.SendInput(context.Background(), data)
