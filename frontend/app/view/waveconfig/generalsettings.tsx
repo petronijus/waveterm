@@ -109,6 +109,129 @@ const FolderRow = memo(({ label, settingKey, placeholder, onCommit }: FolderRowP
 });
 FolderRow.displayName = "FolderRow";
 
+// Editor for the machine-local sync:pathroots map — the named roots portable saved
+// layouts resolve through (${dev}/proj saves on one machine, opens on another).
+// Root NAMES are the cross-machine contract; the PATH is what this machine maps
+// them to, which is why the key lives under sync: and never syncs. Half-filled
+// rows stay local until both fields are set, so adding a root doesn't write
+// partial entries into settings.json.
+const PathRootsEditor = memo(({ onCommit }: { onCommit: (key: keyof SettingsType, value: any) => void }) => {
+    const roots = (useAtomValue(getSettingsKeyAtom("sync:pathroots")) ?? {}) as { [name: string]: string };
+    const configJson = JSON.stringify(roots);
+    const [rows, setRows] = useState<{ name: string; path: string }[]>(() =>
+        Object.entries(roots).map(([name, path]) => ({ name, path }))
+    );
+    useEffect(() => {
+        // re-sync from config but keep half-filled draft rows — committing one row
+        // must not wipe another root the user is still typing
+        setRows((prev) => {
+            const fromConfig = Object.entries(JSON.parse(configJson)).map(([name, path]) => ({
+                name,
+                path: path as string,
+            }));
+            const drafts = prev.filter((r) => r.name.trim() === "" || r.path.trim() === "");
+            return [...fromConfig, ...drafts];
+        });
+    }, [configJson]);
+
+    const commitRows = (next: { name: string; path: string }[]) => {
+        const map: { [name: string]: string } = {};
+        for (const r of next) {
+            const name = r.name.trim();
+            const path = r.path.trim();
+            if (name === "" || path === "") {
+                continue;
+            }
+            map[name] = path;
+        }
+        onCommit("sync:pathroots", Object.keys(map).length ? map : null);
+    };
+
+    const updateRow = (idx: number, patch: Partial<{ name: string; path: string }>) => {
+        setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    };
+
+    const removeRow = (idx: number) => {
+        const next = rows.filter((_, i) => i !== idx);
+        setRows(next);
+        commitRows(next);
+    };
+
+    const browseRow = (idx: number) => {
+        fireAndForget(async () => {
+            const picked = await getApi().selectDirectory(rows[idx]?.path || null);
+            if (!picked) {
+                return;
+            }
+            const next = rows.map((r, i) => (i === idx ? { ...r, path: picked } : r));
+            setRows(next);
+            commitRows(next);
+        });
+    };
+
+    return (
+        <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Path roots</span>
+                <button
+                    onClick={() => setRows((prev) => [...prev, { name: "", path: "" }])}
+                    className="px-2 py-0.5 rounded text-xs border border-border hover:bg-hoverbg transition-colors cursor-pointer"
+                >
+                    <i className="fa-sharp fa-solid fa-plus mr-1" /> Add root
+                </button>
+            </div>
+            <p className="text-xs text-muted-foreground ml-0.5">
+                Saved layouts store paths as <code>{"${name}"}/…</code> and resolve them through this machine-local map,
+                so a layout saved on one OS opens in the right folders on another (e.g. <code>dev</code> →{" "}
+                <code>~/Documents/Dev</code> here vs <code>D:/Dev</code> on Windows). Use the same root names on every
+                machine; this map itself never syncs.
+            </p>
+            {rows.map((row, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                    <Input
+                        className="w-36 shrink-0"
+                        value={row.name}
+                        placeholder="dev"
+                        onChange={(v) => updateRow(idx, { name: v })}
+                        onBlur={() => commitRows(rows)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                commitRows(rows);
+                            }
+                        }}
+                    />
+                    <Input
+                        className="flex-1"
+                        value={row.path}
+                        placeholder="~/Documents/Dev"
+                        onChange={(v) => updateRow(idx, { path: v })}
+                        onBlur={() => commitRows(rows)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                commitRows(rows);
+                            }
+                        }}
+                    />
+                    <button
+                        onClick={() => browseRow(idx)}
+                        className="px-3 py-1 rounded text-sm border border-border hover:bg-hoverbg transition-colors cursor-pointer shrink-0"
+                    >
+                        Browse…
+                    </button>
+                    <button
+                        onClick={() => removeRow(idx)}
+                        title="Remove root"
+                        className="px-2 py-1 rounded text-sm border border-border hover:bg-hoverbg hover:text-error transition-colors cursor-pointer shrink-0"
+                    >
+                        <i className="fa-sharp fa-solid fa-trash" />
+                    </button>
+                </div>
+            ))}
+        </div>
+    );
+});
+PathRootsEditor.displayName = "PathRootsEditor";
+
 function formatSyncTime(ts: number): string {
     if (!ts) {
         return "never";
@@ -220,8 +343,8 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     className="!justify-start -ml-[5px]"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
-                    Sends a system notification when a foreground command finishes while the Wave
-                    window is unfocused. Click it to jump back to that tab.
+                    Sends a system notification when a foreground command finishes while the Wave window is unfocused.
+                    Click it to jump back to that tab.
                 </p>
                 <div
                     className={cn(
@@ -259,12 +382,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                 <p className="text-xs text-muted-foreground ml-0.5">
                     Syncs config, workspaces, tabs and layout across your machines.
                 </p>
-                <div
-                    className={cn(
-                        "flex flex-col gap-2 mt-1",
-                        !syncEnabled && "opacity-50 pointer-events-none"
-                    )}
-                >
+                <div className={cn("flex flex-col gap-2 mt-1", !syncEnabled && "opacity-50 pointer-events-none")}>
                     <div className="flex items-center gap-1 p-0.5 rounded bg-hoverbg w-fit">
                         <button
                             onClick={() => selectSyncMode("folder")}
@@ -293,9 +411,8 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     {syncMode === "folder" ? (
                         <>
                             <p className="text-xs text-muted-foreground ml-0.5">
-                                Point Wave at a folder inside a Nextcloud / Dropbox / Drive
-                                desktop-client sync root — that client moves the files between
-                                machines, so no account or password is needed here.
+                                Point Wave at a folder inside a Nextcloud / Dropbox / Drive desktop-client sync root —
+                                that client moves the files between machines, so no account or password is needed here.
                             </p>
                             <FolderRow
                                 label="Folder path"
@@ -307,9 +424,8 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     ) : (
                         <>
                             <p className="text-xs text-muted-foreground ml-0.5">
-                                Talk to a WebDAV server (e.g. Nextcloud) directly over HTTPS — no
-                                desktop client required. Set the app-password in Secrets as{" "}
-                                <code>sync:webdavpassword</code>.
+                                Talk to a WebDAV server (e.g. Nextcloud) directly over HTTPS — no desktop client
+                                required. Set the app-password in Secrets as <code>sync:webdavpassword</code>.
                             </p>
                             <TextRow
                                 label="WebDAV URL"
@@ -338,6 +454,7 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                         }}
                         onCommit={setConfigKey}
                     />
+                    <PathRootsEditor onCommit={setConfigKey} />
                     <div className="flex items-center gap-3 mt-1">
                         <button
                             onClick={onSyncNow}
@@ -374,9 +491,8 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     className="!justify-start -ml-[5px]"
                 />
                 <p className="text-xs text-muted-foreground ml-0.5">
-                    Writes detailed <code>[tabactivity]</code> diagnostics for the tab
-                    working/done indicator and command-done notifications to{" "}
-                    <code>waveapp.log</code>. Leave off unless you're chasing an
+                    Writes detailed <code>[tabactivity]</code> diagnostics for the tab working/done indicator and
+                    command-done notifications to <code>waveapp.log</code>. Leave off unless you're chasing an
                     indicator/notification bug — it's verbose.
                 </p>
             </section>
