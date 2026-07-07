@@ -97,7 +97,9 @@ func SaveLayout(ctx context.Context, tabId string, name string) error {
 	if ls.LeafOrder != nil {
 		snap.LeafOrder = *ls.LeafOrder
 	}
-	data, err := json.Marshal(snap)
+	// Indented for the same reason as the settings bundle — layout files on the
+	// share are the kind of thing the user opens and reads.
+	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -4,8 +4,10 @@
 package wsync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,7 +56,14 @@ func exportConfigFiles(items map[string]json.RawMessage) error {
 		if err != nil {
 			return err
 		}
-		items[KeyPrefixConfig+e.Name()] = canonicalJSON(data)
+		canon, err := canonicalJSON(data)
+		if err != nil {
+			return fmt.Errorf("config file %s is not valid JSON: %w", e.Name(), err)
+		}
+		if canon == nil {
+			continue
+		}
+		items[KeyPrefixConfig+e.Name()] = canon
 	}
 	return nil
 }
@@ -104,15 +113,17 @@ func canonicalObjJSON(obj waveobj.WaveObj, dropKeys ...string) (json.RawMessage,
 }
 
 // canonicalJSON re-marshals config bytes so cross-machine formatting differences
-// don't read as changes; falls back to the raw bytes if it isn't valid JSON.
-func canonicalJSON(data []byte) json.RawMessage {
+// don't read as changes. An empty/whitespace-only file returns (nil, nil) — there's
+// nothing to sync, and embedding it as a raw json.RawMessage would poison the whole
+// bundle's marshal ("error calling MarshalJSON …"). Invalid JSON returns the parse
+// error so callers can name the offending file instead of failing cryptically later.
+func canonicalJSON(data []byte) (json.RawMessage, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, nil
+	}
 	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
-		return json.RawMessage(data)
+		return nil, err
 	}
-	out, err := json.Marshal(v)
-	if err != nil {
-		return json.RawMessage(data)
-	}
-	return out
+	return json.Marshal(v)
 }

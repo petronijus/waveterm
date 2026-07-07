@@ -49,7 +49,10 @@ func SaveSettingsNow(ctx context.Context) error {
 		return fmt.Errorf("collecting config files: %w", err)
 	}
 	bundle := SettingsBundle{SavedTs: time.Now().UnixMilli(), Files: files}
-	data, err := json.Marshal(bundle)
+	// Indented so the bundle on the sync share stays human-readable (json.Indent
+	// reformats the embedded RawMessages too). Unlike the merge-engine state files,
+	// nothing byte-compares this file, so formatting is free.
+	data, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -113,7 +116,14 @@ func collectConfigFiles() (map[string]json.RawMessage, error) {
 		if rel == wconfig.SettingsFile {
 			raw = stripSyncKeys(raw)
 		}
-		files[rel] = canonicalJSON(raw)
+		canon, err := canonicalJSON(raw)
+		if err != nil {
+			return fmt.Errorf("config file %s is not valid JSON: %w", rel, err)
+		}
+		if canon == nil {
+			return nil
+		}
+		files[rel] = canon
 		return nil
 	})
 	if err != nil {
