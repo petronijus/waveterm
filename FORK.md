@@ -81,11 +81,15 @@ git checkout feat/<task> && git rebase main
   git RPCs carry explicit per-class timeouts (read/action/sync — so pushes get their full 90s
   budget instead of a silent 5s default), a client-side settle timer catches responses lost to
   sleep/wake or a ws reconnect, and a toolbar ⚠ shows when refresh is failing instead of silently
-  serving stale data.
+  serving stale data. The History list has an All | Branch switch — "Branch" shows only commits
+  unique to the current branch (what it adds on top of wherever it was cut from).
 - **Config sync** — a per-install last-writer-wins merge engine (`wsync`) with tombstones that
   converges settings across machines. Transports: WebDAV (mtime-stamped change detection) or a
   credential-free local-folder mode (Nextcloud / Drive desktop client). Background scheduler wired
-  into `wavesrv` startup, a "Sync now" RPC, status UI, and a native folder picker.
+  into `wavesrv` startup, a "Sync now" RPC, status UI, and a native folder picker. An empty or
+  invalid config file no longer breaks Save settings with a cryptic marshal error (empty files
+  are skipped, invalid JSON reports the file by name), and the settings bundle + layout files on
+  the share are written indented — readable, unlike the byte-compared merge-engine state files.
 - **Folder bookmarks ("projects")** — bookmark folders, surfaced across the Files view, the
   connection dropdown, and a two-pane Connections & Projects settings panel.
 - **System monitor — project resource attribution** — the sysinfo (CPU/Mem) block can show how

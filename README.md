@@ -53,12 +53,14 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   Drive folder). Background scheduler, a *Sync now* action, and a native folder picker.
 - **Session save / load** — snapshot all windows, tabs and block layouts to the same sync
   transport and restore them on another machine — nested splits, sizes, focus and window
-  positions survive exactly.
+  positions survive exactly. Block locations travel machine-neutrally (named **path roots** +
+  `~`-form paths), so a layout saved on Linux opens the right folders on Windows or macOS.
 - **Folder bookmarks ("projects")** — bookmark folders and reach them from the Files view, the
   connection dropdown, and a Connections & Projects settings panel.
 - **Desktop notifications** — get a system notification when a long command finishes while the
   window is unfocused; plus an **agent-waiting** state that flags a tab as "waiting for you"
-  across Claude, Gemini & Codex.
+  across Claude, Gemini & Codex — driven by agent hooks (`wsh agentstate`) with a process-tree
+  fallback, and sticky until you actually answer (an idle agent's TUI repaints can't clear it).
 
 ### 🎨 Make it yours
 
@@ -79,7 +81,8 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
   adding any typing latency.
 - **Git panel auto-refresh** — explicit RPC timeouts plus a client-side settle timer keep the 2s
-  status poll alive across sleep/wake and reconnects, with a toolbar warning when refresh fails.
+  status poll alive across sleep/wake and reconnects, with a toolbar warning when refresh fails;
+  history gets an All | Branch switch showing only the current branch's own commits.
 - **WPS broker** — user-input events are buffered so a password prompt fired during startup or a
   reconnect is never lost, and locked route-matching was split to remove a reentrant-lock deadlock.
 - **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling.
