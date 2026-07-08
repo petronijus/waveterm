@@ -957,6 +957,7 @@ declare global {
         "ssh:preferredauthentications"?: string[];
         "ssh:addkeystoagent"?: boolean;
         "ssh:identityagent"?: string;
+        "ssh:forwardagent"?: boolean;
         "ssh:identitiesonly"?: boolean;
         "ssh:proxyjump"?: string[];
         "ssh:userknownhostsfile"?: string[];

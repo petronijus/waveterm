@@ -127,6 +127,7 @@ type SSHConn struct {
 	WshEnabled           *atomic.Bool
 	Opts                 *remote.SSHOpts
 	Client               *ssh.Client
+	ForwardAgent         bool
 	DomainSockName       string // if "", then no domain socket
 	DomainSockListener   net.Listener
 	ConnController       *ssh.Session
@@ -143,7 +144,7 @@ type SSHConn struct {
 	ReconnectError       string
 	ReconnectGaveUp      bool   // true when scheduler exhausted retries (max duration, auth-failed, etc.)
 	ReconnectStopReason  string // reason: "max-duration", "auth-failed", "connection-refused", "no-jobs"
-	FlappingMode         bool // ≥3 reconnect attempts in last 30s (UX-2.2)
+	FlappingMode         bool   // ≥3 reconnect attempts in last 30s (UX-2.2)
 
 	LocalForwardListeners  []ForwardingRule
 	RemoteForwardListeners []ForwardingRule
@@ -377,9 +378,9 @@ func (conn *SSHConn) DeriveConnStatus() wshrpc.ConnStatus {
 		ReconnectStopReason:           conn.ReconnectStopReason,
 		ForwardingRules:               forwardingRules,
 		CanAutoReconnect:              canAutoReconnect,
-		SuppressAutoReconnect: conn.SuppressAutoReconnect,
-		FlappingMode:          conn.FlappingMode,
-		AuthQueueWaiting:      conn.AuthQueueWaiting,
+		SuppressAutoReconnect:         conn.SuppressAutoReconnect,
+		FlappingMode:                  conn.FlappingMode,
+		AuthQueueWaiting:              conn.AuthQueueWaiting,
 	}
 }
 
@@ -1225,6 +1226,12 @@ func (conn *SSHConn) GetClient() *ssh.Client {
 	conn.lock.Lock()
 	defer conn.lock.Unlock()
 	return conn.Client
+}
+
+func (conn *SSHConn) GetForwardAgent() bool {
+	conn.lock.Lock()
+	defer conn.lock.Unlock()
+	return conn.ForwardAgent
 }
 
 func (conn *SSHConn) GetMonitor() *ConnMonitor {
@@ -2378,7 +2385,7 @@ func (conn *SSHConn) connectInternal(ctx context.Context, connFlags *wconfig.Con
 		}
 	}
 	connectStart := time.Now()
-	client, _, sshKeywords, authTracker, err := remote.ConnectToClient(ctx, conn.Opts, nil, 0, connFlags)
+	client, forwardAgent, _, sshKeywords, authTracker, err := remote.ConnectToClient(ctx, conn.Opts, nil, 0, connFlags)
 	connectDuration := time.Since(connectStart)
 	if err != nil {
 		errorCode, _ := remote.ClassifyConnError(err)
@@ -2415,6 +2422,7 @@ func (conn *SSHConn) connectInternal(ctx context.Context, connFlags *wconfig.Con
 			conn.Monitor = nil
 		}
 		conn.Client = client
+		conn.ForwardAgent = forwardAgent
 		conn.ConnHealthStatus = ConnHealthStatus_Good
 		conn.Monitor = MakeConnMonitor(conn, client)
 	})
