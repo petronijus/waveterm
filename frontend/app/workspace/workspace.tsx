@@ -7,6 +7,8 @@ import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
+import { TabUserInputPromptOverlay } from "@/app/tab/tabuserinputpromptoverlay";
+import { VisibilityReconnectHandler } from "@/app/tab/visibilityreconnect";
 import { VTabBar } from "@/app/tab/vtabbar";
 import { Widgets } from "@/app/workspace/widgets";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -181,6 +183,12 @@ const WorkspaceElem = memo(() => {
                                 <div className="flex flex-row h-full">
                                     <TabContent key={tabId} tabId={tabId} noTopPadding={showLeftTabBar && isMacOS()} />
                                     {widgetsSidebarVisible && <Widgets />}
+                                    {tabData?.blockids?.length ? (
+                                        <TabUserInputPromptOverlay tabId={tabId} blockIds={tabData.blockids} />
+                                    ) : null}
+                                    {tabData?.blockids?.length ? (
+                                        <VisibilityReconnectHandler tabId={tabId} blockIds={tabData.blockids} />
+                                    ) : null}
                                 </div>
                             )}
                         </Panel>
