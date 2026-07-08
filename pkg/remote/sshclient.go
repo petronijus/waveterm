@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net"
@@ -915,7 +916,7 @@ func createHostKeyCallback(ctx context.Context, sshKeywords *wconfig.ConnKeyword
 	return waveHostKeyCallback, hostKeyAlgorithms, nil
 }
 
-func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywords, debugInfo *ConnectionDebugInfo, authTracker *AuthTracker) (*ssh.ClientConfig, agent.ExtendedAgent, error) {
+func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywords, debugInfo *ConnectionDebugInfo, authTracker *AuthTracker) (*ssh.ClientConfig, error) {
 	chosenUser := utilfn.SafeDeref(sshKeywords.SshUser)
 	chosenHostName := utilfn.SafeDeref(sshKeywords.SshHostName)
 	chosenPort := utilfn.SafeDeref(sshKeywords.SshPort)
@@ -945,10 +946,10 @@ func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywor
 		secretName := *sshKeywords.SshPasswordSecretName
 		password, exists, err := secretstore.GetSecret(secretName)
 		if err != nil {
-			return nil, nil, utilds.Errorf(ConnErrCode_SecretStore, "error retrieving ssh:passwordsecretname %q: %w", secretName, err)
+			return nil, utilds.Errorf(ConnErrCode_SecretStore, "error retrieving ssh:passwordsecretname %q: %w", secretName, err)
 		}
 		if !exists {
-			return nil, nil, utilds.Errorf(ConnErrCode_SecretNotFound, "ssh:passwordsecretname %q not found in secret store", secretName)
+			return nil, utilds.Errorf(ConnErrCode_SecretNotFound, "ssh:passwordsecretname %q not found in secret store", secretName)
 		}
 		blocklogger.Infof(connCtx, "[conndebug] successfully retrieved ssh:passwordsecretname %q from secret store\n", secretName)
 		sshPassword = &password
@@ -989,7 +990,7 @@ func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywor
 
 	hostKeyCallback, hostKeyAlgorithms, err := createHostKeyCallback(connCtx, sshKeywords)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	networkAddr := chosenHostName + ":" + chosenPort
@@ -999,7 +1000,68 @@ func createClientConfig(connCtx context.Context, sshKeywords *wconfig.ConnKeywor
 		HostKeyCallback:   hostKeyCallback,
 		HostKeyAlgorithms: hostKeyAlgorithms(networkAddr),
 		Timeout:           DefaultConnectionTimeout,
-	}, agentClient, nil
+	}, nil
+}
+
+// unlike x/crypto's agent.ForwardToAgent, this dials the agent freshly for
+// each forwarded channel (matching openssh behavior) so forwarding survives
+// agent restarts (e.g. 1password relock) and works independently of the
+// auth-time agent connection (which IdentitiesOnly disables)
+func setupAgentForwarding(client *ssh.Client, agentPath string) error {
+	testConn, err := dialIdentityAgent(agentPath)
+	if err != nil {
+		return err
+	}
+	testConn.Close()
+	channels := client.HandleChannelOpen("auth-agent@openssh.com")
+	if channels == nil {
+		return fmt.Errorf("agent forwarding already set up on this connection")
+	}
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("sshclient:agent-forwarding", recover())
+		}()
+		for ch := range channels {
+			channel, reqs, err := ch.Accept()
+			if err != nil {
+				continue
+			}
+			go ssh.DiscardRequests(reqs)
+			go forwardAgentChannel(channel, agentPath)
+		}
+	}()
+	return nil
+}
+
+func forwardAgentChannel(channel ssh.Channel, agentPath string) {
+	defer func() {
+		panichandler.PanicHandler("sshclient:agent-forward-channel", recover())
+	}()
+	defer channel.Close()
+	agentConn, err := dialIdentityAgent(agentPath)
+	if err != nil {
+		log.Printf("agent forwarding: failed to dial agent %q: %v", agentPath, err)
+		return
+	}
+	defer agentConn.Close()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		io.Copy(agentConn, channel)
+		// half-close so the agent sees EOF; windows pipes may not support it
+		if cw, ok := agentConn.(interface{ CloseWrite() error }); ok {
+			cw.CloseWrite()
+		} else {
+			agentConn.Close()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		io.Copy(channel, agentConn)
+		channel.CloseWrite()
+	}()
+	wg.Wait()
 }
 
 func connectInternal(ctx context.Context, networkAddr string, clientConfig *ssh.ClientConfig, currentClient *ssh.Client) (*ssh.Client, error) {
@@ -1197,7 +1259,7 @@ func ConnectToClient(connCtx context.Context, opts *SSHOpts, currentClient *ssh.
 			return nil, false, jumpNum, nil, nil, err
 		}
 	}
-	clientConfig, agentClient, err := createClientConfig(connCtx, sshKeywords, debugInfo, authTracker)
+	clientConfig, err := createClientConfig(connCtx, sshKeywords, debugInfo, authTracker)
 	if err != nil {
 		return nil, false, debugInfo.JumpNum, nil, nil, ConnectionError{ConnectionDebugInfo: debugInfo, Err: err}
 	}
@@ -1208,9 +1270,10 @@ func ConnectToClient(connCtx context.Context, opts *SSHOpts, currentClient *ssh.
 	}
 	forwardAgent := false
 	if utilfn.SafeDeref(sshKeywords.SshForwardAgent) {
-		if agentClient == nil {
-			blocklogger.Infof(connCtx, "[conndebug] ForwardAgent requested but no ssh agent available, skipping\n")
-		} else if err := agent.ForwardToAgent(client, agentClient); err != nil {
+		agentPath := strings.TrimSpace(utilfn.SafeDeref(sshKeywords.SshIdentityAgent))
+		if agentPath == "" {
+			blocklogger.Infof(connCtx, "[conndebug] ForwardAgent requested but no ssh agent socket found, skipping\n")
+		} else if err := setupAgentForwarding(client, agentPath); err != nil {
 			blocklogger.Infof(connCtx, "[conndebug] error setting up agent forwarding: %v\n", err)
 		} else {
 			blocklogger.Infof(connCtx, "[conndebug] ssh agent forwarding enabled\n")
