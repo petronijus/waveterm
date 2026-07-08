@@ -69,6 +69,7 @@ export class GitViewModel implements ViewModel {
     logAtom: jotai.PrimitiveAtom<GitCommit[]>;
     logOffsetAtom: jotai.PrimitiveAtom<number>;
     logHasMoreAtom: jotai.PrimitiveAtom<boolean>;
+    logOnlyBranchAtom: jotai.PrimitiveAtom<boolean>;
     loadingAtom: jotai.PrimitiveAtom<boolean>;
     errorAtom: jotai.PrimitiveAtom<string>;
     actionStatusAtom: jotai.PrimitiveAtom<GitActionStatus>;
@@ -125,6 +126,7 @@ export class GitViewModel implements ViewModel {
         this.logAtom = jotai.atom<GitCommit[]>([]) as jotai.PrimitiveAtom<GitCommit[]>;
         this.logOffsetAtom = jotai.atom<number>(0);
         this.logHasMoreAtom = jotai.atom<boolean>(false);
+        this.logOnlyBranchAtom = jotai.atom<boolean>(false);
         this.loadingAtom = jotai.atom<boolean>(true);
         this.errorAtom = jotai.atom<string>(null) as jotai.PrimitiveAtom<string>;
         this.actionStatusAtom = jotai.atom<GitActionStatus>(null) as jotai.PrimitiveAtom<GitActionStatus>;
@@ -340,10 +342,11 @@ export class GitViewModel implements ViewModel {
             return;
         }
         const offset = reset ? 0 : globalStore.get(this.logOffsetAtom);
+        const onlyBranch = globalStore.get(this.logOnlyBranchAtom);
         try {
             const log = await this.env.rpc.RemoteGitLogCommand(
                 TabRpcClient,
-                { gitroot: root, offset, limit: LogPageSize },
+                { gitroot: root, offset, limit: LogPageSize, onlybranch: onlyBranch || undefined },
                 { route: this.getRoute(), timeout: GitReadTimeoutMs }
             );
             if (this.disposed) {
@@ -364,6 +367,11 @@ export class GitViewModel implements ViewModel {
 
     async loadMoreLog() {
         await this.refreshLog(false);
+    }
+
+    setLogOnlyBranch(onlyBranch: boolean) {
+        globalStore.set(this.logOnlyBranchAtom, onlyBranch);
+        fireAndForget(() => this.refreshLog(true));
     }
 
     async refreshAll() {

@@ -47,6 +47,9 @@ type CommandGitLogData struct {
 	Offset  int    `json:"offset,omitempty"`
 	Limit   int    `json:"limit,omitempty"`
 	Ref     string `json:"ref,omitempty"`
+	// OnlyBranch limits the log to commits unique to the current branch — those
+	// not reachable from any other local branch (git log ref --not --branches).
+	OnlyBranch bool `json:"onlybranch,omitempty"`
 }
 
 type CommandGitCheckoutData struct {

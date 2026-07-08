@@ -424,8 +424,24 @@ func (impl *ServerImpl) RemoteGitLogCommand(ctx context.Context, data wshrpc.Com
 	if ref == "" {
 		ref = "HEAD"
 	}
+	// refs come from the frontend — refuse anything that could parse as a git flag
+	if strings.HasPrefix(ref, "-") {
+		return &wshrpc.GitLog{}, nil
+	}
 	const format = "--pretty=format:%h%x00%H%x00%an%x00%ae%x00%at%x00%s"
 	args := []string{"log", fmt.Sprintf("--skip=%d", data.Offset), fmt.Sprintf("--max-count=%d", limit+1), format, ref}
+	if data.OnlyBranch {
+		// commits unique to the current branch: negate every other local branch.
+		// --exclude only affects the following --branches, so the current branch
+		// itself stays out of the negated set (detached HEAD has nothing to exclude).
+		args = append(args, "--not")
+		if cur, _, err := runGit(ctx, data.GitRoot, "symbolic-ref", "--short", "-q", "HEAD"); err == nil {
+			if curName := strings.TrimSpace(cur); curName != "" {
+				args = append(args, "--exclude="+curName)
+			}
+		}
+		args = append(args, "--branches")
+	}
 	stdout, _, err := runGit(ctx, data.GitRoot, args...)
 	if err != nil {
 		// empty repo / bad ref → no commits

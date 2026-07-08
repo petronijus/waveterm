@@ -463,6 +463,7 @@ declare global {
         offset?: number;
         limit?: number;
         ref?: string;
+        onlybranch?: boolean;
     };
 
     // wshrpc.CommandGitPathData

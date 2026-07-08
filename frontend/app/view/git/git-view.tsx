@@ -156,7 +156,10 @@ const ChangesSection = React.memo(function ChangesSection({ model }: { model: Gi
                     <div className="git-section-header flex items-center justify-between px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel">
                         <span>Staged ({staged.length})</span>
                         <div className="flex items-center gap-3 normal-case">
-                            <button className="cursor-pointer hover:text-primary" onClick={() => model.openReview(staged)}>
+                            <button
+                                className="cursor-pointer hover:text-primary"
+                                onClick={() => model.openReview(staged)}
+                            >
                                 Review
                             </button>
                             <button className="cursor-pointer hover:text-primary" onClick={() => model.unstage([])}>
@@ -253,11 +256,47 @@ const CommitBox = React.memo(function CommitBox({ model }: { model: GitViewModel
 });
 CommitBox.displayName = "CommitBox";
 
+// All ↔ Branch switch for the history list: "Branch" shows only commits unique to
+// the current branch (not reachable from any other local branch), i.e. what this
+// branch adds on top of wherever it was cut from.
+const HistoryScopeSwitch = React.memo(function HistoryScopeSwitch({ model }: { model: GitViewModel }) {
+    const onlyBranch = jotai.useAtomValue(model.logOnlyBranchAtom);
+    return (
+        <div className="flex items-center gap-0.5 p-0.5 rounded bg-hoverbg normal-case tracking-normal">
+            <button
+                onClick={() => model.setLogOnlyBranch(false)}
+                className={cn(
+                    "px-1.5 py-0 rounded text-[10px] transition-colors cursor-pointer",
+                    !onlyBranch ? "bg-accent/80 text-primary" : "text-secondary hover:text-primary"
+                )}
+            >
+                All
+            </button>
+            <button
+                onClick={() => model.setLogOnlyBranch(true)}
+                title="Only commits unique to the current branch"
+                className={cn(
+                    "px-1.5 py-0 rounded text-[10px] transition-colors cursor-pointer",
+                    onlyBranch ? "bg-accent/80 text-primary" : "text-secondary hover:text-primary"
+                )}
+            >
+                Branch
+            </button>
+        </div>
+    );
+});
+HistoryScopeSwitch.displayName = "HistoryScopeSwitch";
+
 const HistorySection = React.memo(function HistorySection({ model }: { model: GitViewModel }) {
     const commits = jotai.useAtomValue(model.logAtom);
     const hasMore = jotai.useAtomValue(model.logHasMoreAtom);
+    const onlyBranch = jotai.useAtomValue(model.logOnlyBranchAtom);
     if (commits.length === 0) {
-        return <div className="px-3 py-2 text-xs text-secondary italic">No commits</div>;
+        return (
+            <div className="px-3 py-2 text-xs text-secondary italic">
+                {onlyBranch ? "No commits unique to this branch" : "No commits"}
+            </div>
+        );
     }
     return (
         <div className="flex flex-col">
@@ -820,8 +859,9 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
 
                 <div className="flex-1 overflow-y-auto">
                     <ChangesSection model={model} />
-                    <div className="git-section-header px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel border-t border-border">
-                        History
+                    <div className="git-section-header flex items-center justify-between px-3 py-1 text-[11px] uppercase tracking-wide text-secondary bg-panel border-t border-border">
+                        <span>History</span>
+                        <HistoryScopeSwitch model={model} />
                     </div>
                     <HistorySection model={model} />
                 </div>
