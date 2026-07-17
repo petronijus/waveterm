@@ -138,6 +138,12 @@ git checkout feat/<task> && git rebase main
   into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
   terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk
   after a quiet period flushes immediately, so keystroke echo is unaffected.
+- **Terminal color-scheme report hygiene** — programs that subscribe to dark/light change
+  notifications (`DECSET 2031`, e.g. Claude Code's theme detection) no longer get spammed with
+  `CSI ?997;n` reports on every window/focus switch: the terminal theme is reapplied only when
+  its colors actually changed (xterm.js treats every `options.theme` assignment as a change),
+  and the shell-termination reset sequence now clears mode 2031, so a dead program's
+  subscription can't leak literal `997;1n` garbage into the next shell's prompt.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS on the
   MacBook, Windows & Linux on the homelab build VMs — no hosted CI).
 

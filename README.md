@@ -80,6 +80,9 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Terminal write batching** — streaming output (an agent thinking, a build log) coalesces into
   ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
   adding any typing latency.
+- **Terminal escape hygiene** — dark/light color-scheme reports (`DECSET 2031` subscribers like
+  Claude Code) fire only on real theme changes, and a restarted shell clears the stale
+  subscription — no more literal `997;1n` junk typed into the prompt when switching windows.
 - **Git panel auto-refresh** — explicit RPC timeouts plus a client-side settle timer keep the 2s
   status poll alive across sleep/wake and reconnects, with a toolbar warning when refresh fails;
   history gets an All | Branch switch showing only the current branch's own commits.
