@@ -639,6 +639,7 @@ func GetTerminalResetSeq() string {
 	resetSeq += "\x1b[?1007l"         // disable Enable Alternate Scroll Mode
 	resetSeq += "\x1b[?2004l"         // disable bracketed paste mode
 	resetSeq += "\x1b[?2026l"         // synchronized output off
+	resetSeq += "\x1b[?2031l"         // disable unsolicited color scheme reports (CSI ?997;n)
 	resetSeq += FormatOSC(16162, "R") // disable alternate screen mode
 	return resetSeq
 }
