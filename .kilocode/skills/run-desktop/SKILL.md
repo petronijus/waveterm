@@ -25,9 +25,13 @@ download. macOS runs directly; on **headless Linux** prefix the launch with
 ## Build (before each run, to pick up your changes)
 
 ```bash
-task build:backend:quickdev      # rebuild wavesrv (Go) → dist/bin/wavesrv.<arch>
+task build:backend:quickdev      # rebuild wavesrv (Go) → dist/bin/wavesrv.<arch>  (macOS only!)
 npm run build:dev                # electron-vite build → dist/main, dist/preload, dist/frontend
 ```
+
+⚠️ `build:backend:quickdev` is `platforms: [darwin]` — on Linux it exits 0 **without
+building anything** (stale `dist/bin/wavesrv.*` silently stays). On Linux use
+`task build:server:linux --force` instead, and check the binary's mtime.
 
 `npm run build:dev` prints a `sharp` image-optimizer warning — harmless (images
 just aren't recompressed).
