@@ -188,18 +188,22 @@ const PathRootsEditor = memo(({ onCommit }: { onCommit: (key: keyof SettingsType
             </p>
             {rows.map((row, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                    <Input
-                        className="w-36 shrink-0"
-                        value={row.name}
-                        placeholder="dev"
-                        onChange={(v) => updateRow(idx, { name: v })}
-                        onBlur={() => commitRows(rows)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                                commitRows(rows);
-                            }
-                        }}
-                    />
+                    {/* width via wrapper, not className: the unlayered .input { width: 100% }
+                        beats Tailwind's layered w-* utilities, so a w-36 on the Input itself
+                        is ignored and the row overflows the panel */}
+                    <div className="w-36 shrink-0">
+                        <Input
+                            value={row.name}
+                            placeholder="dev"
+                            onChange={(v) => updateRow(idx, { name: v })}
+                            onBlur={() => commitRows(rows)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    commitRows(rows);
+                                }
+                            }}
+                        />
+                    </div>
                     <Input
                         className="flex-1"
                         value={row.path}
@@ -353,19 +357,20 @@ export const GeneralSettingsView = memo(({ model }: { model: WaveConfigViewModel
                     )}
                 >
                     <span className="text-sm">Minimum duration</span>
-                    <Input
-                        className="w-20"
-                        value={secondsDraft}
-                        isNumber={true}
-                        disabled={!notifyEnabled}
-                        onChange={setSecondsDraft}
-                        onBlur={commitThreshold}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                                commitThreshold();
-                            }
-                        }}
-                    />
+                    <div className="w-20 shrink-0">
+                        <Input
+                            value={secondsDraft}
+                            isNumber={true}
+                            disabled={!notifyEnabled}
+                            onChange={setSecondsDraft}
+                            onBlur={commitThreshold}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    commitThreshold();
+                                }
+                            }}
+                        />
+                    </div>
                     <span className="text-sm text-muted-foreground">seconds</span>
                 </div>
             </section>
