@@ -140,32 +140,37 @@ func setClaudeSessionMeta(blockId string, sessionId string, cwd string) {
 // terminal can offer to resume it after a restart. Correlation is by transcript file
 // rather than by process: the session id is not in claude's environment and it does not
 // hold the transcript open, so there is nothing to read off the process itself.
+// Called from the terminal-output path while the activity tracker's mutex is held, so it
+// must not touch the database or the filesystem here — everything happens on the goroutine.
+// Taking the "before" snapshot there rather than synchronously is safe: claude writes its
+// transcript continuously, so a session whose file already existed when we looked still
+// advances its mtime on a later poll and is picked up then.
 func trackClaudeSession(blockId string, command string) {
-	// A remote block's claude writes its transcript on the remote host, where we cannot see it.
-	ctrl := getController(blockId)
-	if ctrl == nil || ctrl.GetConnName() != "" {
-		return
-	}
-	cwd := claudeCwdForBlock(blockId)
-	if cwd == "" {
-		return
-	}
-	projectDir := claudeProjectDirForCwd(cwd)
-	if projectDir == "" {
-		return
-	}
-	// An explicit --resume tells us the id outright; no need to guess.
-	if m := claudeResumeArgRegex.FindStringSubmatch(command); m != nil {
-		if claudeSessionIdRegex.MatchString(m[1]) {
-			setClaudeSessionMeta(blockId, m[1], cwd)
-			return
-		}
-	}
-	before := snapshotClaudeSessions(projectDir)
 	go func() {
 		defer func() {
 			panichandler.PanicHandler("blockcontroller:trackClaudeSession", recover())
 		}()
+		// A remote block's claude writes its transcript on the remote host, out of our reach.
+		ctrl := getController(blockId)
+		if ctrl == nil || ctrl.GetConnName() != "" {
+			return
+		}
+		cwd := claudeCwdForBlock(blockId)
+		if cwd == "" {
+			return
+		}
+		projectDir := claudeProjectDirForCwd(cwd)
+		if projectDir == "" {
+			return
+		}
+		// An explicit --resume tells us the id outright; no need to guess.
+		if m := claudeResumeArgRegex.FindStringSubmatch(command); m != nil {
+			if claudeSessionIdRegex.MatchString(m[1]) {
+				setClaudeSessionMeta(blockId, m[1], cwd)
+				return
+			}
+		}
+		before := snapshotClaudeSessions(projectDir)
 		deadline := time.Now().Add(claudeSessionPollTimeout)
 		for time.Now().Before(deadline) {
 			time.Sleep(claudeSessionPollInterval)
