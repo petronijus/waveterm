@@ -25,11 +25,10 @@ const (
 	claudeSessionsSubdir = "sessions"
 	claudeSessionExt     = ".jsonl"
 
-	// Claude writes its transcript on the first user message, not at launch, so a session
-	// left sitting at the prompt has nothing to attribute yet. The watch therefore runs
-	// for as long as claude is running in the block (see claudeStillRunning); this cap is
-	// only a backstop for a tracker that never reports an exit. Cheap either way: one
-	// directory read per tick, once per claude invocation.
+	// The watch runs for as long as claude runs in the block (see claudeStillRunning), so
+	// that an in-session resume is picked up; this cap is only a backstop for a tracker
+	// that never reports an exit. Steady-state cost per tick is one read of a small JSON
+	// file — the expensive process-tree walk happens only until the pid is resolved.
 	claudeSessionPollFast     = 400 * time.Millisecond
 	claudeSessionPollSlow     = 3 * time.Second
 	claudeSessionFastDuration = 30 * time.Second
@@ -284,6 +283,12 @@ func trackClaudeSession(blockId string, command string) {
 		// resuming from inside claude (session picker, /resume) swaps the id on the same
 		// process, and the block should end up pointing at whatever the user actually used.
 		var bound string
+		// Resolved once and reused: walking the process tree is expensive on macOS, where
+		// gopsutil's Children() enumerates every process on the machine and asks each one
+		// for its parent. The claude process itself does not change for the life of the
+		// session — only the session id inside it does — so after the first hit each tick
+		// is just a small file read.
+		claudePid := 0
 		start := time.Now()
 		deadline := start.Add(claudeSessionPollTimeout)
 		for time.Now().Before(deadline) {
@@ -300,7 +305,10 @@ func trackClaudeSession(blockId string, command string) {
 				}
 				return
 			}
-			if entry := readClaudeSessionRegistry(claudePidForBlock(blockId)); entry != nil {
+			if claudePid == 0 {
+				claudePid = claudePidForBlock(blockId)
+			}
+			if entry := readClaudeSessionRegistry(claudePid); entry != nil {
 				if entry.SessionId == bound {
 					continue
 				}
