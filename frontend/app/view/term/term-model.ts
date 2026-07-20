@@ -250,6 +250,12 @@ export class TermViewModel implements ViewModel {
                     },
                 });
             }
+            // Last in viewText so it renders immediately left of the end-icon strip
+            // (the bookmark star and friends) — the operator wants it leftmost there.
+            const claudeResume = this.getClaudeResumeHeaderElem(get);
+            if (claudeResume) {
+                rtn.push(claudeResume);
+            }
             return rtn;
         });
         this.manageConnection = jotai.atom((get) => {
@@ -350,11 +356,6 @@ export class TermViewModel implements ViewModel {
                 if (webglButton) {
                     rtn.push(webglButton);
                 }
-            }
-
-            const claudeResumeButton = this.getClaudeResumeIconButton(get, blockData, shellProcStatus, isCmd);
-            if (claudeResumeButton) {
-                rtn.push(claudeResumeButton);
             }
 
             if (blockData?.meta?.["controller"] != "cmd" && shellProcStatus != "done") {
@@ -459,12 +460,12 @@ export class TermViewModel implements ViewModel {
     // The session id is recorded per block by the backend when shell integration
     // reports that claude started (pkg/blockcontroller/claudesession.go). Meta lives in
     // the block row, so it is still there after a restart — the point of the button.
-    getClaudeResumeIconButton(
+    claudeResumeSessionId(
         get: jotai.Getter,
         blockData: Block,
         shellProcStatus: string,
         isCmd: boolean
-    ): IconButtonDecl | null {
+    ): string | null {
         const sessionId = blockData?.meta?.["claude:sessionid"];
         // Reading through termRef (a plain ref, not an atom) means this recomputes only
         // when one of the atoms above changes — good enough, since shellProcStatus moves
@@ -488,16 +489,38 @@ export class TermViewModel implements ViewModel {
         if (claudeActive) {
             return null;
         }
+        return sessionId;
+    }
+
+    getClaudeResumeHeaderElem(get: jotai.Getter): HeaderElem | null {
+        const blockData = get(this.blockAtom);
+        const sessionId = this.claudeResumeSessionId(
+            get,
+            blockData,
+            get(this.shellProcStatus),
+            get(this.isCmdController)
+        );
+        if (sessionId == null) {
+            return null;
+        }
         return {
-            elemtype: "iconbutton",
-            icon: "clock-rotate-left",
-            title: "Resume the Claude session this terminal last ran",
-            click: () => this.sendDataToController(this.buildClaudeResumeCmd(sessionId)),
+            elemtype: "textbutton",
+            text: "Resume session",
+            className: "yellow !py-[2px] !px-[10px] text-[11px] font-[500]",
+            title: `Resume the Claude session this terminal last ran (${sessionId.slice(0, 8)})`,
+            onClick: () => this.runClaudeResume(sessionId),
         };
     }
 
-    // Deliberately no trailing newline: resuming replays a large context, so the
-    // command is typed and left at the prompt for the user to confirm or edit.
+    runClaudeResume(sessionId: string) {
+        // Send the newline too: the point of the button is to get back into the session,
+        // and leaving it at the prompt meant the click had to be confirmed with Enter —
+        // which re-triggered the still-focused button and typed the command a second time.
+        this.sendDataToController(this.buildClaudeResumeCmd(sessionId) + "\n");
+        // Hand focus back to the terminal, so the next keystroke goes to claude rather
+        // than to the button that was just clicked.
+        this.giveFocus();
+    }
     buildClaudeResumeCmd(sessionId: string): string {
         const cmd = `claude --resume ${sessionId}`;
         const sessionCwd = globalStore.get(getBlockMetaKeyAtom(this.blockId, "claude:cwd"));
