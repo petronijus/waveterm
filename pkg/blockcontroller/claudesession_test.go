@@ -193,3 +193,17 @@ func TestFindNewClaudeSessionIgnoresTouchWithoutGrowth(t *testing.T) {
 		t.Errorf("got %q, want no match — the file was touched but never grew", got)
 	}
 }
+
+// claude keys the project dir by the resolved path — a session run under a symlinked cwd
+// writes to the real path's directory, so watching the unresolved one finds nothing.
+func TestClaudeProjectDirResolvesSymlinks(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if got, want := claudeProjectDirForCwd(link), claudeProjectDirForCwd(real); got != want {
+		t.Errorf("symlinked cwd mapped to %q, want the real path's %q", got, want)
+	}
+}

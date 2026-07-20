@@ -81,10 +81,18 @@ func claudeConfigDir() string {
 // Claude replaces every path separator with a dash; the mapping is one-way (a directory
 // whose own name contains a dash is indistinguishable from a separator), but we only
 // ever need this direction.
+//
+// The path is resolved first, because claude keys by the real path: a session run in
+// /tmp/x lands under -private-tmp-x on macOS. Watching the unresolved path would silently
+// watch a directory that never changes.
 func claudeProjectDirForCwd(cwd string) string {
 	cfgDir := claudeConfigDir()
 	if cfgDir == "" || cwd == "" {
 		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(cwd)
+	if err == nil {
+		cwd = resolved
 	}
 	encoded := strings.ReplaceAll(filepath.ToSlash(cwd), "/", "-")
 	return filepath.Join(cfgDir, claudeProjectsSubdir, encoded)
