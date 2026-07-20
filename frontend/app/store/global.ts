@@ -76,14 +76,8 @@ function initGlobalWaveEventSubs(initOpts: WaveInitOpts) {
     waveEventSubscribeSingle({
         eventType: "userinput",
         handler: (event) => {
-            const req = event.data as UserInputRequest;
-            // a prompt tied to a block renders as a non-blocking overlay in that
-            // block; connection-less prompts fall back to the global modal
-            if (req?.blockid) {
-                setBlockUserInput(req.blockid, req);
-            } else {
-                modalsModel.pushModal("UserInputModal", { ...event.data });
-            }
+            // console.log("userinput event handler", event);
+            modalsModel.pushModal("UserInputModal", { ...event.data });
         },
         scope: initOpts.windowId,
     });
@@ -680,21 +674,6 @@ function setBlockUploadState(blockId: string, state: BlockUploadState | null) {
     globalStore.set(getBlockUploadStateAtom(blockId), state ?? { active: false });
 }
 
-const BlockUserInputMap = new Map<string, PrimitiveAtom<UserInputRequest>>();
-
-function getBlockUserInputAtom(blockId: string): PrimitiveAtom<UserInputRequest> {
-    let rtn = BlockUserInputMap.get(blockId);
-    if (rtn == null) {
-        rtn = atom<UserInputRequest>(null) as PrimitiveAtom<UserInputRequest>;
-        BlockUserInputMap.set(blockId, rtn);
-    }
-    return rtn;
-}
-
-function setBlockUserInput(blockId: string, req: UserInputRequest) {
-    globalStore.set(getBlockUserInputAtom(blockId), req);
-}
-
 function createTab() {
     getApi().createTab();
 }
@@ -723,7 +702,6 @@ export {
     getBlockComponentModel,
     getBlockMetaKeyAtom,
     getBlockUploadStateAtom,
-    getBlockUserInputAtom,
     getBlockTermDurableAtom,
     getTabMetaKeyAtom,
     getConfigBackgroundAtom,

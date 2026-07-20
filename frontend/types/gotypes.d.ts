@@ -2057,7 +2057,6 @@ declare global {
         publictext: boolean;
         oklabel?: string;
         cancellabel?: string;
-        blockid?: string;
     };
 
     // userinput.UserInputResponse

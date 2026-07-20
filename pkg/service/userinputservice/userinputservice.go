@@ -15,5 +15,4 @@ func (uis *UserInputService) SendUserInputResponse(response *userinput.UserInput
 	case userinput.MainUserInputHandler.Channels[response.RequestId] <- response:
 	default:
 	}
-	userinput.ClearPendingUserInput(response.RequestId)
 }

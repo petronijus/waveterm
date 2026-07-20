@@ -6,7 +6,6 @@ import { BlockFrame_Header } from "@/app/block/blockframe-header";
 import { blockViewToIcon, getViewIconElem, useTabBackground } from "@/app/block/blockutil";
 import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { UploadOverlay } from "@/app/block/uploadoverlay";
-import { UserInputPromptOverlay } from "@/app/block/userinputpromptoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
 import { getBlockComponentModel, globalStore, useBlockAtom } from "@/app/store/global";
 import { useTabModel } from "@/app/store/tab-model";
@@ -198,7 +197,6 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                 />
             )}
             {preview ? null : <UploadOverlay blockId={nodeModel.blockId} />}
-            {preview ? null : <UserInputPromptOverlay blockId={nodeModel.blockId} />}
             <div className="block-frame-default-inner" style={innerStyle}>
                 {noHeader || <ErrorBoundary fallback={headerElemNoView}>{headerElem}</ErrorBoundary>}
                 {preview ? previewElem : children}
