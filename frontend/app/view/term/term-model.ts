@@ -41,6 +41,7 @@ import { getIsPathBookmarked, localHomeDir, tildifyPath, toggleProjectBookmark }
 import { boundNumber, fireAndForget, isBlank, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { activityLog, shortBlk } from "./activity-log";
 import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
@@ -249,6 +250,12 @@ export class TermViewModel implements ViewModel {
                     },
                 });
             }
+            // Last in viewText so it renders immediately left of the end-icon strip
+            // (the bookmark star and friends) — the operator wants it leftmost there.
+            const claudeResume = this.getClaudeResumeHeaderElem(get);
+            if (claudeResume) {
+                rtn.push(claudeResume);
+            }
             return rtn;
         });
         this.manageConnection = jotai.atom((get) => {
@@ -448,6 +455,81 @@ export class TermViewModel implements ViewModel {
                 this.termRef.current.setCursorBlink(globalStore.get(termCursorBlinkAtom) ?? false);
             }
         });
+    }
+
+    // The session id is recorded per block by the backend when shell integration
+    // reports that claude started (pkg/blockcontroller/claudesession.go). Meta lives in
+    // the block row, so it is still there after a restart — the point of the button.
+    claudeResumeSessionId(
+        get: jotai.Getter,
+        blockData: Block,
+        shellProcStatus: string,
+        isCmd: boolean
+    ): string | null {
+        const sessionId = blockData?.meta?.["claude:sessionid"];
+        // Reading through termRef (a plain ref, not an atom) means this recomputes only
+        // when one of the atoms above changes — good enough, since shellProcStatus moves
+        // whenever the agent starts or stops.
+        const claudeActive = this.termRef.current?.claudeCodeActiveAtom
+            ? get(this.termRef.current.claudeCodeActiveAtom)
+            : false;
+        activityLog(
+            `claude-resume blk=${shortBlk(this.blockId)} isCmd=${isCmd} shellProcStatus=${shellProcStatus} ` +
+                `sessionId=${isBlank(sessionId) ? "(none)" : sessionId.slice(0, 8)} claudeActive=${claudeActive} ` +
+                `termRef=${this.termRef.current != null}`
+        );
+        if (isCmd || isBlank(sessionId)) {
+            return null;
+        }
+        // Nothing to type into once the shell is gone; the restart button takes over there.
+        if (shellProcStatus == "done") {
+            return null;
+        }
+        // Don't offer to resume over a session that is already up in this block.
+        if (claudeActive) {
+            return null;
+        }
+        return sessionId;
+    }
+
+    getClaudeResumeHeaderElem(get: jotai.Getter): HeaderElem | null {
+        const blockData = get(this.blockAtom);
+        const sessionId = this.claudeResumeSessionId(
+            get,
+            blockData,
+            get(this.shellProcStatus),
+            get(this.isCmdController)
+        );
+        if (sessionId == null) {
+            return null;
+        }
+        return {
+            elemtype: "textbutton",
+            text: "Resume session",
+            className: "yellow !py-[2px] !px-[10px] text-[11px] font-[500]",
+            title: `Resume the Claude session this terminal last ran (${sessionId.slice(0, 8)})`,
+            onClick: () => this.runClaudeResume(sessionId),
+        };
+    }
+
+    runClaudeResume(sessionId: string) {
+        // Send the newline too: the point of the button is to get back into the session,
+        // and leaving it at the prompt meant the click had to be confirmed with Enter —
+        // which re-triggered the still-focused button and typed the command a second time.
+        this.sendDataToController(this.buildClaudeResumeCmd(sessionId) + "\n");
+        // Hand focus back to the terminal, so the next keystroke goes to claude rather
+        // than to the button that was just clicked.
+        this.giveFocus();
+    }
+    buildClaudeResumeCmd(sessionId: string): string {
+        const cmd = `claude --resume ${sessionId}`;
+        const sessionCwd = globalStore.get(getBlockMetaKeyAtom(this.blockId, "claude:cwd"));
+        const curCwd = globalStore.get(getBlockMetaKeyAtom(this.blockId, "cmd:cwd"));
+        // Sessions are stored per directory, so resuming from elsewhere fails to find it.
+        if (!isBlank(sessionCwd) && sessionCwd != curCwd) {
+            return `cd ${quoteForPosixShell(sessionCwd)} && ${cmd}`;
+        }
+        return cmd;
     }
 
     getShellIntegrationIconButton(get: jotai.Getter): IconButtonDecl | null {

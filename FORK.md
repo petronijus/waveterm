@@ -48,6 +48,12 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **Claude session resume per terminal** — a terminal block remembers the Claude Code session
+  it ran, and after a Wave restart shows a small history button in the block header that types
+  `claude --resume <id>` at the prompt (without pressing Enter, so you can edit or back out).
+  The id is bound **per block**, because several terminals in one tab routinely run separate
+  sessions in the same directory. Works out of the box — no Claude-side configuration. See
+  [Claude session resume](#claude-session-resume).
 - **SSH backport** — curated cherry-picks from `whoisjeremylam/waveterm-remote`: hardened SSH
   reconnect, **SSH port forwarding** (Local/RemoteForward, which upstream lacks), and related
   crash / CPU-spin fixes. The x/crypto drain-loop fix is taken via the tagged `v0.53.0` bump
@@ -149,6 +155,46 @@ git checkout feat/<task> && git rebase main
   subscription can't leak literal `997;1n` garbage into the next shell's prompt.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS on the
   MacBook, Windows & Linux on the homelab build VMs — no hosted CI).
+
+## Claude session resume
+
+A terminal block remembers the Claude Code session started in it and, once that session is no
+longer running, shows a **Resume session** button in the block header. One click resumes it —
+the command is sent with its newline and focus returns to the terminal.
+
+**How the binding works.** Shell integration already reports every command line to the backend
+(OSC 16162 `C`), which is how the activity indicator spots an agent. When that command is
+`claude`, `pkg/blockcontroller/claudesession.go` locates the claude process under the block's
+shell (the same process walk the agent probe uses) and reads claude's own session registry at
+`<config>/sessions/<pid>.json`, which holds the pid, session id and cwd. Claude writes it about
+a second after launch and removes it on exit, so the mapping is exact — no guessing which file
+in a directory changed.
+
+The watch keeps running for as long as claude does, because resuming *from inside* claude (the
+session picker, `/resume`) swaps the session id on the same process; the block follows it and
+ends up pointing at whatever was actually used. An explicit `--resume <id>` on the command line
+is taken straight from the command.
+
+**Why not the obvious alternatives.** The id is not in claude's environment and claude does not
+hold its transcript open, so a pid alone tells you nothing. Watching transcripts is worse still:
+one is only written on the first *user message*, so a session sitting at the prompt is invisible,
+and claude's startup touches an unrelated transcript in the same directory, which looks exactly
+like activity. Both cost real debugging before the registry turned up. Transcript watching
+survives only as a fallback for builds with no registry, and it requires the file to *grow*, not
+merely change mtime.
+
+**Limits.** Remote blocks are skipped — the registry lives on the remote host. A session id whose
+transcript was later deleted still offers a button, and the resume fails at the prompt; checking
+would need a new RPC. The fallback path cannot follow an in-session resume.
+
+Meta keys: `claude:sessionid`, `claude:cwd` (`pkg/waveobj/metaconsts.go`), stored with the block
+row so they survive a restart. The button is `TermViewModel.getClaudeResumeHeaderElem`
+(`frontend/app/view/term/term-model.ts`), rendered last in `viewText` so it sits left of the
+end-icon strip; it hides while claude is running in that block, and prepends a `cd` when the
+recorded cwd differs from the terminal's current one.
+
+Set `term:activitydebug` to log the binding (`[claudesession]` in `waveapp.log`) and the button's
+gate conditions (`[tabactivity][fe] claude-resume`).
 
 ## Planned
 

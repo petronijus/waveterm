@@ -166,6 +166,41 @@ func probeAgentKindUncached(blockId string) string {
 	return ""
 }
 
+// claudePidForBlock returns the pid of the claude process running under the block's shell,
+// or 0. Same walk as the agent probe, but it yields the pid rather than the kind, so the
+// session registry can be read for that exact process.
+func claudePidForBlock(blockId string) int {
+	shellPid := localShellPidForBlock(blockId)
+	if shellPid <= 0 {
+		return 0
+	}
+	root, err := process.NewProcess(int32(shellPid))
+	if err != nil {
+		return 0
+	}
+	queue := []*process.Process{root}
+	seen := 0
+	for depth := 0; depth < agentProbeMaxDepth && len(queue) > 0; depth++ {
+		var next []*process.Process
+		for _, p := range queue {
+			seen++
+			if seen > agentProbeMaxProcs {
+				return 0
+			}
+			if p.Pid != int32(shellPid) && agentKindForProcess(p) == "claude" {
+				return int(p.Pid)
+			}
+			children, err := p.Children()
+			if err != nil {
+				continue
+			}
+			next = append(next, children...)
+		}
+		queue = next
+	}
+	return 0
+}
+
 // resetAgentProbeCache drops a block's cached probe result (block destroy/restart).
 func resetAgentProbeCache(blockId string) {
 	agentProbeCacheLock.Lock()

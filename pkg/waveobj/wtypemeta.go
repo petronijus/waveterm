@@ -137,6 +137,12 @@ type MetaTSType struct {
 	TermOsc52               string   `json:"term:osc52,omitempty"`
 	TermDurable             *bool    `json:"term:durable,omitempty"`
 
+	// Written by a Claude Code SessionStart hook via `wsh setmeta`, so the block
+	// can offer to resume that exact session after a restart. Per-block, because
+	// several terminals in one tab commonly run separate sessions in the same cwd.
+	ClaudeSessionId string `json:"claude:sessionid,omitempty"`
+	ClaudeCwd       string `json:"claude:cwd,omitempty"`
+
 	WebZoom          float64 `json:"web:zoom,omitempty"`
 	WebHideNav       *bool   `json:"web:hidenav,omitempty"`
 	WebPartition     string  `json:"web:partition,omitempty"`

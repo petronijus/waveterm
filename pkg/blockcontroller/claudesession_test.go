@@ -1,0 +1,256 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package blockcontroller
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func writeSessionSized(t *testing.T, dir string, id string, modTime time.Time, size int) string {
+	t.Helper()
+	p := filepath.Join(dir, id+claudeSessionExt)
+	if err := os.WriteFile(p, make([]byte, size), 0600); err != nil {
+		t.Fatalf("writing %s: %v", p, err)
+	}
+	if err := os.Chtimes(p, modTime, modTime); err != nil {
+		t.Fatalf("chtimes %s: %v", p, err)
+	}
+	return p
+}
+
+func writeSession(t *testing.T, dir string, id string, modTime time.Time) string {
+	t.Helper()
+	return writeSessionSized(t, dir, id, modTime, 8)
+}
+
+// touchSession bumps mtime without changing content — what claude does to an unrelated
+// transcript when it starts up.
+func touchSession(t *testing.T, dir string, id string, modTime time.Time) {
+	t.Helper()
+	p := filepath.Join(dir, id+claudeSessionExt)
+	if err := os.Chtimes(p, modTime, modTime); err != nil {
+		t.Fatalf("chtimes %s: %v", p, err)
+	}
+}
+
+func TestClaudeProjectDirForCwd(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	got := claudeProjectDirForCwd("/Users/pj/Documents/Dev/waveterm")
+	want := filepath.Join("/cfg", "projects", "-Users-pj-Documents-Dev-waveterm")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if claudeProjectDirForCwd("") != "" {
+		t.Errorf("empty cwd should yield no project dir")
+	}
+}
+
+// A directory name containing a dash encodes the same way a separator does. The mapping
+// is only ever used in this direction, so the collision is harmless — but pin it down so
+// nobody later assumes it round-trips.
+func TestClaudeProjectDirForCwdDashCollision(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	withDash := claudeProjectDirForCwd("/a/b-c")
+	withSep := claudeProjectDirForCwd("/a/b/c")
+	if withDash != withSep {
+		t.Errorf("expected the known collision, got %q vs %q", withDash, withSep)
+	}
+}
+
+func TestFindNewClaudeSessionDetectsNewFile(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Hour)
+	writeSession(t, dir, "11111111-1111-1111-1111-111111111111", old)
+	before := snapshotClaudeSessions(dir)
+
+	writeSession(t, dir, "22222222-2222-2222-2222-222222222222", time.Now())
+	if got := findNewClaudeSession(dir, before); got != "22222222-2222-2222-2222-222222222222" {
+		t.Errorf("got %q, want the newly created session", got)
+	}
+}
+
+// `claude --continue` reuses an existing transcript, so growth counts as ours too.
+func TestFindNewClaudeSessionDetectsAdvancedMtime(t *testing.T) {
+	dir := t.TempDir()
+	id := "33333333-3333-3333-3333-333333333333"
+	writeSessionSized(t, dir, id, time.Now().Add(-time.Hour), 8)
+	before := snapshotClaudeSessions(dir)
+
+	writeSessionSized(t, dir, id, time.Now(), 64)
+	if got := findNewClaudeSession(dir, before); got != id {
+		t.Errorf("got %q, want %q", got, id)
+	}
+}
+
+func TestFindNewClaudeSessionNoChange(t *testing.T) {
+	dir := t.TempDir()
+	writeSession(t, dir, "44444444-4444-4444-4444-444444444444", time.Now().Add(-time.Hour))
+	before := snapshotClaudeSessions(dir)
+	if got := findNewClaudeSession(dir, before); got != "" {
+		t.Errorf("got %q, want no match", got)
+	}
+}
+
+// The case that broke in practice: another claude is already running in the same repo and
+// keeps appending to its own transcript. A freshly created transcript is unambiguous even
+// though a second file also changed, so the new session must still win.
+func TestFindNewClaudeSessionPrefersCreatedOverModified(t *testing.T) {
+	dir := t.TempDir()
+	other := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	writeSession(t, dir, other, time.Now().Add(-time.Hour))
+	before := snapshotClaudeSessions(dir)
+
+	// The unrelated session keeps writing...
+	writeSession(t, dir, other, time.Now())
+	// ...while ours is created.
+	mine := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	writeSession(t, dir, mine, time.Now())
+
+	if got := findNewClaudeSession(dir, before); got != mine {
+		t.Errorf("got %q, want the newly created session %q", got, mine)
+	}
+}
+
+// The documented failure mode: two terminals starting claude in one directory at the same
+// moment must bind nothing rather than bind the wrong session.
+func TestFindNewClaudeSessionAmbiguous(t *testing.T) {
+	dir := t.TempDir()
+	before := snapshotClaudeSessions(dir)
+	now := time.Now()
+	writeSession(t, dir, "55555555-5555-5555-5555-555555555555", now)
+	writeSession(t, dir, "66666666-6666-6666-6666-666666666666", now)
+	if got := findNewClaudeSession(dir, before); got != "" {
+		t.Errorf("got %q, want no match when two sessions changed", got)
+	}
+}
+
+func TestSnapshotIgnoresNonSessionFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "not-a-uuid.jsonl"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "77777777-7777-7777-7777-777777777777.jsonl"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(snapshotClaudeSessions(dir)); got != 0 {
+		t.Errorf("snapshot picked up %d entries, want 0", got)
+	}
+}
+
+func TestSnapshotMissingDir(t *testing.T) {
+	if got := len(snapshotClaudeSessions(filepath.Join(t.TempDir(), "nope"))); got != 0 {
+		t.Errorf("missing dir should snapshot empty, got %d", got)
+	}
+}
+
+func TestClaudeResumeArgRegex(t *testing.T) {
+	id := "88888888-8888-8888-8888-888888888888"
+	matches := []string{
+		"claude --resume " + id,
+		"claude -r " + id,
+		"claude --resume=" + id,
+		"claude -r " + id + " --model opus",
+	}
+	for _, cmd := range matches {
+		m := claudeResumeArgRegex.FindStringSubmatch(cmd)
+		if m == nil || m[1] != id {
+			t.Errorf("%q: expected to extract %q, got %v", cmd, id, m)
+		}
+	}
+	nonMatches := []string{
+		"claude",
+		"claude --continue",
+		"claude --resume",
+		"grep -r " + id + " .",
+	}
+	for _, cmd := range nonMatches[:3] {
+		if m := claudeResumeArgRegex.FindStringSubmatch(cmd); m != nil {
+			t.Errorf("%q: expected no match, got %v", cmd, m)
+		}
+	}
+}
+
+// Regression for the misattribution seen in testing: the user ran a bare `claude`, whose
+// own transcript had not appeared yet, while claude's startup touched a stale transcript
+// in the same directory. Binding that stale session pointed the resume button at a
+// conversation from hours earlier.
+func TestFindNewClaudeSessionIgnoresTouchWithoutGrowth(t *testing.T) {
+	dir := t.TempDir()
+	stale := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	writeSession(t, dir, stale, time.Now().Add(-2*time.Hour))
+	before := snapshotClaudeSessions(dir)
+
+	touchSession(t, dir, stale, time.Now())
+
+	if got := findNewClaudeSession(dir, before); got != "" {
+		t.Errorf("got %q, want no match — the file was touched but never grew", got)
+	}
+}
+
+// claude keys the project dir by the resolved path — a session run under a symlinked cwd
+// writes to the real path's directory, so watching the unresolved one finds nothing.
+func TestClaudeProjectDirResolvesSymlinks(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if got, want := claudeProjectDirForCwd(link), claudeProjectDirForCwd(real); got != want {
+		t.Errorf("symlinked cwd mapped to %q, want the real path's %q", got, want)
+	}
+}
+
+// The registry is claude's own record and the primary source: it appears at launch, so it
+// works even before the user sends a first message.
+func TestReadClaudeSessionRegistry(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	if err := os.Mkdir(filepath.Join(cfg, claudeSessionsSubdir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sid := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	body := `{"pid":4242,"sessionId":"` + sid + `","cwd":"/work","status":"busy"}`
+	if err := os.WriteFile(filepath.Join(cfg, claudeSessionsSubdir, "4242.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := readClaudeSessionRegistry(4242)
+	if got == nil || got.SessionId != sid || got.Cwd != "/work" {
+		t.Fatalf("got %+v, want session %s cwd /work", got, sid)
+	}
+	if readClaudeSessionRegistry(9999) != nil {
+		t.Errorf("unknown pid should yield nil")
+	}
+	if readClaudeSessionRegistry(0) != nil {
+		t.Errorf("pid 0 should yield nil")
+	}
+}
+
+func TestReadClaudeSessionRegistryRejectsGarbage(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	if err := os.Mkdir(filepath.Join(cfg, claudeSessionsSubdir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"1.json": `not json`,
+		"2.json": `{"sessionId":"not-a-uuid"}`,
+		"3.json": `{"cwd":"/work"}`,
+	} {
+		if err := os.WriteFile(filepath.Join(cfg, claudeSessionsSubdir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, pid := range []int{1, 2, 3} {
+		if got := readClaudeSessionRegistry(pid); got != nil {
+			t.Errorf("pid %d: got %+v, want nil", pid, got)
+		}
+	}
+}

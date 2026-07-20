@@ -560,6 +560,9 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.command = decodeCmd64(cmd64)
 	t.agentKind = agentKindForCommand(t.command)
 	t.dbg("osc-C start command=%q agent=%q", truncCmd(t.command), t.agentKind)
+	if t.agentKind == "claude" {
+		trackClaudeSession(t.blockId, t.command)
+	}
 	// Show the working spinner the instant a command starts (shell-integration C
 	// marker), not only once the output heuristic trips — so even quick/quiet commands
 	// get an indicator. This also replaces any leftover done badge from the last command.
