@@ -10,16 +10,31 @@ import (
 	"time"
 )
 
-func writeSession(t *testing.T, dir string, id string, modTime time.Time) string {
+func writeSessionSized(t *testing.T, dir string, id string, modTime time.Time, size int) string {
 	t.Helper()
 	p := filepath.Join(dir, id+claudeSessionExt)
-	if err := os.WriteFile(p, []byte("{}\n"), 0600); err != nil {
+	if err := os.WriteFile(p, make([]byte, size), 0600); err != nil {
 		t.Fatalf("writing %s: %v", p, err)
 	}
 	if err := os.Chtimes(p, modTime, modTime); err != nil {
 		t.Fatalf("chtimes %s: %v", p, err)
 	}
 	return p
+}
+
+func writeSession(t *testing.T, dir string, id string, modTime time.Time) string {
+	t.Helper()
+	return writeSessionSized(t, dir, id, modTime, 8)
+}
+
+// touchSession bumps mtime without changing content — what claude does to an unrelated
+// transcript when it starts up.
+func touchSession(t *testing.T, dir string, id string, modTime time.Time) {
+	t.Helper()
+	p := filepath.Join(dir, id+claudeSessionExt)
+	if err := os.Chtimes(p, modTime, modTime); err != nil {
+		t.Fatalf("chtimes %s: %v", p, err)
+	}
 }
 
 func TestClaudeProjectDirForCwd(t *testing.T) {
@@ -62,10 +77,10 @@ func TestFindNewClaudeSessionDetectsNewFile(t *testing.T) {
 func TestFindNewClaudeSessionDetectsAdvancedMtime(t *testing.T) {
 	dir := t.TempDir()
 	id := "33333333-3333-3333-3333-333333333333"
-	writeSession(t, dir, id, time.Now().Add(-time.Hour))
+	writeSessionSized(t, dir, id, time.Now().Add(-time.Hour), 8)
 	before := snapshotClaudeSessions(dir)
 
-	writeSession(t, dir, id, time.Now())
+	writeSessionSized(t, dir, id, time.Now(), 64)
 	if got := findNewClaudeSession(dir, before); got != id {
 		t.Errorf("got %q, want %q", got, id)
 	}
@@ -159,5 +174,22 @@ func TestClaudeResumeArgRegex(t *testing.T) {
 		if m := claudeResumeArgRegex.FindStringSubmatch(cmd); m != nil {
 			t.Errorf("%q: expected no match, got %v", cmd, m)
 		}
+	}
+}
+
+// Regression for the misattribution seen in testing: the user ran a bare `claude`, whose
+// own transcript had not appeared yet, while claude's startup touched a stale transcript
+// in the same directory. Binding that stale session pointed the resume button at a
+// conversation from hours earlier.
+func TestFindNewClaudeSessionIgnoresTouchWithoutGrowth(t *testing.T) {
+	dir := t.TempDir()
+	stale := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	writeSession(t, dir, stale, time.Now().Add(-2*time.Hour))
+	before := snapshotClaudeSessions(dir)
+
+	touchSession(t, dir, stale, time.Now())
+
+	if got := findNewClaudeSession(dir, before); got != "" {
+		t.Errorf("got %q, want no match — the file was touched but never grew", got)
 	}
 }

@@ -73,7 +73,15 @@ func claudeProjectDirForCwd(cwd string) string {
 	return filepath.Join(cfgDir, claudeProjectsSubdir, encoded)
 }
 
-type claudeSessionSnapshot map[string]time.Time
+// Size matters as much as mtime: claude touches an unrelated transcript when it starts
+// (session listing), which looks identical to activity if you only watch mtime. Growth is
+// what actually means "a conversation is being written here".
+type claudeSessionStat struct {
+	modTime time.Time
+	size    int64
+}
+
+type claudeSessionSnapshot map[string]claudeSessionStat
 
 func snapshotClaudeSessions(projectDir string) claudeSessionSnapshot {
 	rtn := make(claudeSessionSnapshot)
@@ -93,7 +101,7 @@ func snapshotClaudeSessions(projectDir string) claudeSessionSnapshot {
 		if err != nil {
 			continue
 		}
-		rtn[id] = info.ModTime()
+		rtn[id] = claudeSessionStat{modTime: info.ModTime(), size: info.Size()}
 	}
 	return rtn
 }
@@ -103,23 +111,30 @@ func snapshotClaudeSessions(projectDir string) claudeSessionSnapshot {
 // A transcript that did not exist before is a far stronger signal than one that merely
 // grew: any other claude running in the same directory keeps appending to its own file,
 // and treating that as a candidate made the common case ambiguous (two terminals on one
-// repo, or a session left running elsewhere). So created-since beats modified-since, and
-// modified-since is only consulted when nothing was created — which is what `--continue`
-// looks like, since it reuses an existing transcript.
+// repo, or a session left running elsewhere). So created-since beats grown-since, and
+// growth is only consulted when nothing was created — which is what `--continue` looks
+// like, since it reuses an existing transcript.
+//
+// "Grown" means the file got bigger, not merely newer. Launching claude bumps the mtime
+// of an existing transcript without writing to it, which is indistinguishable from real
+// activity if you only compare timestamps — that misbound a stale session in testing.
 //
 // Still returns "" when the winning category has more than one candidate: binding the
 // wrong conversation is worse than offering no button.
 func findNewClaudeSession(projectDir string, before claudeSessionSnapshot) string {
 	cur := snapshotClaudeSessions(projectDir)
-	var created, modified []string
-	for id, modTime := range cur {
+	var created, grown []string
+	for id, stat := range cur {
 		prev, existed := before[id]
 		if !existed {
 			created = append(created, id)
 			continue
 		}
-		if modTime.After(prev) {
-			modified = append(modified, id)
+		// Deliberately not `modTime.After(prev.modTime)`: starting claude bumps the
+		// mtime of an unrelated transcript without adding to it, and that misattributed
+		// a stale session to the block. Only growth counts.
+		if stat.size > prev.size {
+			grown = append(grown, id)
 		}
 	}
 	if len(created) == 1 {
@@ -128,8 +143,8 @@ func findNewClaudeSession(projectDir string, before claudeSessionSnapshot) strin
 	if len(created) > 1 {
 		return ""
 	}
-	if len(modified) == 1 {
-		return modified[0]
+	if len(grown) == 1 {
+		return grown[0]
 	}
 	return ""
 }
