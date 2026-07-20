@@ -76,13 +76,14 @@ function initGlobalWaveEventSubs(initOpts: WaveInitOpts) {
     waveEventSubscribeSingle({
         eventType: "userinput",
         handler: (event) => {
-            const req = event.data as UserInputRequest;
-            // a prompt tied to a block renders as a non-blocking overlay in that
-            // block; connection-less prompts fall back to the global modal
-            if (req?.blockid) {
-                setBlockUserInput(req.blockid, req);
+            const connName = event.data?.connname;
+            console.log("[DEBUG] userinput event received:", { connName, promptType: event.data?.prompttype, requestId: event.data?.requestid });
+            if (connName) {
+                modalsModel.upsertUserInputPrompt(connName, "UserInputPrompt", { ...event.data });
+                console.log("[DEBUG] upsertUserInputPrompt called for connName:", connName);
             } else {
-                modalsModel.pushModal("UserInputModal", { ...event.data });
+                console.log("[PW-EVENT] userinput event has no connName, using empty key", event.data);
+                modalsModel.upsertUserInputPrompt("", "UserInputPrompt", { ...event.data });
             }
         },
         scope: initOpts.windowId,
@@ -618,7 +619,23 @@ function subscribeToConnEvents() {
                 if (connStatus == null || isBlank(connStatus.connection)) {
                     return;
                 }
-                console.log("connstatus update", connStatus);
+                if (connStatus.connected) {
+                    // Auto-dismiss user input prompts for this connection on successful connect
+                    const userInputPrompts = globalStore.get(modalsModel.activeUserInputPromptsAtom);
+                    const promptEntry = userInputPrompts[connStatus.connection];
+                    console.log(`[PW-CONN] connected: conn=${connStatus.connection} hasPrompt=${!!promptEntry}`);
+                    if (promptEntry) {
+                        modalsModel.dismissUserInputPrompt(connStatus.connection);
+                    }
+                } else if (connStatus.status === "error") {
+                    // On auth failure, DON'T dismiss the prompt — keep it visible for retry.
+                    // Clear per-tab dismissed state so all tabs re-show the prompt.
+                    if (connStatus.errorcode === "auth-failed") {
+                        modalsModel.resetDismissedUserInputPrompts(connStatus.connection);
+                    }
+                    // Non-auth errors (timeout, dial-error): keep the prompt visible.
+                    // The password buffer is independent of connection lifecycle.
+                }
                 const curAtom = getConnStatusAtom(connStatus.connection);
                 globalStore.set(curAtom, connStatus);
             } catch (e) {
@@ -626,6 +643,22 @@ function subscribeToConnEvents() {
             }
         },
     });
+    // Secondary defense: on startup, dismiss stale password prompts for connections
+    // that are already connected. This handles the race where a buffered userinput
+    // event arrives before the corresponding connchange(connected) event is replayed.
+    cleanupStaleUserInputPrompts();
+}
+
+function cleanupStaleUserInputPrompts() {
+    const activePrompts = globalStore.get(modalsModel.activeUserInputPromptsAtom);
+    for (const connName of Object.keys(activePrompts)) {
+        const statusAtom = getConnStatusAtom(connName);
+        const status = globalStore.get(statusAtom);
+        if (status?.connected) {
+            console.log(`[PW-CLEANUP] dismissing stale prompt for connected conn=${connName}`);
+            modalsModel.dismissUserInputPrompt(connName);
+        }
+    }
 }
 
 function makeDefaultConnStatus(conn: string): ConnStatus {
@@ -638,6 +671,7 @@ function makeDefaultConnStatus(conn: string): ConnStatus {
             hasconnected: true,
             activeconnnum: 0,
             wshenabled: false,
+            canautoreconnect: false,
         };
     }
     return {
@@ -648,6 +682,7 @@ function makeDefaultConnStatus(conn: string): ConnStatus {
         hasconnected: false,
         activeconnnum: 0,
         wshenabled: false,
+        canautoreconnect: false,
     };
 }
 
@@ -680,21 +715,6 @@ function setBlockUploadState(blockId: string, state: BlockUploadState | null) {
     globalStore.set(getBlockUploadStateAtom(blockId), state ?? { active: false });
 }
 
-const BlockUserInputMap = new Map<string, PrimitiveAtom<UserInputRequest>>();
-
-function getBlockUserInputAtom(blockId: string): PrimitiveAtom<UserInputRequest> {
-    let rtn = BlockUserInputMap.get(blockId);
-    if (rtn == null) {
-        rtn = atom<UserInputRequest>(null) as PrimitiveAtom<UserInputRequest>;
-        BlockUserInputMap.set(blockId, rtn);
-    }
-    return rtn;
-}
-
-function setBlockUserInput(blockId: string, req: UserInputRequest) {
-    globalStore.set(getBlockUserInputAtom(blockId), req);
-}
-
 function createTab() {
     getApi().createTab();
 }
@@ -723,7 +743,6 @@ export {
     getBlockComponentModel,
     getBlockMetaKeyAtom,
     getBlockUploadStateAtom,
-    getBlockUserInputAtom,
     getBlockTermDurableAtom,
     getTabMetaKeyAtom,
     getConfigBackgroundAtom,

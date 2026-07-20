@@ -4,84 +4,110 @@
 package remote
 
 import (
+	"context"
 	"testing"
-
-	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
 
-func TestMergeKeywords_LocalForward_Override(t *testing.T) {
+func TestContextWithCachedPassword(t *testing.T) {
 	t.Parallel()
-	old := &wconfig.ConnKeywords{SshLocalForward: []string{"8080 localhost:80"}}
-	new := &wconfig.ConnKeywords{SshLocalForward: []string{"9090 localhost:90"}}
-	got := mergeKeywords(old, new)
-	if len(got.SshLocalForward) != 1 || got.SshLocalForward[0] != "9090 localhost:90" {
-		t.Fatalf("expected [9090 localhost:90], got %v", got.SshLocalForward)
-	}
+
+	t.Run("nil password returns same context", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		result := ContextWithCachedPassword(ctx, nil)
+		if result != ctx {
+			t.Error("expected same context for nil password")
+		}
+	})
+
+	t.Run("stores password in context", func(t *testing.T) {
+		t.Parallel()
+		pw := "secret123"
+		ctx := ContextWithCachedPassword(context.Background(), &pw)
+		got := GetCachedPassword(ctx)
+		if got == nil {
+			t.Fatal("expected non-nil password")
+		}
+		if *got != "secret123" {
+			t.Errorf("expected 'secret123', got %q", *got)
+		}
+	})
+
+	t.Run("returns nil when no password in context", func(t *testing.T) {
+		t.Parallel()
+		got := GetCachedPassword(context.Background())
+		if got != nil {
+			t.Errorf("expected nil, got %q", *got)
+		}
+	})
 }
 
-func TestMergeKeywords_LocalForward_NilPreserves(t *testing.T) {
+func TestAuthTracker(t *testing.T) {
 	t.Parallel()
-	old := &wconfig.ConnKeywords{SshLocalForward: []string{"8080 localhost:80"}}
-	new := &wconfig.ConnKeywords{}
-	got := mergeKeywords(old, new)
-	if len(got.SshLocalForward) != 1 || got.SshLocalForward[0] != "8080 localhost:80" {
-		t.Fatalf("expected [8080 localhost:80], got %v", got.SshLocalForward)
-	}
-}
 
-func TestMergeKeywords_RemoteForward_Override(t *testing.T) {
-	t.Parallel()
-	old := &wconfig.ConnKeywords{SshRemoteForward: []string{"9090 localhost:3000"}}
-	new := &wconfig.ConnKeywords{SshRemoteForward: []string{"7070 localhost:7000"}}
-	got := mergeKeywords(old, new)
-	if len(got.SshRemoteForward) != 1 || got.SshRemoteForward[0] != "7070 localhost:7000" {
-		t.Fatalf("expected [7070 localhost:7000], got %v", got.SshRemoteForward)
-	}
-}
+	t.Run("initial state", func(t *testing.T) {
+		t.Parallel()
+		tracker := &AuthTracker{}
+		if tracker.PasswordUsed {
+			t.Error("expected PasswordUsed to be false initially")
+		}
+		if tracker.Password != "" {
+			t.Errorf("expected empty Password, got %q", tracker.Password)
+		}
+	})
 
-func TestMergeKeywords_RemoteForward_NilPreserves(t *testing.T) {
-	t.Parallel()
-	old := &wconfig.ConnKeywords{SshRemoteForward: []string{"9090 localhost:3000"}}
-	new := &wconfig.ConnKeywords{}
-	got := mergeKeywords(old, new)
-	if len(got.SshRemoteForward) != 1 || got.SshRemoteForward[0] != "9090 localhost:3000" {
-		t.Fatalf("expected [9090 localhost:3000], got %v", got.SshRemoteForward)
-	}
-}
+	t.Run("tracks password usage", func(t *testing.T) {
+		t.Parallel()
+		tracker := &AuthTracker{}
+		tracker.Password = "mypass"
+		tracker.PasswordUsed = true
 
-func TestMergeKeywords_BothForward_MultipleRules(t *testing.T) {
-	t.Parallel()
-	old := &wconfig.ConnKeywords{
-		SshLocalForward:  []string{"8080 localhost:80", "8081 localhost:81"},
-		SshRemoteForward: []string{"9090 localhost:3000"},
-	}
-	new := &wconfig.ConnKeywords{
-		SshLocalForward: []string{"7070 localhost:70"},
-	}
-	got := mergeKeywords(old, new)
-	if len(got.SshLocalForward) != 1 || got.SshLocalForward[0] != "7070 localhost:70" {
-		t.Fatalf("expected local forward override, got %v", got.SshLocalForward)
-	}
-	if len(got.SshRemoteForward) != 1 || got.SshRemoteForward[0] != "9090 localhost:3000" {
-		t.Fatalf("expected remote forward preserved, got %v", got.SshRemoteForward)
-	}
-}
+		if !tracker.PasswordUsed {
+			t.Error("expected PasswordUsed to be true")
+		}
+		if tracker.Password != "mypass" {
+			t.Errorf("expected 'mypass', got %q", tracker.Password)
+		}
+		// password from secret/store is replayable — not an interactive prompt
+		if tracker.InteractivePromptUsed() {
+			t.Error("expected InteractivePromptUsed to be false for replayed password")
+		}
+	})
 
-func TestMergeKeywords_Forward_EmptyOverrides(t *testing.T) {
-	t.Parallel()
-	old := &wconfig.ConnKeywords{
-		SshLocalForward:  []string{"8080 localhost:80"},
-		SshRemoteForward: []string{"9090 localhost:3000"},
-	}
-	new := &wconfig.ConnKeywords{
-		SshLocalForward:  []string{},
-		SshRemoteForward: []string{},
-	}
-	got := mergeKeywords(old, new)
-	if len(got.SshLocalForward) != 0 {
-		t.Fatalf("expected empty local forward, got %v", got.SshLocalForward)
-	}
-	if len(got.SshRemoteForward) != 0 {
-		t.Fatalf("expected empty remote forward, got %v", got.SshRemoteForward)
-	}
+	t.Run("password from prompt is interactive", func(t *testing.T) {
+		t.Parallel()
+		tracker := &AuthTracker{}
+		tracker.Password = "mypass"
+		tracker.PasswordUsed = true
+		tracker.PasswordFromPrompt = true
+		if !tracker.InteractivePromptUsed() {
+			t.Error("expected InteractivePromptUsed to be true for user-typed password")
+		}
+	})
+
+	t.Run("passphrase prompt is interactive", func(t *testing.T) {
+		t.Parallel()
+		tracker := &AuthTracker{}
+		tracker.PassphrasePrompted = true
+		if !tracker.InteractivePromptUsed() {
+			t.Error("expected InteractivePromptUsed to be true for passphrase prompt")
+		}
+	})
+
+	t.Run("keyboard-interactive is interactive", func(t *testing.T) {
+		t.Parallel()
+		tracker := &AuthTracker{}
+		tracker.KbdInteractiveUsed = true
+		if !tracker.InteractivePromptUsed() {
+			t.Error("expected InteractivePromptUsed to be true for keyboard-interactive")
+		}
+	})
+
+	t.Run("nil tracker is safe", func(t *testing.T) {
+		t.Parallel()
+		var tracker *AuthTracker
+		if tracker.InteractivePromptUsed() {
+			t.Error("expected nil tracker to report no interactive prompt")
+		}
+	})
 }

@@ -889,6 +889,7 @@ export class TermViewModel implements ViewModel {
         await RpcApi.ControllerResyncCommand(TabRpcClient, {
             tabid: globalStore.get(atoms.staticTabId),
             blockid: this.blockId,
+            connname: globalStore.get(this.blockAtom)?.meta?.connection,
             forcerestart: true,
             rtopts: { termsize: termsize },
         });
@@ -907,6 +908,7 @@ export class TermViewModel implements ViewModel {
         await RpcApi.ControllerResyncCommand(TabRpcClient, {
             tabid: globalStore.get(atoms.staticTabId),
             blockid: this.blockId,
+            connname: globalStore.get(this.blockAtom)?.meta?.connection,
             forcerestart: true,
             rtopts: { termsize: termsize },
         });

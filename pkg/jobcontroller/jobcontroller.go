@@ -85,6 +85,17 @@ type connStateManager struct {
 	reconcileCh chan struct{}
 }
 
+// streamHealthInfo tracks the health of a job's output stream (runOutputLoop).
+// Stored in jobStreamHealth for diagnosing Connected-but-no-stream states
+// (failure mode B: job marked Connected but no runOutputLoop pulling data).
+type streamHealthInfo struct {
+	active     bool
+	startedAt  time.Time
+	lastReadAt time.Time
+	totalBytes int64
+	streamId   string
+}
+
 type jobState struct {
 	stateLock       sync.Mutex
 	isConnecting    bool
@@ -103,6 +114,11 @@ var (
 
 	jobStreamIds = ds.MakeSyncMap[string]()
 
+	// jobStreamHealth tracks the health of each job's output stream (runOutputLoop).
+	// Used to diagnose whether a "Connected" job has an active stream pulling data
+	// from the remote, or is stuck in a Connected-but-no-stream state (failure mode B).
+	jobStreamHealth = ds.MakeSyncMap[streamHealthInfo]()
+
 	jobTerminationMessageWritten = ds.MakeSyncMap[bool]()
 
 	lastAutoReconnectAttempt = ds.MakeSyncMap[int64]()
@@ -112,19 +128,40 @@ var (
 	terminateJobManagerGroup singleflight.Group
 
 	// test hooks for unit testing auto-reconnect behavior
-	isConnectedTestHook              func(connName string) (bool, error)
-	reconcileOnUpTestHook            func(connName string)
-	reconcileOnDownTestHook          func(connName string)
-	hasRunningDurableJobsTestHook    func(ctx context.Context, connName string) bool
+	isConnectedTestHook           func(connName string) (bool, error)
+	reconcileOnUpTestHook         func(connName string)
+	reconcileOnDownTestHook       func(connName string)
+	hasRunningDurableJobsTestHook func(ctx context.Context, connName string) bool
+
+	// NeedsInteractiveAuthTestHook overrides the needsInteractiveAuth check
+	// inside startReconnectScheduler. Set from tests to control whether the
+	// scheduler is started. Nil by default (production uses CanReconnectWithoutPrompt).
+	NeedsInteractiveAuthTestHook func(connName string) bool
+
+	// StartupReconnectSchedulerTestHook, when set, is called by
+	// StartConnectionReconnectScheduler instead of starting the real scheduler.
+	// Lets tests verify the wiring (that blockcontroller calls this function)
+	// without needing to observe the scheduler goroutine state.
+	// Nil by default (production starts the real scheduler).
+	StartupReconnectSchedulerTestHook func(connName string)
+
+	// test hooks for unit testing onConnectionUp / ReconnectJobsForConn behavior
+	reconnectJobTestHook      func(ctx context.Context, jobId string) error
+	getAllJobsForConnTestHook func(connName string) ([]*waveobj.Job, error)
+	getJobTestHook            func(jobId string) (*waveobj.Job, error)
+
+	// retryBackoffs is the per-attempt sleep before retrying failed job reconnects.
+	// Package var so tests can override with short durations.
+	retryBackoffs = []time.Duration{3 * time.Second, 6 * time.Second, 12 * time.Second}
 
 	// active connection-reconnect schedulers (deduplication for onConnectionDown)
 	connectionReconnectSchedulers = ds.MakeSyncMap[bool]()
 )
 
-const ConnReconnectInterval              = 5 * time.Second
-const ConnReconnectMaxDuration           = 5 * time.Minute
-const ConnReconnectAggressiveInterval    = 3 * time.Second
-const ConnReconnectAggressiveDuration    = 2 * time.Minute
+const ConnReconnectInterval = 5 * time.Second
+const ConnReconnectMaxDuration = 5 * time.Minute
+const ConnReconnectAggressiveInterval = 3 * time.Second
+const ConnReconnectAggressiveDuration = 2 * time.Minute
 
 func InitJobController() {
 	go connReconcileWorker()
@@ -399,6 +436,12 @@ func handleRouteEvent(event *wps.WaveEvent, newStatus string) {
 			}
 			sendBlockJobStatusEventByJob(ctx, job)
 
+			if newStatus == JobConnStatus_Connected {
+				health, _ := jobStreamHealth.GetEx(jobId)
+				log.Printf("[job:%s] route up: set Connected via route event (stream active=%v, streamId=%q) — stream NOT restarted here",
+					jobId, health.active, health.streamId)
+			}
+
 			if newStatus == JobConnStatus_Disconnected && job != nil && isJobManagerRunning(job) {
 				if shouldAttemptAutoReconnect(jobId) {
 					go attemptAutoReconnect(jobId, job.Connection)
@@ -522,35 +565,149 @@ func handleBlockCloseEvent(event *wps.WaveEvent) {
 
 func onConnectionUp(connName string) {
 	log.Printf("[conn:%s] connection became connected, reconnecting jobs", connName)
-	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelFn()
 
-	allJobs, err := wstore.DBGetAllObjsByType[*waveobj.Job](ctx, waveobj.OType_Job)
+	// Short ctx for DB lookup only — do NOT share across job reconnects.
+	lookupCtx, lookupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer lookupCancel()
+
+	var allJobs []*waveobj.Job
+	var err error
+	if getAllJobsForConnTestHook != nil {
+		allJobs, err = getAllJobsForConnTestHook(connName)
+	} else {
+		allJobs, err = wstore.DBGetAllObjsByType[*waveobj.Job](lookupCtx, waveobj.OType_Job)
+	}
 	if err != nil {
 		log.Printf("[conn:%s] failed to get jobs for reconnection: %v", connName, err)
 		return
 	}
 
 	var jobsToReconnect []*waveobj.Job
-	for _, job := range allJobs {
-		if job.Connection == connName && isJobManagerRunning(job) {
-			jobsToReconnect = append(jobsToReconnect, job)
+	if getAllJobsForConnTestHook != nil {
+		// Hook returns pre-filtered jobs.
+		jobsToReconnect = allJobs
+	} else {
+		for _, job := range allJobs {
+			if job.Connection == connName && isJobManagerRunning(job) {
+				jobsToReconnect = append(jobsToReconnect, job)
+			}
 		}
 	}
 
 	log.Printf("[conn:%s] found %d jobs to reconnect", connName, len(jobsToReconnect))
 
+	// Per-job reconnect: each gets a fresh 10s ctx to avoid starvation.
 	successCount := 0
+	failedJobIds := make([]string, 0)
 	for _, job := range jobsToReconnect {
-		err = ReconnectJob(ctx, job.OID, nil)
-		if err != nil {
-			log.Printf("[job:%s] error reconnecting: %v", job.OID, err)
+		jobCtx, jobCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var reconnectErr error
+		if reconnectJobTestHook != nil {
+			reconnectErr = reconnectJobTestHook(jobCtx, job.OID)
+		} else {
+			reconnectErr = ReconnectJob(jobCtx, job.OID, nil)
+		}
+		jobCancel()
+		if reconnectErr != nil {
+			log.Printf("[job:%s] error reconnecting: %v", job.OID, reconnectErr)
+			failedJobIds = append(failedJobIds, job.OID)
 		} else {
 			successCount++
 		}
 	}
 
 	log.Printf("[conn:%s] finished reconnecting jobs: %d/%d successful", connName, successCount, len(jobsToReconnect))
+
+	// Bounded retry of failed jobs (3 attempts, 3s/6s/12s backoff).
+	if len(failedJobIds) == 0 {
+		return
+	}
+
+	recovered := make(map[string]bool)
+	totalRetries := 0
+
+	for attempt, backoff := range retryBackoffs {
+		time.Sleep(backoff)
+
+		// Re-check connection is still up.
+		var isConnected bool
+		var checkErr error
+		if isConnectedTestHook != nil {
+			isConnected, checkErr = isConnectedTestHook(connName)
+		} else {
+			isConnected, checkErr = conncontroller.IsConnected(connName)
+		}
+		if checkErr != nil || !isConnected {
+			log.Printf("[conn:%s] aborting job reconnect retry: connection down", connName)
+			break
+		}
+
+		remaining := len(failedJobIds) - len(recovered)
+		if remaining == 0 {
+			break
+		}
+
+		totalRetries++
+		log.Printf("[conn:%s] retry attempt %d/3 for %d remaining jobs", connName, attempt+1, remaining)
+
+		for _, jobId := range failedJobIds {
+			if recovered[jobId] {
+				continue
+			}
+
+			// Re-fetch job to check terminal status.
+			var job *waveobj.Job
+			var dbErr error
+			if getJobTestHook != nil {
+				job, dbErr = getJobTestHook(jobId)
+			} else {
+				retryCtx, retryCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				job, dbErr = wstore.DBGet[*waveobj.Job](retryCtx, jobId)
+				retryCancel()
+			}
+			if dbErr != nil || job == nil {
+				log.Printf("[job:%s] skipping retry: job not found", jobId)
+				recovered[jobId] = true
+				continue
+			}
+			if job.JobManagerStatus == JobManagerStatus_Done {
+				log.Printf("[job:%s] skipping retry: job is done", jobId)
+				recovered[jobId] = true
+				continue
+			}
+
+			// Stream-health-aware skip: if already connected with active stream, converged.
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_, checkErr2 := CheckJobConnected(checkCtx, jobId)
+			checkCancel()
+			if checkErr2 == nil {
+				if health, ok := jobStreamHealth.GetEx(jobId); ok && health.active {
+					log.Printf("[job:%s] skipping retry: already connected with active stream", jobId)
+					recovered[jobId] = true
+					continue
+				}
+			}
+
+			// Attempt reconnect.
+			jobCtx, jobCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			var reconnectErr error
+			if reconnectJobTestHook != nil {
+				reconnectErr = reconnectJobTestHook(jobCtx, jobId)
+			} else {
+				reconnectErr = ReconnectJob(jobCtx, jobId, nil)
+			}
+			jobCancel()
+			if reconnectErr != nil {
+				log.Printf("[job:%s] retry attempt %d: %v", jobId, attempt+1, reconnectErr)
+			} else {
+				log.Printf("[job:%s] retry attempt %d: succeeded", jobId, attempt+1)
+				recovered[jobId] = true
+				successCount++
+			}
+		}
+	}
+
+	log.Printf("[conn:%s] finished reconnecting jobs: %d/%d successful (after %d retries)", connName, successCount, len(jobsToReconnect), totalRetries)
 }
 
 // HandleSystemResume is called on macOS system wake (via NotifySystemResumeCommand).
@@ -612,60 +769,43 @@ func HandleSystemResume(ctx context.Context) {
 	}
 }
 
-// needsInteractiveAuth checks if a connection might require password or
-// keyboard-interactive authentication. When true, automatic reconnect
-// cannot succeed without user involvement, so the scheduler should skip it.
+// needsInteractiveAuth checks if a connection might require an interactive prompt
+// (password, key passphrase, or keyboard-interactive). When true, automatic
+// reconnect cannot succeed without user involvement, so the scheduler should
+// skip it. Delegates to conncontroller.CanReconnectWithoutPrompt, which uses
+// the runtime auth-prompt flag (set after a successful handshake) as the primary
+// signal and falls back to a ~/.ssh/config publickey check when the flag is
+// unknown (cold start or after an auth failure).
 func needsInteractiveAuth(connName string) bool {
-	config := wconfig.GetWatcher().GetFullConfig()
-	connConfig, ok := config.Connections[connName]
-	if !ok {
-		return true // safe default: assume interactive auth needed
+	if NeedsInteractiveAuthTestHook != nil {
+		return NeedsInteractiveAuthTestHook(connName)
 	}
-
-	// If batch mode is on, interactive prompts are suppressed —
-	// the attempt will just fail, so the scheduler can run (it won't block on user input)
-	if utilfn.SafeDeref(connConfig.SshBatchMode) {
-		return false
-	}
-
-	// If a password is stored in the secret store, no user prompt is needed
-	if connConfig.SshPasswordSecretName != nil && *connConfig.SshPasswordSecretName != "" {
-		return false
-	}
-
-	// Check if either interactive method is in the preferred auth order.
-	// If PreferredAuthentications is set, only those methods will be tried.
-	if connConfig.SshPreferredAuthentications != nil {
-		hasInteractive := false
-		for _, method := range connConfig.SshPreferredAuthentications {
-			if method == "password" || method == "keyboard-interactive" {
-				hasInteractive = true
-				break
-			}
-		}
-		if !hasInteractive {
-			return false // only key-based auth configured
-		}
-	}
-
-	// Check if password or keyboard-interactive auth is enabled (both default true)
-	passwordAuth := utilfn.SafeDeref(connConfig.SshPasswordAuthentication)
-	kbdAuth := utilfn.SafeDeref(connConfig.SshKbdInteractiveAuthentication)
-	return passwordAuth || kbdAuth
+	return !conncontroller.CanReconnectWithoutPrompt(connName)
 }
 
 func onConnectionDown(connName string) {
 	log.Printf("[conn:%s] connection became disconnected", connName)
+	startReconnectScheduler(connName)
+}
 
+// startReconnectScheduler starts the reconnect scheduler for a connection,
+// deduplicated via connectionReconnectSchedulers. Shared by onConnectionDown
+// (disconnect trigger) and StartConnectionReconnectScheduler (startup trigger).
+// Skips local connections and connections requiring interactive auth (the
+// latter have requestPasswordRePrompt for retries; the scheduler would race it).
+func startReconnectScheduler(connName string) {
 	// Skip local connections — they don't need SSH reconnect
 	if conncontroller.IsLocalConnName(connName) {
 		return
 	}
 
-	// Skip auto-reconnect for connections that might need password input.
-	// The scheduler can't type a password — the user must reconnect manually.
+	// Connections requiring interactive auth (password/keyboard-interactive)
+	// without a cached password never start the auto-reconnect scheduler.
+	// The password prompt is a persistent buffer independent of connection
+	// lifecycle — re-prompts and retries are handled by the conncontroller's
+	// background re-prompt goroutine (see conncontroller.requestPasswordRePrompt).
 	if needsInteractiveAuth(connName) {
-		log.Printf("[conn:%s] connection may require interactive auth (password/keyboard-interactive), skipping auto-reconnect scheduler", connName)
+		log.Printf("[conn:%s] connection requires interactive auth, skipping auto-reconnect scheduler", connName)
 		return
 	}
 
@@ -681,6 +821,35 @@ func onConnectionDown(connName string) {
 		defer connectionReconnectSchedulers.Delete(connName)
 		scheduleConnectionReconnect(connName)
 	}()
+}
+
+// StartConnectionReconnectScheduler starts the reconnect scheduler for a
+// connection that failed to connect at startup. Unlike onConnectionDown, this
+// does not require a Connected→Disconnected transition (which never happens for
+// a conn that was never Connected — the connchange event has Connected:false,
+// matching the initial state, so handleConnChangeEvent does not increment
+// actualGen and onConnectionDown never fires).
+//
+// Used by StartupReconnectDurableShells when EnsureConnection fails for a
+// non-interactive-auth connection. Reuses the same scheduler as onConnectionDown
+// (5s interval, 5min cap, aggressive mode on network errors) — the dedup map
+// ensures only one scheduler runs per connection.
+func StartConnectionReconnectScheduler(connName string) {
+	log.Printf("[conn:%s] starting reconnect scheduler after startup failure", connName)
+	if StartupReconnectSchedulerTestHook != nil {
+		StartupReconnectSchedulerTestHook(connName)
+		return
+	}
+	startReconnectScheduler(connName)
+}
+
+// ConnectionReconnectSchedulerExists returns true if a reconnect scheduler is
+// currently running for connName. Exported for cross-package test observation
+// (e.g., blockcontroller tests verifying the scheduler did not start for
+// interactive-auth connections).
+func ConnectionReconnectSchedulerExists(connName string) bool {
+	_, exists := connectionReconnectSchedulers.GetEx(connName)
+	return exists
 }
 
 // isNetworkUnreachableError returns true when an error indicates the local
@@ -1153,10 +1322,21 @@ func handleAppendJobFile(ctx context.Context, jobId string, fileName string, dat
 func runOutputLoop(ctx context.Context, jobId string, streamId string, reader *streamclient.Reader) {
 	defer reader.Close()
 	defer func() {
-		log.Printf("[job:%s] [stream:%s] output loop finished", jobId, streamId)
+		health, _ := jobStreamHealth.GetEx(jobId)
+		if health.streamId == streamId {
+			health.active = false
+			jobStreamHealth.Set(jobId, health)
+		}
+		log.Printf("[job:%s] [stream:%s] output loop finished (totalBytes=%d)", jobId, streamId, health.totalBytes)
 	}()
 
 	log.Printf("[job:%s] [stream:%s] output loop started", jobId, streamId)
+	jobStreamHealth.Set(jobId, streamHealthInfo{
+		active:     true,
+		startedAt:  time.Now(),
+		lastReadAt: time.Now(),
+		streamId:   streamId,
+	})
 	buf := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buf)
@@ -1166,6 +1346,12 @@ func runOutputLoop(ctx context.Context, jobId string, streamId string, reader *s
 			break
 		}
 		if n > 0 {
+			health, ok := jobStreamHealth.GetEx(jobId)
+			if ok && health.streamId == streamId {
+				health.lastReadAt = time.Now()
+				health.totalBytes += int64(n)
+				jobStreamHealth.Set(jobId, health)
+			}
 			appendErr := handleAppendJobFile(ctx, jobId, JobOutputFileName, buf[:n])
 			if appendErr != nil {
 				log.Printf("[job:%s] error appending data to WaveFS: %v", jobId, appendErr)
@@ -1227,6 +1413,21 @@ func HandleCmdJobExited(ctx context.Context, jobId string, data wshrpc.CommandJo
 			msg = fmt.Sprintf("shell terminated (signal %s)", updatedJob.CmdExitSignal)
 		}
 		writeMutedMessageToTerminal(updatedJob.AttachedBlockId, "["+msg+"]")
+		wps.Broker.Publish(wps.WaveEvent{
+			Event: wps.Event_ControllerStatus,
+			Scopes: []string{
+				waveobj.MakeORef(waveobj.OType_Block, updatedJob.AttachedBlockId).String(),
+			},
+			Data: struct {
+				BlockId         string `json:"blockid"`
+				Version         int64  `json:"version"`
+				ShellProcStatus string `json:"shellprocstatus"`
+			}{
+				BlockId:         updatedJob.AttachedBlockId,
+				Version:         time.Now().UnixMilli(),
+				ShellProcStatus: "done",
+			},
+		})
 	}
 	return nil
 }
@@ -1410,7 +1611,9 @@ func doReconnectJob(ctx context.Context, jobId string, rtOpts *waveobj.RuntimeOp
 
 	_, err = CheckJobConnected(ctx, jobId)
 	if err == nil {
-		log.Printf("[job:%s] already connected, skipping reconnect", jobId)
+		health, _ := jobStreamHealth.GetEx(jobId)
+		log.Printf("[job:%s] already connected, skipping reconnect (stream active=%v, lastRead=%v, streamId=%q, totalBytes=%d)",
+			jobId, health.active, health.lastReadAt.Format(time.RFC3339), health.streamId, health.totalBytes)
 		return nil
 	}
 	log.Printf("[job:%s] not connected, proceeding with reconnect: %v", jobId, err)
@@ -1511,7 +1714,13 @@ func doReconnectJob(ctx context.Context, jobId string, rtOpts *waveobj.RuntimeOp
 	})
 
 	log.Printf("[job:%s] route established, restarting streaming", jobId)
-	return restartStreaming(ctx, jobId, true, rtOpts)
+	reconnectErr := restartStreaming(ctx, jobId, true, rtOpts)
+	if reconnectErr != nil {
+		log.Printf("[job:%s] restartStreaming failed after successful reconnect: %v (job left Connected without active stream)", jobId, reconnectErr)
+	} else {
+		log.Printf("[job:%s] restartStreaming succeeded", jobId)
+	}
+	return reconnectErr
 }
 
 func ReconnectJobsForConn(ctx context.Context, connName string) error {
@@ -1523,24 +1732,43 @@ func ReconnectJobsForConn(ctx context.Context, connName string) error {
 		return fmt.Errorf("connection %q is not connected", connName)
 	}
 
-	allJobs, err := wstore.DBGetAllObjsByType[*waveobj.Job](ctx, waveobj.OType_Job)
+	// Use passed ctx for DB lookup only — each job gets its own reconnect ctx.
+	var allJobs []*waveobj.Job
+	if getAllJobsForConnTestHook != nil {
+		allJobs, err = getAllJobsForConnTestHook(connName)
+	} else {
+		allJobs, err = wstore.DBGetAllObjsByType[*waveobj.Job](ctx, waveobj.OType_Job)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get jobs: %w", err)
 	}
 
 	var jobsToReconnect []*waveobj.Job
-	for _, job := range allJobs {
-		if job.Connection == connName && isJobManagerRunning(job) {
-			jobsToReconnect = append(jobsToReconnect, job)
+	if getAllJobsForConnTestHook != nil {
+		// Hook returns pre-filtered jobs.
+		jobsToReconnect = allJobs
+	} else {
+		for _, job := range allJobs {
+			if job.Connection == connName && isJobManagerRunning(job) {
+				jobsToReconnect = append(jobsToReconnect, job)
+			}
 		}
 	}
 
 	log.Printf("[conn:%s] found %d jobs to reconnect", connName, len(jobsToReconnect))
 
+	// Per-job reconnect: each gets a fresh 10s ctx to avoid starvation.
 	for _, job := range jobsToReconnect {
-		err = ReconnectJob(ctx, job.OID, nil)
-		if err != nil {
-			log.Printf("[job:%s] error reconnecting: %v", job.OID, err)
+		jobCtx, jobCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var reconnectErr error
+		if reconnectJobTestHook != nil {
+			reconnectErr = reconnectJobTestHook(jobCtx, job.OID)
+		} else {
+			reconnectErr = ReconnectJob(jobCtx, job.OID, nil)
+		}
+		jobCancel()
+		if reconnectErr != nil {
+			log.Printf("[job:%s] error reconnecting: %v", job.OID, reconnectErr)
 		}
 	}
 
@@ -1710,6 +1938,18 @@ func IsBlockTermDurable(block *waveobj.Block) bool {
 	connName := block.Meta.GetString(waveobj.MetaKey_Connection, "")
 	if conncontroller.IsLocalConnName(connName) || conncontroller.IsWslConnName(connName) {
 		return false
+	}
+
+	// 2.5. Durable shells require wsh's connserver route. If wsh is disabled,
+	// fall back to non-durable ShellController which works without wsh.
+	if connName != "" {
+		if opts, err := remote.ParseOpts(connName); err == nil {
+			if sshConn := conncontroller.MaybeGetConn(opts); sshConn != nil {
+				if !sshConn.WshEnabled.Load() {
+					return false
+				}
+			}
+		}
 	}
 
 	// 3. Check config hierarchy: blockmeta → connection → global (default true)

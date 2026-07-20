@@ -141,6 +141,8 @@ export class TermWrap {
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
 
+    _visibilityChangeHandler: (() => void) | null = null;
+
     // Paste deduplication
     // xterm.js paste() method triggers onData event, which can cause duplicate sends
     lastPasteData: string = "";
@@ -548,7 +550,25 @@ export class TermWrap {
         } finally {
             this.loaded = true;
         }
+        this._visibilityChangeHandler = () => {
+            if (document.visibilityState === "visible") {
+                this.refreshAfterVisibilityChange();
+            }
+        };
+        document.addEventListener("visibilitychange", this._visibilityChangeHandler);
         this.runProcessIdleTimeout();
+    }
+
+    refreshAfterVisibilityChange() {
+        // After sleep/resume, the IntersectionObserver may not fire to unpause rendering.
+        // Bypass the paused check by directly calling the renderer's renderRows().
+        const core = (this.terminal as any)._core;
+        const renderer = core?._renderService?._renderer?.value;
+        if (renderer && typeof renderer.renderRows === "function") {
+            renderer.renderRows(0, this.terminal.rows - 1);
+        }
+        // Also trigger a fit in case dimensions changed while hidden
+        this.fitAddon.fit();
     }
 
     dispose() {
@@ -558,6 +578,10 @@ export class TermWrap {
         }
         this.pendingWriteChunks = [];
         this.pendingWriteBytes = 0;
+        if (this._visibilityChangeHandler) {
+            document.removeEventListener("visibilitychange", this._visibilityChangeHandler);
+            this._visibilityChangeHandler = null;
+        }
         this.promptMarkers.forEach((marker) => {
             try {
                 marker.dispose();
@@ -728,10 +752,13 @@ export class TermWrap {
     async resyncController(reason: string) {
         dlog("resync controller", this.blockId, reason);
         const rtOpts: RuntimeOpts = { termsize: { rows: this.terminal.rows, cols: this.terminal.cols } };
+        const blockData = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", this.blockId)));
+        const connName = blockData?.meta?.connection;
         try {
             await RpcApi.ControllerResyncCommand(TabRpcClient, {
                 tabid: this.tabId,
                 blockid: this.blockId,
+                connname: connName,
                 rtopts: rtOpts,
             });
         } catch (e) {

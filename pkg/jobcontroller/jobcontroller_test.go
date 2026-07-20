@@ -14,9 +14,11 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/util/ds"
+	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
+
 func TestShouldAttemptAutoReconnect(t *testing.T) {
 	// Reset global state
 	lastAutoReconnectAttempt = ds.MakeSyncMap[int64]()
@@ -550,23 +552,397 @@ func TestIsNetworkUnreachable_NilError(t *testing.T) {
 	}
 }
 
-// TestNeedsInteractiveAuth_NoConfig verifies that a connection with no config
-// returns true (safe default: assume interactive auth may be needed).
-func TestNeedsInteractiveAuth_NoConfig(t *testing.T) {
+// TestNeedsInteractiveAuth_LocalConn verifies that a local connection never
+// needs interactive auth (CanReconnectWithoutPrompt returns true for local).
+func TestNeedsInteractiveAuth_LocalConn(t *testing.T) {
 	t.Parallel()
-	result := needsInteractiveAuth("user@nonexistent-host:22")
-	if !result {
-		t.Fatalf("expected true when connection config not found")
+	if needsInteractiveAuth("local") {
+		t.Fatalf("expected local connection to not need interactive auth")
+	}
+	if needsInteractiveAuth("local:abc123") {
+		t.Fatalf("expected local: connection to not need interactive auth")
 	}
 }
 
-// TestNeedsInteractiveAuth_Defaults verifies that with default SSH config
-// (password and kbd-interactive enabled, no stored secret), returns true.
-func TestNeedsInteractiveAuth_Defaults(t *testing.T) {
+// TestNeedsInteractiveAuth_Delegates verifies that needsInteractiveAuth is the
+// inverse of conncontroller.CanReconnectWithoutPrompt (the single source of
+// truth). The runtime flag and config-fallback logic is tested in the
+// conncontroller package.
+func TestNeedsInteractiveAuth_Delegates(t *testing.T) {
 	t.Parallel()
-	// Use the full config watcher which has defaults
-	result := needsInteractiveAuth("user@default-host:22")
-	if !result {
-		t.Fatalf("expected true with default auth settings")
+	for _, connName := range []string{"local", "local:abc123", "user@nonexistent-host:22"} {
+		expected := !conncontroller.CanReconnectWithoutPrompt(connName)
+		got := needsInteractiveAuth(connName)
+		if got != expected {
+			t.Fatalf("needsInteractiveAuth(%q) = %v, expected %v (inverse of CanReconnectWithoutPrompt)", connName, got, expected)
+		}
 	}
+}
+
+// TestOnConnectionUpPerJobCtxNoStarvation verifies each job gets a fresh 10s ctx
+// (not shared), so a slow job 1 doesn't starve jobs 2/3.
+func TestOnConnectionUpPerJobCtxNoStarvation(t *testing.T) {
+
+	// Reset hooks
+	origReconnect := reconnectJobTestHook
+	origAllJobs := getAllJobsForConnTestHook
+	reconnectJobTestHook = nil
+	getAllJobsForConnTestHook = nil
+	defer func() {
+		reconnectJobTestHook = origReconnect
+		getAllJobsForConnTestHook = origAllJobs
+	}()
+
+	connName := "conn:starvation"
+	jobs := []*waveobj.Job{
+		{OID: "job-1", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+		{OID: "job-2", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+		{OID: "job-3", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+	}
+
+	getAllJobsForConnTestHook = func(connName string) ([]*waveobj.Job, error) {
+		return jobs, nil
+	}
+
+	// Capture deadlines and job order.
+	var mu sync.Mutex
+	type deadlineInfo struct {
+		jobId    string
+		deadline time.Time
+	}
+	var captured []deadlineInfo
+
+	reconnectJobTestHook = func(ctx context.Context, jobId string) error {
+		deadline, _ := ctx.Deadline()
+		mu.Lock()
+		captured = append(captured, deadlineInfo{jobId, deadline})
+		mu.Unlock()
+
+		// Job 1 simulates a slow RPC (200ms, well within 10s ctx).
+		if jobId == "job-1" {
+			time.Sleep(200 * time.Millisecond)
+		}
+		return nil
+	}
+
+	onConnectionUp(connName)
+
+	// Assert all 3 jobs were attempted.
+	if len(captured) != 3 {
+		t.Fatalf("expected 3 jobs attempted, got %d", len(captured))
+	}
+
+	// Assert each job's ctx had a deadline > 9s in the future.
+	for i, info := range captured {
+		if info.deadline.IsZero() {
+			t.Fatalf("job %d (%s): ctx has no deadline (zero value)", i, info.jobId)
+		}
+		until := time.Until(info.deadline)
+		if until <= 9*time.Second {
+			t.Fatalf("job %d (%s): deadline only %v away, expected > 9s (shared/expired ctx)", i, info.jobId, until)
+		}
+	}
+}
+
+// TestOnConnectionUpRetryRecoversFailedJobs verifies the retry loop recovers
+// a job that fails on the first pass.
+func TestOnConnectionUpRetryRecoversFailedJobs(t *testing.T) {
+
+	// Reset hooks
+	origReconnect := reconnectJobTestHook
+	origAllJobs := getAllJobsForConnTestHook
+	origGetJob := getJobTestHook
+	origIsConnected := isConnectedTestHook
+	origBackoffs := retryBackoffs
+	reconnectJobTestHook = nil
+	getAllJobsForConnTestHook = nil
+	getJobTestHook = nil
+	isConnectedTestHook = nil
+	retryBackoffs = nil
+	defer func() {
+		reconnectJobTestHook = origReconnect
+		getAllJobsForConnTestHook = origAllJobs
+		getJobTestHook = origGetJob
+		isConnectedTestHook = origIsConnected
+		retryBackoffs = origBackoffs
+	}()
+
+	// Short backoffs for testing.
+	retryBackoffs = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond}
+
+	connName := "conn:retry"
+	jobs := []*waveobj.Job{
+		{OID: "job-1", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+		{OID: "job-2", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+	}
+
+	getAllJobsForConnTestHook = func(connName string) ([]*waveobj.Job, error) {
+		return jobs, nil
+	}
+
+	isConnectedTestHook = func(connName string) (bool, error) {
+		return true, nil
+	}
+
+	// Track call counts per jobId.
+	var mu sync.Mutex
+	callCounts := make(map[string]int)
+
+	reconnectJobTestHook = func(ctx context.Context, jobId string) error {
+		mu.Lock()
+		callCounts[jobId]++
+		count := callCounts[jobId]
+		mu.Unlock()
+
+		// job-1 fails on first call, succeeds on second.
+		if jobId == "job-1" && count == 1 {
+			return fmt.Errorf("rpc timeout")
+		}
+		return nil
+	}
+
+	// getJobTestHook returns Running so the retry doesn't skip as Done.
+	getJobTestHook = func(jobId string) (*waveobj.Job, error) {
+		return &waveobj.Job{OID: jobId, JobManagerStatus: JobManagerStatus_Running}, nil
+	}
+
+	onConnectionUp(connName)
+
+	mu.Lock()
+	count1 := callCounts["job-1"]
+	count2 := callCounts["job-2"]
+	mu.Unlock()
+
+	if count1 != 2 {
+		t.Fatalf("job-1: expected 2 calls (1 initial + 1 retry), got %d", count1)
+	}
+	if count2 != 1 {
+		t.Fatalf("job-2: expected 1 call (initial only), got %d", count2)
+	}
+}
+
+// TestOnConnectionUpRetryAbortsOnConnDown verifies the retry loop aborts
+// when the connection goes down between attempts.
+func TestOnConnectionUpRetryAbortsOnConnDown(t *testing.T) {
+
+	// Reset hooks
+	origReconnect := reconnectJobTestHook
+	origAllJobs := getAllJobsForConnTestHook
+	origIsConnected := isConnectedTestHook
+	origBackoffs := retryBackoffs
+	reconnectJobTestHook = nil
+	getAllJobsForConnTestHook = nil
+	isConnectedTestHook = nil
+	retryBackoffs = nil
+	defer func() {
+		reconnectJobTestHook = origReconnect
+		getAllJobsForConnTestHook = origAllJobs
+		isConnectedTestHook = origIsConnected
+		retryBackoffs = origBackoffs
+	}()
+
+	// Short backoff for testing.
+	retryBackoffs = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond}
+
+	connName := "conn:abort"
+	jobs := []*waveobj.Job{
+		{OID: "job-1", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+	}
+
+	getAllJobsForConnTestHook = func(connName string) ([]*waveobj.Job, error) {
+		return jobs, nil
+	}
+
+	// IsConnected returns false on first retry check → abort.
+	isConnectedTestHook = func(connName string) (bool, error) {
+		return false, nil
+	}
+
+	// Track call count.
+	var callCount int32
+
+	reconnectJobTestHook = func(ctx context.Context, jobId string) error {
+		atomic.AddInt32(&callCount, 1)
+		return fmt.Errorf("always fails")
+	}
+
+	onConnectionUp(connName)
+
+	count := atomic.LoadInt32(&callCount)
+	if count != 1 {
+		t.Fatalf("expected 1 call (initial pass only, retry aborted), got %d", count)
+	}
+}
+
+// TestOnConnectionUpRetrySkipsDoneJobs verifies Done jobs are skipped in retry.
+func TestOnConnectionUpRetrySkipsDoneJobs(t *testing.T) {
+
+	// Reset hooks
+	origReconnect := reconnectJobTestHook
+	origAllJobs := getAllJobsForConnTestHook
+	origGetJob := getJobTestHook
+	origIsConnected := isConnectedTestHook
+	origBackoffs := retryBackoffs
+	reconnectJobTestHook = nil
+	getAllJobsForConnTestHook = nil
+	getJobTestHook = nil
+	isConnectedTestHook = nil
+	retryBackoffs = nil
+	defer func() {
+		reconnectJobTestHook = origReconnect
+		getAllJobsForConnTestHook = origAllJobs
+		getJobTestHook = origGetJob
+		isConnectedTestHook = origIsConnected
+		retryBackoffs = origBackoffs
+	}()
+
+	// Short backoff for testing.
+	retryBackoffs = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond}
+
+	connName := "conn:skipdone"
+	jobs := []*waveobj.Job{
+		{OID: "job-1", Connection: connName, JobManagerStatus: JobManagerStatus_Running},
+	}
+
+	getAllJobsForConnTestHook = func(connName string) ([]*waveobj.Job, error) {
+		return jobs, nil
+	}
+
+	isConnectedTestHook = func(connName string) (bool, error) {
+		return true, nil
+	}
+
+	// Track call count.
+	var callCount int32
+
+	reconnectJobTestHook = func(ctx context.Context, jobId string) error {
+		atomic.AddInt32(&callCount, 1)
+		return fmt.Errorf("always fails")
+	}
+
+	// getJobTestHook returns Done so the retry skips it.
+	getJobTestHook = func(jobId string) (*waveobj.Job, error) {
+		return &waveobj.Job{OID: jobId, JobManagerStatus: JobManagerStatus_Done}, nil
+	}
+
+	onConnectionUp(connName)
+
+	count := atomic.LoadInt32(&callCount)
+	if count != 1 {
+		t.Fatalf("expected 1 call (initial pass only, retry skipped Done job), got %d", count)
+	}
+}
+
+// TestStartConnectionReconnectScheduler_SkipsInteractiveAuth verifies that
+// the startup reconnect scheduler is NOT started for connections requiring
+// interactive auth (the guard inside startReconnectScheduler skips them).
+func TestStartConnectionReconnectScheduler_SkipsInteractiveAuth(t *testing.T) {
+	connectionReconnectSchedulers = ds.MakeSyncMap[bool]()
+	NeedsInteractiveAuthTestHook = func(string) bool { return true }
+	defer func() { NeedsInteractiveAuthTestHook = nil }()
+
+	StartConnectionReconnectScheduler("conn:startup-auth")
+
+	if _, exists := connectionReconnectSchedulers.GetEx("conn:startup-auth"); exists {
+		t.Fatalf("expected no scheduler entry when interactive auth is required")
+	}
+}
+
+// TestStartConnectionReconnectScheduler_SkipsLocalConn verifies that local
+// connections are skipped (they don't need SSH reconnect).
+func TestStartConnectionReconnectScheduler_SkipsLocalConn(t *testing.T) {
+	connectionReconnectSchedulers = ds.MakeSyncMap[bool]()
+	NeedsInteractiveAuthTestHook = func(string) bool { return false }
+	defer func() { NeedsInteractiveAuthTestHook = nil }()
+
+	StartConnectionReconnectScheduler("local")
+
+	if _, exists := connectionReconnectSchedulers.GetEx("local"); exists {
+		t.Fatalf("expected no scheduler entry for local connection")
+	}
+}
+
+// TestStartConnectionReconnectScheduler_StartsAndStopsScheduler verifies the
+// scheduler goroutine actually runs and cleans up. hasRunningDurableJobsTestHook
+// returns false so the scheduler stops immediately at the "no running durable
+// jobs" check.
+func TestStartConnectionReconnectScheduler_StartsAndStopsScheduler(t *testing.T) {
+	connectionReconnectSchedulers = ds.MakeSyncMap[bool]()
+	NeedsInteractiveAuthTestHook = func(string) bool { return false }
+	hasRunningDurableJobsTestHook = func(context.Context, string) bool { return false }
+	defer func() {
+		NeedsInteractiveAuthTestHook = nil
+		hasRunningDurableJobsTestHook = nil
+	}()
+
+	StartConnectionReconnectScheduler("conn:startup-ok")
+
+	// Scheduler entry should be set immediately (goroutine spawned).
+	if _, exists := connectionReconnectSchedulers.GetEx("conn:startup-ok"); !exists {
+		t.Fatalf("expected scheduler entry to be set after StartConnectionReconnectScheduler")
+	}
+
+	// Wait for the scheduler goroutine to complete (hasRunningDurableJobsTestHook
+	// returns false → scheduler stops → deletes the entry). Poll for up to 2s.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, exists := connectionReconnectSchedulers.GetEx("conn:startup-ok"); !exists {
+			return // goroutine completed and cleaned up
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("scheduler entry still set after 2s — goroutine did not clean up")
+}
+
+// TestStartConnectionReconnectScheduler_DedupSharedWithOnConnectionDown verifies
+// the dedup map is shared — calling onConnectionDown then
+// StartConnectionReconnectScheduler for the same conn does NOT spawn a second
+// scheduler.
+func TestStartConnectionReconnectScheduler_DedupSharedWithOnConnectionDown(t *testing.T) {
+	connectionReconnectSchedulers = ds.MakeSyncMap[bool]()
+	NeedsInteractiveAuthTestHook = func(string) bool { return false }
+
+	// Block the scheduler goroutine at hasRunningDurableJobsForConn so the map
+	// entry stays alive while we verify dedup.
+	gate := make(chan struct{})
+	hasRunningDurableJobsTestHook = func(ctx context.Context, connName string) bool {
+		<-gate // block until released
+		return false
+	}
+	defer func() {
+		NeedsInteractiveAuthTestHook = nil
+		hasRunningDurableJobsTestHook = nil
+	}()
+
+	connName := "conn:dedup-startup"
+
+	// Start scheduler via onConnectionDown — spawns goroutine that blocks on gate.
+	onConnectionDown(connName)
+
+	// Verify entry is set.
+	if _, exists := connectionReconnectSchedulers.GetEx(connName); !exists {
+		t.Fatalf("expected scheduler entry after onConnectionDown")
+	}
+
+	// Call StartConnectionReconnectScheduler — should NOT spawn a second scheduler
+	// (dedup via connectionReconnectSchedulers).
+	StartConnectionReconnectScheduler(connName)
+
+	// Still exactly one entry (dedup worked — second call returned without spawning).
+	if _, exists := connectionReconnectSchedulers.GetEx(connName); !exists {
+		t.Fatalf("scheduler entry disappeared — dedup may have double-deleted")
+	}
+
+	// Release the gate so the scheduler goroutine can complete and clean up.
+	close(gate)
+
+	// Wait for the scheduler goroutine to finish.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, exists := connectionReconnectSchedulers.GetEx(connName); !exists {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("scheduler entry still set after 2s — goroutine did not clean up")
 }

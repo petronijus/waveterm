@@ -172,28 +172,6 @@ func (b *BrokerType) collectPendingEvents(eventType string, scopes []string) []*
 	return toDeliver
 }
 
-// ClearPendingEvents drops buffered events of the given type for which match
-// returns true (e.g. a userinput prompt that has now been answered).
-func (b *BrokerType) ClearPendingEvents(eventType string, match func(*WaveEvent) bool) {
-	b.Lock.Lock()
-	defer b.Lock.Unlock()
-	events := b.PendingEvents[eventType]
-	if len(events) == 0 {
-		return
-	}
-	var kept []*pendingEvent
-	for _, pe := range events {
-		if !match(pe.Event) {
-			kept = append(kept, pe)
-		}
-	}
-	if len(kept) == 0 {
-		delete(b.PendingEvents, eventType)
-	} else {
-		b.PendingEvents[eventType] = kept
-	}
-}
-
 // pendingEventMatchesScopes reports whether a pending event's scopes overlap the
 // subscriber's scopes. An empty scope list on either side matches everything.
 func pendingEventMatchesScopes(event *WaveEvent, subScopes []string) bool {
@@ -330,11 +308,12 @@ func (b *BrokerType) persistEvent(event WaveEvent) {
 	}
 }
 
-// shouldBufferEvent reports whether an event type must survive the startup window
-// before the frontend connects (e.g. userinput password prompts). Everything else
-// is dropped when there are no subscribers, matching upstream behavior.
+// shouldBufferEvent returns true for event types that must survive the
+// startup window before the frontend connects (e.g. userinput password prompts).
+// connchange events are also buffered so late-subscribing windows (including
+// WebSocket reconnects) can reconcile prompt visibility with current connection state.
 func shouldBufferEvent(eventType string) bool {
-	return eventType == Event_UserInput
+	return eventType == Event_UserInput || eventType == Event_ConnChange
 }
 
 func (b *BrokerType) Publish(event WaveEvent) {

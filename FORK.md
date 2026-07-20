@@ -51,7 +51,10 @@ git checkout feat/<task> && git rebase main
 - **SSH backport** — curated cherry-picks from `whoisjeremylam/waveterm-remote`: hardened SSH
   reconnect, **SSH port forwarding** (Local/RemoteForward, which upstream lacks), and related
   crash / CPU-spin fixes. The x/crypto drain-loop fix is taken via the tagged `v0.53.0` bump
-  rather than vendoring a patched copy.
+  rather than vendoring a patched copy. The SSH/auth area is now **fork-first**: we track their
+  implementation instead of maintaining a parallel one. Every pick, every deliberate skip, and
+  the few places where our version deliberately wins are recorded in **[BACKPORT.md](./BACKPORT.md)**
+  — read it before starting another backport round.
 - **UI theme picker** — app-wide color themes (Dracula, Dark+/Light+, One Dark, Monokai, Nord,
   Solarized), live-switchable; a dedicated Themes editor (also a tab in Wave Config) with GUI
   color pickers and live preview; no flash-of-default-theme on launch. The terminal background /
