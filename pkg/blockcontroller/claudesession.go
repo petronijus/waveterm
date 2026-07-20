@@ -22,14 +22,15 @@ const (
 	claudeProjectsSubdir = "projects"
 	claudeSessionExt     = ".jsonl"
 
-	// The transcript can appear a while after launch — claude may not write it until the
-	// first message, and the user might sit at the prompt first. Poll quickly at first,
-	// then slowly, rather than assuming the session shows up immediately. Cheap either
-	// way: this is one directory read per tick, once per claude invocation.
+	// Claude writes its transcript on the first user message, not at launch, so a session
+	// left sitting at the prompt has nothing to attribute yet. The watch therefore runs
+	// for as long as claude is running in the block (see claudeStillRunning); this cap is
+	// only a backstop for a tracker that never reports an exit. Cheap either way: one
+	// directory read per tick, once per claude invocation.
 	claudeSessionPollFast     = 400 * time.Millisecond
 	claudeSessionPollSlow     = 3 * time.Second
 	claudeSessionFastDuration = 30 * time.Second
-	claudeSessionPollTimeout  = 10 * time.Minute
+	claudeSessionPollTimeout  = 12 * time.Hour
 )
 
 // A session id is a UUID, which is also what the transcript file is named.
@@ -38,6 +39,22 @@ var claudeSessionIdRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0
 // Matches an explicit `--resume <id>` / `-r <id>` on the command line, which lets us
 // skip the correlation entirely.
 var claudeResumeArgRegex = regexp.MustCompile(`(?:^|\s)(?:-r|--resume)[\s=]+([0-9a-fA-F-]{36})(?:\s|$)`)
+
+// claudeStillRunning reports whether the block's tracked command is still the claude that
+// started this watch. Claude only writes its transcript once the user sends the first
+// message, which can be long after launch — so the watch is bounded by the agent's
+// lifetime rather than by a fixed timeout that would expire while it sits at the prompt.
+func claudeStillRunning(blockId string) bool {
+	activityTrackersLock.Lock()
+	t := activityTrackers[blockId]
+	activityTrackersLock.Unlock()
+	if t == nil {
+		return false
+	}
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.running && t.agentKind == "claude"
+}
 
 // claudeDbg logs under the same term:activitydebug setting as the activity tracker, since
 // this runs off the same shell-integration signal and is diagnosed together with it.
@@ -225,6 +242,10 @@ func trackClaudeSession(blockId string, command string) {
 				interval = claudeSessionPollFast
 			}
 			time.Sleep(interval)
+			if !claudeStillRunning(blockId) {
+				claudeDbg(blockId, "claude exited after %v without a transcript to attribute", time.Since(start).Round(time.Second))
+				return
+			}
 			sessionId := findNewClaudeSession(projectDir, before)
 			if sessionId == "" {
 				continue
