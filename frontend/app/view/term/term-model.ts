@@ -41,6 +41,7 @@ import { getIsPathBookmarked, localHomeDir, tildifyPath, toggleProjectBookmark }
 import { boundNumber, fireAndForget, isBlank, stringToBase64 } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { activityLog, shortBlk } from "./activity-log";
 import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
@@ -464,15 +465,27 @@ export class TermViewModel implements ViewModel {
         shellProcStatus: string,
         isCmd: boolean
     ): IconButtonDecl | null {
-        if (isCmd || shellProcStatus != "running") {
+        const sessionId = blockData?.meta?.["claude:sessionid"];
+        // Reading through termRef (a plain ref, not an atom) means this recomputes only
+        // when one of the atoms above changes — good enough, since shellProcStatus moves
+        // whenever the agent starts or stops.
+        const claudeActive = this.termRef.current?.claudeCodeActiveAtom
+            ? get(this.termRef.current.claudeCodeActiveAtom)
+            : false;
+        activityLog(
+            `claude-resume blk=${shortBlk(this.blockId)} isCmd=${isCmd} shellProcStatus=${shellProcStatus} ` +
+                `sessionId=${isBlank(sessionId) ? "(none)" : sessionId.slice(0, 8)} claudeActive=${claudeActive} ` +
+                `termRef=${this.termRef.current != null}`
+        );
+        if (isCmd || isBlank(sessionId)) {
             return null;
         }
-        const sessionId = blockData?.meta?.["claude:sessionid"];
-        if (isBlank(sessionId)) {
+        // Nothing to type into once the shell is gone; the restart button takes over there.
+        if (shellProcStatus == "done") {
             return null;
         }
         // Don't offer to resume over a session that is already up in this block.
-        if (this.termRef.current?.claudeCodeActiveAtom && get(this.termRef.current.claudeCodeActiveAtom)) {
+        if (claudeActive) {
             return null;
         }
         return {
