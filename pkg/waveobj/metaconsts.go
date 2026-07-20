@@ -133,6 +133,9 @@ const (
 	MetaKey_TermOsc52                        = "term:osc52"
 	MetaKey_TermDurable                      = "term:durable"
 
+	MetaKey_ClaudeSessionId                  = "claude:sessionid"
+	MetaKey_ClaudeCwd                        = "claude:cwd"
+
 	MetaKey_WebZoom                          = "web:zoom"
 	MetaKey_WebHideNav                       = "web:hidenav"
 	MetaKey_WebPartition                     = "web:partition"

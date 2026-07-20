@@ -48,6 +48,14 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **Claude session resume per terminal** — a terminal block remembers the Claude Code session
+  it ran, and after a Wave restart shows a small history button in the block header that types
+  `claude --resume <id>` at the prompt (without pressing Enter, so you can edit or back out).
+  The id is recorded **per block**, because several terminals in one tab routinely run separate
+  sessions in the same directory. It arrives from a Claude Code `SessionStart` hook that calls
+  `wsh setmeta -b this claude:sessionid=…`, which is exact — unlike guessing from the newest
+  file in `~/.claude/projects/<cwd>/`. Requires that hook to be installed; see
+  [Claude session resume](#claude-session-resume) below.
 - **SSH backport** — curated cherry-picks from `whoisjeremylam/waveterm-remote`: hardened SSH
   reconnect, **SSH port forwarding** (Local/RemoteForward, which upstream lacks), and related
   crash / CPU-spin fixes. The x/crypto drain-loop fix is taken via the tagged `v0.53.0` bump
@@ -149,6 +157,40 @@ git checkout feat/<task> && git rebase main
   subscription can't leak literal `997;1n` garbage into the next shell's prompt.
 - **Releases** — built per-platform and published on the fork's GitHub Releases (macOS on the
   MacBook, Windows & Linux on the homelab build VMs — no hosted CI).
+
+## Claude session resume
+
+The resume button only appears once something records the session id on the block. Wave can't
+read it out of a running `claude` — it isn't in the process environment, and the transcript file
+isn't held open, so there is nothing to correlate against. Claude tells us instead, from a
+`SessionStart` hook.
+
+The hook script lives outside this repo (it belongs to the machine's Claude config, not to Wave):
+
+```sh
+#!/usr/bin/env bash
+set -u
+[ -n "${WAVETERM_BLOCKID:-}" ] || exit 0          # not a Wave block — no-op
+command -v wsh >/dev/null 2>&1 || exit 0
+INPUT="$(cat 2>/dev/null || true)"
+SID="$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null || true)"
+[ -n "$SID" ] || exit 0
+wsh setmeta -b this "claude:sessionid=$SID" >/dev/null 2>&1 || true
+exit 0
+```
+
+Register it under `hooks.SessionStart` in `~/.claude/settings.json` with `"async": true` so it
+never delays a session start. It fires on resume too, so the block keeps tracking the current id
+rather than pinning the first one.
+
+Meta keys written: `claude:sessionid` and `claude:cwd` (`pkg/waveobj/metaconsts.go`). Block meta
+is stored with the block row, so it survives a restart with no extra work. The button lives in
+`TermViewModel.getClaudeResumeIconButton` (`frontend/app/view/term/term-model.ts`) and hides
+itself while a Claude session is already active in that block.
+
+Known gap: a session id whose transcript has since been deleted still shows a button, and the
+resume will fail at the prompt. Checking `~/.claude/projects/<cwd>/<id>.jsonl` would need a new
+RPC, so it was left out of the first version.
 
 ## Planned
 
