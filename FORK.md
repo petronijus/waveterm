@@ -158,35 +158,43 @@ git checkout feat/<task> && git rebase main
 
 ## Claude session resume
 
-Wave binds a terminal block to the Claude Code session started in it, so the block can offer
-to resume that session later. Everything lives in Wave — nothing to install or configure on the
-Claude side, which is why this is done by correlation rather than by a Claude `SessionStart`
-hook (a hook is exact, but a feature that requires editing another tool's config isn't one you
-can ship).
+A terminal block remembers the Claude Code session started in it and, once that session is no
+longer running, shows a **Resume session** button in the block header. One click resumes it —
+the command is sent with its newline and focus returns to the terminal.
 
 **How the binding works.** Shell integration already reports every command line to the backend
-(OSC 16162 `C`), which is how the activity indicator knows an agent is running. When that
-command is `claude`, `pkg/blockcontroller/claudesession.go` snapshots the transcript directory
-for the block's cwd (`~/.claude/projects/<cwd-with-slashes-as-dashes>/`) and then polls briefly
-for the transcript that appears — or, for `--continue`, starts growing. That file's name is the
-session id. An explicit `--resume <id>` on the command line short-circuits the whole thing.
+(OSC 16162 `C`), which is how the activity indicator spots an agent. When that command is
+`claude`, `pkg/blockcontroller/claudesession.go` locates the claude process under the block's
+shell (the same process walk the agent probe uses) and reads claude's own session registry at
+`<config>/sessions/<pid>.json`, which holds the pid, session id and cwd. Claude writes it about
+a second after launch and removes it on exit, so the mapping is exact — no guessing which file
+in a directory changed.
 
-The session id can't be read off the process instead: it isn't exported to claude's environment,
-and claude doesn't hold the transcript open, so there's nothing to correlate a PID against.
+The watch keeps running for as long as claude does, because resuming *from inside* claude (the
+session picker, `/resume`) swaps the session id on the same process; the block follows it and
+ends up pointing at whatever was actually used. An explicit `--resume <id>` on the command line
+is taken straight from the command.
 
-**Known limitation, by design.** If two terminals start claude in the *same directory* within
-the same poll window, two transcripts change at once and Wave cannot tell which is which — it
-binds neither, rather than binding the wrong one. Starting them a second or two apart is enough.
-Remote blocks are skipped entirely, since the transcript lives on the remote host.
+**Why not the obvious alternatives.** The id is not in claude's environment and claude does not
+hold its transcript open, so a pid alone tells you nothing. Watching transcripts is worse still:
+one is only written on the first *user message*, so a session sitting at the prompt is invisible,
+and claude's startup touches an unrelated transcript in the same directory, which looks exactly
+like activity. Both cost real debugging before the registry turned up. Transcript watching
+survives only as a fallback for builds with no registry, and it requires the file to *grow*, not
+merely change mtime.
 
-Meta keys written: `claude:sessionid`, `claude:cwd` (`pkg/waveobj/metaconsts.go`). Block meta is
-stored with the block row, so it survives a restart with no extra plumbing. The button is
-`TermViewModel.getClaudeResumeIconButton` (`frontend/app/view/term/term-model.ts`); it hides
-while a Claude session is already active in that block, and prepends a `cd` when the recorded
-cwd differs from the terminal's current one, since transcripts are looked up per directory.
+**Limits.** Remote blocks are skipped — the registry lives on the remote host. A session id whose
+transcript was later deleted still offers a button, and the resume fails at the prompt; checking
+would need a new RPC. The fallback path cannot follow an in-session resume.
 
-Also unhandled for now: a session id whose transcript has since been deleted still shows a
-button, and the resume fails at the prompt. Checking for the file would need a new RPC.
+Meta keys: `claude:sessionid`, `claude:cwd` (`pkg/waveobj/metaconsts.go`), stored with the block
+row so they survive a restart. The button is `TermViewModel.getClaudeResumeHeaderElem`
+(`frontend/app/view/term/term-model.ts`), rendered last in `viewText` so it sits left of the
+end-icon strip; it hides while claude is running in that block, and prepends a `cd` when the
+recorded cwd differs from the terminal's current one.
+
+Set `term:activitydebug` to log the binding (`[claudesession]` in `waveapp.log`) and the button's
+gate conditions (`[tabactivity][fe] claude-resume`).
 
 ## Planned
 
