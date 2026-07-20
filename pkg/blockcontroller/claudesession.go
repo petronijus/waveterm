@@ -5,6 +5,8 @@ package blockcontroller
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 
 const (
 	claudeProjectsSubdir = "projects"
+	claudeSessionsSubdir = "sessions"
 	claudeSessionExt     = ".jsonl"
 
 	// Claude writes its transcript on the first user message, not at launch, so a session
@@ -208,11 +211,51 @@ func setClaudeSessionMeta(blockId string, sessionId string, cwd string) {
 // terminal can offer to resume it after a restart. Correlation is by transcript file
 // rather than by process: the session id is not in claude's environment and it does not
 // hold the transcript open, so there is nothing to read off the process itself.
+// claudeSessionRegistryEntry is claude's own record of a live session, written to
+// <config>/sessions/<pid>.json at startup and removed when the process exits.
+type claudeSessionRegistryEntry struct {
+	Pid       int    `json:"pid"`
+	SessionId string `json:"sessionid"`
+	Cwd       string `json:"cwd"`
+}
+
+// readClaudeSessionRegistry returns the session claude registered for a pid. This is an
+// exact process→session mapping, which is why it is preferred over inspecting transcripts:
+// the transcript only appears once the user sends a first message, and several sessions in
+// one directory cannot be told apart by file activity alone.
+func readClaudeSessionRegistry(pid int) *claudeSessionRegistryEntry {
+	cfgDir := claudeConfigDir()
+	if cfgDir == "" || pid <= 0 {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(cfgDir, claudeSessionsSubdir, fmt.Sprintf("%d.json", pid)))
+	if err != nil {
+		return nil
+	}
+	// claude uses camelCase; decode case-insensitively via a loose map to stay tolerant of
+	// key-casing changes in a tool we don't control.
+	var raw map[string]any
+	if json.Unmarshal(data, &raw) != nil {
+		return nil
+	}
+	rtn := &claudeSessionRegistryEntry{Pid: pid}
+	for k, v := range raw {
+		s, _ := v.(string)
+		switch strings.ToLower(k) {
+		case "sessionid":
+			rtn.SessionId = s
+		case "cwd":
+			rtn.Cwd = s
+		}
+	}
+	if !claudeSessionIdRegex.MatchString(rtn.SessionId) {
+		return nil
+	}
+	return rtn
+}
+
 // Called from the terminal-output path while the activity tracker's mutex is held, so it
 // must not touch the database or the filesystem here — everything happens on the goroutine.
-// Taking the "before" snapshot there rather than synchronously is safe: claude writes its
-// transcript continuously, so a session whose file already existed when we looked still
-// advances its mtime on a later poll and is picked up then.
 func trackClaudeSession(blockId string, command string) {
 	go func() {
 		defer func() {
@@ -223,25 +266,20 @@ func trackClaudeSession(blockId string, command string) {
 		if ctrl == nil || ctrl.GetConnName() != "" {
 			return
 		}
-		cwd := claudeCwdForBlock(blockId)
-		if cwd == "" {
-			claudeDbg(blockId, "no cmd:cwd on block, cannot locate transcripts")
-			return
-		}
-		projectDir := claudeProjectDirForCwd(cwd)
-		if projectDir == "" {
-			claudeDbg(blockId, "no claude config dir")
-			return
-		}
-		// An explicit --resume tells us the id outright; no need to guess.
+		// An explicit --resume tells us the id outright, before claude has even started.
 		if m := claudeResumeArgRegex.FindStringSubmatch(command); m != nil {
 			if claudeSessionIdRegex.MatchString(m[1]) {
-				setClaudeSessionMeta(blockId, m[1], cwd)
+				claudeDbg(blockId, "session %s taken from the command line", m[1])
+				setClaudeSessionMeta(blockId, m[1], claudeCwdForBlock(blockId))
 				return
 			}
 		}
-		before := snapshotClaudeSessions(projectDir)
-		claudeDbg(blockId, "watching %s (%d existing transcripts)", projectDir, len(before))
+		// Fallback for claude builds that keep no session registry: watch the transcript
+		// directory the way we used to. Snapshot up front so a session that starts while
+		// we are still waiting on the registry is still detectable.
+		fallbackDir := claudeProjectDirForCwd(claudeCwdForBlock(blockId))
+		fallbackBefore := snapshotClaudeSessions(fallbackDir)
+		claudeDbg(blockId, "waiting for claude to register a session")
 		start := time.Now()
 		deadline := start.Add(claudeSessionPollTimeout)
 		for time.Now().Before(deadline) {
@@ -251,15 +289,29 @@ func trackClaudeSession(blockId string, command string) {
 			}
 			time.Sleep(interval)
 			if !claudeStillRunning(blockId) {
-				claudeDbg(blockId, "claude exited after %v without a transcript to attribute", time.Since(start).Round(time.Second))
+				claudeDbg(blockId, "claude exited after %v before registering a session", time.Since(start).Round(time.Second))
 				return
 			}
-			sessionId := findNewClaudeSession(projectDir, before)
+			if entry := readClaudeSessionRegistry(claudePidForBlock(blockId)); entry != nil {
+				cwd := entry.Cwd
+				if cwd == "" {
+					cwd = claudeCwdForBlock(blockId)
+				}
+				claudeDbg(blockId, "bound session %s from the registry after %v", entry.SessionId, time.Since(start).Round(time.Millisecond))
+				setClaudeSessionMeta(blockId, entry.SessionId, cwd)
+				return
+			}
+			// Only consult transcripts once the registry has clearly not shown up; it
+			// appears within a second or so when supported.
+			if fallbackDir == "" || time.Since(start) < claudeSessionFastDuration {
+				continue
+			}
+			sessionId := findNewClaudeSession(fallbackDir, fallbackBefore)
 			if sessionId == "" {
 				continue
 			}
-			claudeDbg(blockId, "bound session %s after %v", sessionId, time.Since(start).Round(time.Millisecond))
-			setClaudeSessionMeta(blockId, sessionId, cwd)
+			claudeDbg(blockId, "bound session %s from transcripts after %v (no registry)", sessionId, time.Since(start).Round(time.Millisecond))
+			setClaudeSessionMeta(blockId, sessionId, claudeCwdForBlock(blockId))
 			return
 		}
 		claudeDbg(blockId, "gave up after %v, no session could be attributed", claudeSessionPollTimeout)

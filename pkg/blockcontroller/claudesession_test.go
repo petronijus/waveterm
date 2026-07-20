@@ -207,3 +207,50 @@ func TestClaudeProjectDirResolvesSymlinks(t *testing.T) {
 		t.Errorf("symlinked cwd mapped to %q, want the real path's %q", got, want)
 	}
 }
+
+// The registry is claude's own record and the primary source: it appears at launch, so it
+// works even before the user sends a first message.
+func TestReadClaudeSessionRegistry(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	if err := os.Mkdir(filepath.Join(cfg, claudeSessionsSubdir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	sid := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	body := `{"pid":4242,"sessionId":"` + sid + `","cwd":"/work","status":"busy"}`
+	if err := os.WriteFile(filepath.Join(cfg, claudeSessionsSubdir, "4242.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := readClaudeSessionRegistry(4242)
+	if got == nil || got.SessionId != sid || got.Cwd != "/work" {
+		t.Fatalf("got %+v, want session %s cwd /work", got, sid)
+	}
+	if readClaudeSessionRegistry(9999) != nil {
+		t.Errorf("unknown pid should yield nil")
+	}
+	if readClaudeSessionRegistry(0) != nil {
+		t.Errorf("pid 0 should yield nil")
+	}
+}
+
+func TestReadClaudeSessionRegistryRejectsGarbage(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	if err := os.Mkdir(filepath.Join(cfg, claudeSessionsSubdir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"1.json": `not json`,
+		"2.json": `{"sessionId":"not-a-uuid"}`,
+		"3.json": `{"cwd":"/work"}`,
+	} {
+		if err := os.WriteFile(filepath.Join(cfg, claudeSessionsSubdir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, pid := range []int{1, 2, 3} {
+		if got := readClaudeSessionRegistry(pid); got != nil {
+			t.Errorf("pid %d: got %+v, want nil", pid, got)
+		}
+	}
+}
