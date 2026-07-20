@@ -280,6 +280,10 @@ func trackClaudeSession(blockId string, command string) {
 		fallbackDir := claudeProjectDirForCwd(claudeCwdForBlock(blockId))
 		fallbackBefore := snapshotClaudeSessions(fallbackDir)
 		claudeDbg(blockId, "waiting for claude to register a session")
+		// Keep following the session for as long as claude runs rather than binding once:
+		// resuming from inside claude (session picker, /resume) swaps the id on the same
+		// process, and the block should end up pointing at whatever the user actually used.
+		var bound string
 		start := time.Now()
 		deadline := start.Add(claudeSessionPollTimeout)
 		for time.Now().Before(deadline) {
@@ -289,21 +293,37 @@ func trackClaudeSession(blockId string, command string) {
 			}
 			time.Sleep(interval)
 			if !claudeStillRunning(blockId) {
-				claudeDbg(blockId, "claude exited after %v before registering a session", time.Since(start).Round(time.Second))
+				if bound == "" {
+					claudeDbg(blockId, "claude exited after %v before registering a session", time.Since(start).Round(time.Second))
+				} else {
+					claudeDbg(blockId, "claude exited after %v, block left on session %s", time.Since(start).Round(time.Second), bound)
+				}
 				return
 			}
 			if entry := readClaudeSessionRegistry(claudePidForBlock(blockId)); entry != nil {
+				if entry.SessionId == bound {
+					continue
+				}
 				cwd := entry.Cwd
 				if cwd == "" {
 					cwd = claudeCwdForBlock(blockId)
 				}
-				claudeDbg(blockId, "bound session %s from the registry after %v", entry.SessionId, time.Since(start).Round(time.Millisecond))
+				if bound == "" {
+					claudeDbg(blockId, "bound session %s from the registry after %v", entry.SessionId, time.Since(start).Round(time.Millisecond))
+				} else {
+					// Resuming from inside claude (the session picker, /resume) swaps the id
+					// on the same process, so a one-shot bind would keep pointing at the
+					// session the user moved away from.
+					claudeDbg(blockId, "session changed %s -> %s, rebinding", bound, entry.SessionId)
+				}
+				bound = entry.SessionId
 				setClaudeSessionMeta(blockId, entry.SessionId, cwd)
-				return
+				continue
 			}
 			// Only consult transcripts once the registry has clearly not shown up; it
-			// appears within a second or so when supported.
-			if fallbackDir == "" || time.Since(start) < claudeSessionFastDuration {
+			// appears within a second or so when supported. Transcript watching cannot
+			// follow an in-session resume, so it binds once and then stops guessing.
+			if bound != "" || fallbackDir == "" || time.Since(start) < claudeSessionFastDuration {
 				continue
 			}
 			sessionId := findNewClaudeSession(fallbackDir, fallbackBefore)
@@ -311,6 +331,7 @@ func trackClaudeSession(blockId string, command string) {
 				continue
 			}
 			claudeDbg(blockId, "bound session %s from transcripts after %v (no registry)", sessionId, time.Since(start).Round(time.Millisecond))
+			bound = sessionId
 			setClaudeSessionMeta(blockId, sessionId, claudeCwdForBlock(blockId))
 			return
 		}
