@@ -455,10 +455,9 @@ export class TermViewModel implements ViewModel {
         });
     }
 
-    // The session id is recorded per block by a Claude Code SessionStart hook
-    // (`wsh setmeta -b $WAVETERM_BLOCKID claude:sessionid=...`), so several terminals
-    // sharing one cwd keep separate sessions. Meta lives in the block row, so it is
-    // still there after a restart — which is the whole point of the button.
+    // The session id is recorded per block by the backend when shell integration
+    // reports that claude started (pkg/blockcontroller/claudesession.go). Meta lives in
+    // the block row, so it is still there after a restart — the point of the button.
     getClaudeResumeIconButton(
         get: jotai.Getter,
         blockData: Block,
