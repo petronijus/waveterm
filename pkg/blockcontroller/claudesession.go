@@ -22,11 +22,14 @@ const (
 	claudeProjectsSubdir = "projects"
 	claudeSessionExt     = ".jsonl"
 
-	// Claude writes the transcript continuously, so a session that just started shows
-	// up within a second or two. Poll briefly rather than watching: this runs once per
-	// claude invocation, not per byte.
-	claudeSessionPollInterval = 400 * time.Millisecond
-	claudeSessionPollTimeout  = 20 * time.Second
+	// The transcript can appear a while after launch — claude may not write it until the
+	// first message, and the user might sit at the prompt first. Poll quickly at first,
+	// then slowly, rather than assuming the session shows up immediately. Cheap either
+	// way: this is one directory read per tick, once per claude invocation.
+	claudeSessionPollFast     = 400 * time.Millisecond
+	claudeSessionPollSlow     = 3 * time.Second
+	claudeSessionFastDuration = 30 * time.Second
+	claudeSessionPollTimeout  = 10 * time.Minute
 )
 
 // A session id is a UUID, which is also what the transcript file is named.
@@ -35,6 +38,15 @@ var claudeSessionIdRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0
 // Matches an explicit `--resume <id>` / `-r <id>` on the command line, which lets us
 // skip the correlation entirely.
 var claudeResumeArgRegex = regexp.MustCompile(`(?:^|\s)(?:-r|--resume)[\s=]+([0-9a-fA-F-]{36})(?:\s|$)`)
+
+// claudeDbg logs under the same term:activitydebug setting as the activity tracker, since
+// this runs off the same shell-integration signal and is diagnosed together with it.
+func claudeDbg(blockId string, format string, args ...any) {
+	if !activityDebugEnabled() {
+		return
+	}
+	log.Printf("[claudesession] blk=%s "+format+"\n", append([]any{blockId}, args...)...)
+}
 
 // claudeConfigDir mirrors Claude Code's own resolution order.
 func claudeConfigDir() string {
@@ -86,24 +98,40 @@ func snapshotClaudeSessions(projectDir string) claudeSessionSnapshot {
 	return rtn
 }
 
-// findNewClaudeSession returns the session that appeared, or whose transcript advanced,
-// since the snapshot. It returns "" when nothing changed or when more than one session
-// changed — with several terminals running claude in the same directory there is no way
-// to tell which is ours, and binding the wrong session is worse than binding none.
+// findNewClaudeSession returns the session started since the snapshot.
+//
+// A transcript that did not exist before is a far stronger signal than one that merely
+// grew: any other claude running in the same directory keeps appending to its own file,
+// and treating that as a candidate made the common case ambiguous (two terminals on one
+// repo, or a session left running elsewhere). So created-since beats modified-since, and
+// modified-since is only consulted when nothing was created — which is what `--continue`
+// looks like, since it reuses an existing transcript.
+//
+// Still returns "" when the winning category has more than one candidate: binding the
+// wrong conversation is worse than offering no button.
 func findNewClaudeSession(projectDir string, before claudeSessionSnapshot) string {
 	cur := snapshotClaudeSessions(projectDir)
-	var found string
+	var created, modified []string
 	for id, modTime := range cur {
 		prev, existed := before[id]
-		if existed && !modTime.After(prev) {
+		if !existed {
+			created = append(created, id)
 			continue
 		}
-		if found != "" {
-			return ""
+		if modTime.After(prev) {
+			modified = append(modified, id)
 		}
-		found = id
 	}
-	return found
+	if len(created) == 1 {
+		return created[0]
+	}
+	if len(created) > 1 {
+		return ""
+	}
+	if len(modified) == 1 {
+		return modified[0]
+	}
+	return ""
 }
 
 // claudeCwdForBlock reads the cwd the shell last reported (OSC 7 → cmd:cwd), which is
@@ -157,10 +185,12 @@ func trackClaudeSession(blockId string, command string) {
 		}
 		cwd := claudeCwdForBlock(blockId)
 		if cwd == "" {
+			claudeDbg(blockId, "no cmd:cwd on block, cannot locate transcripts")
 			return
 		}
 		projectDir := claudeProjectDirForCwd(cwd)
 		if projectDir == "" {
+			claudeDbg(blockId, "no claude config dir")
 			return
 		}
 		// An explicit --resume tells us the id outright; no need to guess.
@@ -171,15 +201,23 @@ func trackClaudeSession(blockId string, command string) {
 			}
 		}
 		before := snapshotClaudeSessions(projectDir)
-		deadline := time.Now().Add(claudeSessionPollTimeout)
+		claudeDbg(blockId, "watching %s (%d existing transcripts)", projectDir, len(before))
+		start := time.Now()
+		deadline := start.Add(claudeSessionPollTimeout)
 		for time.Now().Before(deadline) {
-			time.Sleep(claudeSessionPollInterval)
+			interval := claudeSessionPollSlow
+			if time.Since(start) < claudeSessionFastDuration {
+				interval = claudeSessionPollFast
+			}
+			time.Sleep(interval)
 			sessionId := findNewClaudeSession(projectDir, before)
 			if sessionId == "" {
 				continue
 			}
+			claudeDbg(blockId, "bound session %s after %v", sessionId, time.Since(start).Round(time.Millisecond))
 			setClaudeSessionMeta(blockId, sessionId, cwd)
 			return
 		}
+		claudeDbg(blockId, "gave up after %v, no session could be attributed", claudeSessionPollTimeout)
 	}()
 }

@@ -80,6 +80,26 @@ func TestFindNewClaudeSessionNoChange(t *testing.T) {
 	}
 }
 
+// The case that broke in practice: another claude is already running in the same repo and
+// keeps appending to its own transcript. A freshly created transcript is unambiguous even
+// though a second file also changed, so the new session must still win.
+func TestFindNewClaudeSessionPrefersCreatedOverModified(t *testing.T) {
+	dir := t.TempDir()
+	other := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	writeSession(t, dir, other, time.Now().Add(-time.Hour))
+	before := snapshotClaudeSessions(dir)
+
+	// The unrelated session keeps writing...
+	writeSession(t, dir, other, time.Now())
+	// ...while ours is created.
+	mine := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	writeSession(t, dir, mine, time.Now())
+
+	if got := findNewClaudeSession(dir, before); got != mine {
+		t.Errorf("got %q, want the newly created session %q", got, mine)
+	}
+}
+
 // The documented failure mode: two terminals starting claude in one directory at the same
 // moment must bind nothing rather than bind the wrong session.
 func TestFindNewClaudeSessionAmbiguous(t *testing.T) {
