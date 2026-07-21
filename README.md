@@ -40,8 +40,13 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Remote file transfer** — paste or drop an image/file into a **remote** SSH terminal and it's
   uploaded to that host, with the remote path pasted back (upload indicator included).
 - **Non-blocking SSH auth prompts** — password / passphrase / keyboard-interactive prompts appear
-  as an overlay *inside the block that asked*, so the rest of the UI (and your other tabs) stays
-  fully interactive.
+  as an overlay scoped to the connection that asked, shown only on the tabs using it, so the rest
+  of the UI stays fully interactive. Answered prompts dismiss everywhere at once, and a prompt
+  raised during startup or a wake-time reconnect isn't lost before a window is listening.
+- **Resume a Claude session** — a terminal remembers the Claude Code session run in it; once that
+  session stops, a **Resume session** button in the block header brings it back in one click.
+  Tracked per block, so several terminals in one repo each keep their own, and it follows a
+  resume done from inside claude. Nothing to configure on the Claude side.
 - **Tab activity indicator** — an output-driven "working" spinner and a "done" badge on tabs, so a
   glance tells you which terminal is busy.
 - **Badge rotation** — `wsh badge --rotation <deg>` spins a badge icon for animated status cues.
@@ -55,6 +60,9 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   transport and restore them on another machine — nested splits, sizes, focus and window
   positions survive exactly. Block locations travel machine-neutrally (named **path roots** +
   `~`-form paths), so a layout saved on Linux opens the right folders on Windows or macOS.
+- **Duplicate a tab** — right-click a tab → *Duplicate*: a copy opens immediately to its right
+  with the same arrangement and the same block settings (cwd, connection, theme), and fresh
+  shells. Nested splits survive intact.
 - **Folder bookmarks ("projects")** — bookmark folders and reach them from the Files view, the
   connection dropdown, and a Connections & Projects settings panel.
 - **Desktop notifications** — get a system notification when a long command finishes while the
