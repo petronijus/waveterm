@@ -117,10 +117,17 @@ packaged build (`isDev()` gating). To show the apps launcher in a packaged build
 ## Releasing
 
 1. Ensure `release` is built and tested.
-2. Tag + create a GitHub pre-release:
-   `gh release create <tag> --target release --prerelease --title "…" --notes "…" --repo petronijus/waveterm`
+2. Tag + create the GitHub release. **Not a pre-release** — GitHub only puts the "Latest"
+   badge on a full release, so marking these as pre-releases left the badge stranded on an
+   old version:
+   `gh release create <tag> --target release --latest --title "…" --notes "…" --repo petronijus/waveterm`
 3. Build on each OS, then attach every artifact:
    `gh release upload <tag> ./make/<artifact> --repo petronijus/waveterm`
+
+**Upload as its own step, not chained onto the build.** A dropped SSH connection to a build VM
+once killed electron-builder mid-write and produced a 474 KB "installer" instead of 158 MB.
+Before uploading, compare artifact sizes against the previous release — a truncated artifact is
+otherwise indistinguishable from a good one.
 
 Version comes from the upstream base (e.g. `0.14.5`); fork releases tag as `v<ver>-pj.<n>`.
 

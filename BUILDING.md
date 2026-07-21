@@ -144,4 +144,5 @@ gh release upload <tag> ./make/<artifact> --repo petronijus/waveterm
 # e.g. gh release upload v0.14.5-pj.1 ./make/Wave-linux-x86_64.AppImage --repo petronijus/waveterm
 ```
 
-(Create the release first with `gh release create <tag> --prerelease --title "…" --notes "…"`.)
+(Create the release first with `gh release create <tag> --target release --latest --title "…" --notes "…"`.
+Not a pre-release: GitHub only shows the "Latest" badge on a full release.)
