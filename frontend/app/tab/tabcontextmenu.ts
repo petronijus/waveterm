@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getOrefMetaKeyAtom, globalStore, recordTEvent } from "@/app/store/global";
+import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { fireAndForget } from "@/util/util";
 import { makeORef } from "../store/wos";
@@ -35,6 +36,13 @@ export function buildTabContextMenu(
     const menu: ContextMenuItem[] = [];
     menu.push(
         { label: "Rename Tab", click: () => renameRef.current?.() },
+        {
+            // Called through RpcApi rather than env.rpc: TabEnv is a narrowed env and this
+            // is its only caller, so widening it would buy nothing — syncmenu reaches for
+            // the RPC client the same way.
+            label: "Duplicate Tab",
+            click: () => fireAndForget(() => RpcApi.DuplicateTabCommand(TabRpcClient, id)),
+        },
         {
             label: "Copy TabId",
             click: () => fireAndForget(() => navigator.clipboard.writeText(id)),

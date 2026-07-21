@@ -625,6 +625,21 @@ func (ws *WshServer) SaveLayoutCommand(ctx context.Context, data wshrpc.CommandL
 	return wsync.SaveLayout(ctx, data.TabId, data.Name)
 }
 
+// DuplicateTabCommand copies a tab (arrangement + block settings) into a new tab placed
+// right after it. Returns the new tab id.
+func (ws *WshServer) DuplicateTabCommand(ctx context.Context, tabId string) (string, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	newTabId, err := wsync.DuplicateTab(ctx, tabId)
+	if err != nil {
+		return "", err
+	}
+	// Same reason as LoadLayoutCommand: the queued layout actions only reach the new
+	// tab's LayoutModel if the collected updates are broadcast.
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	wps.Broker.SendUpdateEvents(updates)
+	return newTabId, nil
+}
+
 func (ws *WshServer) LoadLayoutCommand(ctx context.Context, data wshrpc.CommandLayoutData) error {
 	ctx = waveobj.ContextWithUpdates(ctx)
 	if err := wsync.LoadLayout(ctx, data.TabId, data.Name); err != nil {

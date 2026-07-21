@@ -89,6 +89,7 @@ type WshRpcInterface interface {
 	LoadLayoutCommand(ctx context.Context, data CommandLayoutData) error
 	ListLayoutsCommand(ctx context.Context) ([]string, error)
 	DeleteLayoutCommand(ctx context.Context, name string) error
+	DuplicateTabCommand(ctx context.Context, tabId string) (string, error)
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
