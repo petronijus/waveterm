@@ -80,9 +80,14 @@ Note on #22: their `7ae1d393` exports the function, but the commit that *calls* 
 backported here, so it would have landed as dead code. **Behaviour change**: durable shell blocks
 on remote connections now connect at app start rather than on first tab switch.
 
-Still deliberately skipped: their SCM/source-control widget and git push auth, image rendering
-(local `feat/image-rendering`), remote file transfer, badge rotation (local `review/badge`),
-connection dropdown.
+Still not carried: their SCM/source-control widget and git push auth, remote file transfer, and
+their connection dropdown. Re-fetch any of them from the `remote-fork` remote if wanted — there
+is no need to keep local review branches around for it.
+
+Two things once listed here as skipped have since landed by other routes: **inline terminal
+images** (`0c0e4950`, `@xterm/addon-image`) and **badge rotation** (`e8db3ed0` — the `Rotation`
+field in `pkg/baseds`, applied as a CSS transform by the tab badge). Check before assuming a
+skipped item is still missing; two stale local branches were deleted for exactly this reason.
 
 **Verification**: `go build ./...` and `go vet ./pkg/...` clean. `go test -race -count=1` green
 for `jobcontroller`, `remote`, `conncontroller`, `wps`, `userinput`, `blockcontroller`.
