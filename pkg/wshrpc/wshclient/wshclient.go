@@ -245,6 +245,12 @@ func DisposeSuggestionsCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcO
 	return err
 }
 
+// command "duplicatetab", wshserver.DuplicateTabCommand
+func DuplicateTabCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (string, error) {
+	resp, err := sendRpcRequestCallHelper[string](w, "duplicatetab", data, opts)
+	return resp, err
+}
+
 // command "electrondecrypt", wshserver.ElectronDecryptCommand
 func ElectronDecryptCommand(w *wshutil.WshRpc, data wshrpc.CommandElectronDecryptData, opts *wshrpc.RpcOpts) (*wshrpc.CommandElectronDecryptRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandElectronDecryptRtnData](w, "electrondecrypt", data, opts)

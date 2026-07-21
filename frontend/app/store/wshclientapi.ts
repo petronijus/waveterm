@@ -246,6 +246,12 @@ export class RpcApiType {
         return client.wshRpcCall("disposesuggestions", data, opts);
     }
 
+    // command "duplicatetab" [call]
+    DuplicateTabCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<string> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "duplicatetab", data, opts);
+        return client.wshRpcCall("duplicatetab", data, opts);
+    }
+
     // command "electrondecrypt" [call]
     ElectronDecryptCommand(client: WshClient, data: CommandElectronDecryptData, opts?: RpcOpts): Promise<CommandElectronDecryptRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "electrondecrypt", data, opts);
