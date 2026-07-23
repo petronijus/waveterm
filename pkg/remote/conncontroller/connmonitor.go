@@ -244,7 +244,10 @@ func (cm *ConnMonitor) disconnectOnStall() {
 			panichandler.PanicHandler("conncontroller:disconnectOnStall", recover())
 		}()
 		log.Printf("[conncontroller] conn:%s disconnecting due to persistent stall", cm.Conn.GetName())
-		cm.Conn.Close()
+		// Involuntary disconnect — preserve the cached password so a
+		// subsequent reconnect (scheduler, HandleSystemResume, or
+		// visibility-driven) can reuse it silently.
+		cm.Conn.CloseInvoluntary()
 	}()
 }
 
