@@ -1,7 +1,7 @@
 # Handover — current cross-machine state
 
 Short, dated snapshot of work that spans machines (macOS / Linux / Windows), so picking the fork
-up on any box starts from the truth. For *what* the fork adds see [FORK.md](./FORK.md); for *how*
+up on any box starts from the truth. For _what_ the fork adds see [FORK.md](./FORK.md); for _how_
 to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow live in
 [CLAUDE.md](./CLAUDE.md).
 
@@ -11,9 +11,9 @@ to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow l
 
 ## Auto-update wired to the fork's own releases (as of 2026-07-24)
 
-**Committed on `feat/fork-autoupdate` (branch pushed), NOT yet built or runtime-tested.**
-Makes `task version -- pj` / the GitHub feed actually deliver updates instead of silently
-no-op'ing. Three fixes in `97cc9822`:
+**DONE and runtime-verified on Linux (2026-07-24).** Releases `v0.14.5-pj.11` … `-pj.14` are
+live; the end-to-end test (run pj.13, updater finds + downloads pj.14, Restart, app comes back
+as pj.14) passed on Ubuntu. Original wiring in `97cc9822`:
 
 - **Versioning** — `package.json` used to stay at a bare `0.14.5` for every pj release, so an
   installed app never saw a version change and reported "up to date" forever. New `pj` action in
@@ -25,6 +25,22 @@ no-op'ing. Three fixes in `97cc9822`:
 - **Stale setting** — existing installs carry `autoupdate:channel: "latest"`; `emain/updater.ts`
   now lets the binary's channel win over that stale setting.
 
+Added while testing (all on `feat/fork-autoupdate`):
+
+- **Global pj counter** (`170a00e6`) — an upstream base bump no longer resets the number
+  (`0.14.5-pj.11` → `0.14.6-pj.12`); `version.cjs` recovers the last used N from the `v*-pj.*`
+  git tags, so bump from a checkout with the fork tags fetched.
+- **Version badge** (`170a00e6`) — a `pj.N` badge at the right end of the tab bar (and in the
+  vertical tab bar's macOS header); click opens About (`frontend/app/tab/versionbadge.tsx`).
+- **Post-update restart fix** (`ac91a739`) — electron-updater's AppImage relaunch spawned the
+  new instance while the old one still held the single-instance lock, so the update applied but
+  the app never came back. `installUpdate()` now installs silently and a detached waiter starts
+  the new AppImage only after the old process exits. **The running (old) version performs the
+  relaunch, so the fix only helps from pj.13 onward.**
+- Linux build deps for a full `task package`: `rpm` (rpmbuild) + `libarchive-tools` (bsdtar for
+  the pacman target) — without them the failed target aborts the publish phase and **no
+  `pj-linux.yml` is generated**.
+
 macOS signing/notarization is **opt-in via env** (`APPLE_TEAM_ID` + `APPLE_ID` present activate
 `mac.notarize`), using the Developer ID Application cert now in 1Password. Plain local builds are
 unaffected. Squirrel.Mac only applies an update whose bundle is signed with the **same** identity
@@ -32,23 +48,26 @@ as the running app, so mac auto-update needs the signed build; Windows/Linux (Ap
 on an unsigned build.
 
 ⚠️ The GitHub provider ignores `generateUpdatesFilesForAllChannels`, so it emits only `pj*.yml`.
-The release step must **also** upload a `latest*.yml` copy per OS (+ every `.blockmap`) or older
-`0.14.5` installs — which fetch only `latest-*.yml` — see no update. Full step list is in
-[CLAUDE.md](./CLAUDE.md) "Releasing".
+The release step must **also** upload a `latest*.yml` copy per OS (+ every `.blockmap`; on Linux
+the AppImage blockmap is embedded, no separate file) or older `0.14.5` installs — which fetch only
+`latest-*.yml` — see no update. Full step list is in [CLAUDE.md](./CLAUDE.md) "Releasing".
+
+Semver caveat (one-time): pj.1–pj.10 installs report a bare `0.14.5` and can never see the pj
+prereleases — every machine needs **one manual reinstall** of pj.14+; auto-update flows from
+there on.
 
 ### Next up — per OS
-- **Linux (do this here):** `git fetch && git checkout feat/fork-autoupdate`, `task init` if
-  needed, `task version -- pj` → `0.14.5-pj.11`, `task package` (unsigned AppImage auto-updates
-  fine). Then the **end-to-end test nobody has run yet**: cut the pj.11 GitHub release with the
-  AppImage + `pj-linux.yml` + a `latest-linux.yml` copy + blockmap, install pj.11, bump to pj.12,
-  release, and confirm the pj.11 install actually offers and applies the update.
-- **macOS:** needs the Developer ID env (`CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/
-  `APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from 1Password) wired into the private release
-  skill, then a signed+notarized build. **Open question:** confirm `APPLE_ID` value (likely
-  `petronijus@bastla.com`) and add it as a `username` field on the 1Password app-specific-password
-  item.
-- **Windows:** unsigned NSIS auto-updates; just needs a pj.11 build + `pj.yml`/`latest.yml`/blockmap
-  uploaded.
+
+- **Linux:** done (this machine runs the flow); reinstall the prod `/opt/Wave` from the pj.14
+  deb when convenient.
+- **macOS:** build from tag `v0.14.5-pj.14` and upload `Wave-darwin-*` + `pj-mac.yml` +
+  `latest-mac.yml` copy + `.blockmap`s to that release. Needs the Developer ID env
+  (`CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from
+  1Password) wired into the private release skill for a signed+notarized build. **Open
+  question:** confirm `APPLE_ID` value (likely the personal address) and add it as a `username`
+  field on the 1Password app-specific-password item.
+- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.14` and upload the `.exe`
+  - `pj.yml` + `latest.yml` copy + `.blockmap` to that release.
 
 ## Manual session sync — Save/Load (as of 2026-06-24)
 
@@ -67,6 +86,7 @@ Files: `pkg/wsync/session.go`, `pkg/wcore/window.go` (`OpenWindowForSync`,
 `SaveSession`/`LoadSessionCommand` (wshrpctypes + wshserver), `frontend/app/tab/vtabbar.tsx`.
 
 ### Next up — per OS
+
 - **All OSes:** pull `release`, `task init` if needed, build. Configure a transport in Settings
   (`sync:folderpath` = a Nextcloud desktop-client folder, or WebDAV). Then **test**: Save on one
   machine, Load on another → workspaces/tabs/blocks restore and the saved windows open at their
@@ -95,6 +115,7 @@ All of the below is **merged to `release`** and pushed.
   (notifications work on an unsigned build).
 
 ### Next up (continue on Linux)
+
 - Pull `release`, `task init` if needed, `task package` (Linux notifications work **unsigned**).
 - **Functionally test** the agent-waiting feature: run claude/gemini/codex, finish a turn with the
   Wave window unfocused → tab should flip to "waiting" + an OS notification fires. Enable each
@@ -104,11 +125,11 @@ All of the below is **merged to `release`** and pushed.
 
 Built per-OS (no hosted CI) — see BUILDING.md.
 
-| OS | toolchain set up | latest local build | notes |
-|----|------------------|--------------------|-------|
-| **macOS** | yes | `release` @ 2026-06-21, **signed** (Apple Dev cert, Team ID on file) | Wave + Wave (Dev) built & installed; notifications confirmed working on the **signed** Wave (Dev). |
-| **Linux** | build on first use | — | next: build `feat/fork-autoupdate` @ pj.11 + run the auto-update end-to-end test (unsigned AppImage OK); also still owes agent-waiting test |
-| **Windows** | yes | `release` @ 2026-06-21, signed (cert auto-found in the Windows store) | Wave + Wave (Dev) built & installed side-by-side. Built `nsis`+`zip` only (MSI skipped); two-step backend build (`task --force build:backend` before electron-builder) avoids the wavesrv-drop gotcha — see BUILDING.md. |
+| OS          | toolchain set up   | latest local build                                                    | notes                                                                                                                                                                                                                    |
+| ----------- | ------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **macOS**   | yes                | `release` @ 2026-06-21, **signed** (Apple Dev cert, Team ID on file)  | Wave + Wave (Dev) built & installed; notifications confirmed working on the **signed** Wave (Dev).                                                                                                                       |
+| **Linux**   | build on first use | —                                                                     | next: build `feat/fork-autoupdate` @ pj.11 + run the auto-update end-to-end test (unsigned AppImage OK); also still owes agent-waiting test                                                                              |
+| **Windows** | yes                | `release` @ 2026-06-21, signed (cert auto-found in the Windows store) | Wave + Wave (Dev) built & installed side-by-side. Built `nsis`+`zip` only (MSI skipped); two-step backend build (`task --force build:backend` before electron-builder) avoids the wavesrv-drop gotcha — see BUILDING.md. |
 
 ## Per-machine reminders
 
