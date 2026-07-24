@@ -17,6 +17,7 @@ import { Tab } from "./tab";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
+import { VersionBadge } from "./versionbadge";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
 
 const TabDefaultWidth = 130;
@@ -660,6 +661,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                     // Windows: keep the drag/control reserve to the RIGHT of the sync button so
                     // it clears the native window controls (min/max/close).
                     <>
+                        <VersionBadge />
                         <SyncMenu tabId={activeTabId} />
                         <UpdateStatusBanner />
                         <div
@@ -676,6 +678,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                             style={{ width: windowDragRightWidth, WebkitAppRegion: "drag" } as any}
                         />
                         <UpdateStatusBanner />
+                        <VersionBadge />
                         <SyncMenu tabId={activeTabId} />
                     </>
                 )}

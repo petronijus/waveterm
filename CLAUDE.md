@@ -69,6 +69,7 @@ once before the first build. Each worktree has its own `./make`, so two `task pa
 run at once without clobbering each other.
 
 Rules that hold **with or without** worktrees:
+
 - **One branch per session** — never two sessions on `release` doing merges.
 - **`git fetch` immediately before** any compare / merge / rebase / push — branch pointers move
   under you; never trust a cached `origin/*`.
@@ -104,11 +105,11 @@ task package           # installer for the CURRENT OS → ./make
 
 `task package` builds **only for the OS it runs on**, so a full release is built per-OS:
 
-| OS | how / notes | artifacts in `./make` |
-|----|-------------|------------------------|
-| **macOS** | `task package` on a Mac. Unsigned without a cert (right-click → Open on first run). | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
-| **Linux** | `task package` on Linux (+ electron-builder deps for deb/AppImage/snap). | `*.deb` / `*.AppImage` / `*.snap` |
-| **Windows** | `task package` on Windows (Node/Go/Zig/Task on PATH; MSVC Build Tools if a native module rebuilds). | `*.exe` (NSIS) |
+| OS          | how / notes                                                                                         | artifacts in `./make`                     |
+| ----------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **macOS**   | `task package` on a Mac. Unsigned without a cert (right-click → Open on first run).                 | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
+| **Linux**   | `task package` on Linux (+ electron-builder deps for deb/AppImage/snap).                            | `*.deb` / `*.AppImage` / `*.snap`         |
+| **Windows** | `task package` on Windows (Node/Go/Zig/Task on PATH; MSVC Build Tools if a native module rebuilds). | `*.exe` (NSIS)                            |
 
 Dev-only widgets (the `dev` shortcut, the `apps` launcher) appear only in `task dev`, not in a
 packaged build (`isDev()` gating). To show the apps launcher in a packaged build, set
@@ -131,11 +132,11 @@ packaged build (`isDev()` gating). To show the apps launcher in a packaged build
    client reports "up to date" forever. Per OS, upload `./make/pj*.yml`, plus a copy renamed
    to the `latest*` name, plus every `*.blockmap`:
 
-   | OS | built manifest | also upload as | why the copy |
-   |----|----------------|----------------|--------------|
-   | macOS | `pj-mac.yml` | `latest-mac.yml` | installs still on a non-prerelease version (`0.14.5` and earlier) run with `allowPrerelease=false` and only ever fetch `latest-*.yml` |
-   | Windows | `pj.yml` | `latest.yml` | same |
-   | Linux | `pj-linux.yml` | `latest-linux.yml` | same |
+   | OS      | built manifest | also upload as     | why the copy                                                                                                                          |
+   | ------- | -------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+   | macOS   | `pj-mac.yml`   | `latest-mac.yml`   | installs still on a non-prerelease version (`0.14.5` and earlier) run with `allowPrerelease=false` and only ever fetch `latest-*.yml` |
+   | Windows | `pj.yml`       | `latest.yml`       | same                                                                                                                                  |
+   | Linux   | `pj-linux.yml` | `latest-linux.yml` | same                                                                                                                                  |
 
    electron-builder will not generate the `latest*` copies itself: `generateUpdatesFilesForAllChannels`
    is ignored for the GitHub provider (`app-builder-lib/out/publish/updateInfoBuilder.js:39`),
@@ -152,10 +153,17 @@ base `0.14.5` → `0.14.5-pj.11`, `0.14.5-pj.12`, … and the tag matches (`v0.1
 The version in `package.json` now carries the `-pj.N` suffix too — before pj.11 it read a
 bare `0.14.5` on every release, which is why auto-update could never work.
 
-An upstream merge that lifts the base to `0.14.6` resets the counter: `0.14.6-pj.1`, which
-still sorts above every `0.14.5-pj.N`.
+The counter is **global** — an upstream merge that lifts the base does _not_ reset it:
+`0.14.5-pj.11` → `0.14.6-pj.12`. One always-growing number identifies a fork build regardless
+of the base it sits on (ordering still works: the base is compared first). Because the merge
+overwrites `package.json` with a bare upstream version, `version.cjs` recovers the last used N
+from the `v*-pj.*` git tags, so bump only from a checkout that has the fork tags fetched.
 
-One-time caveat, already spent: semver ranks `0.14.5-pj.N` *below* a plain `0.14.5`, so the
+The pj number is also shown in the app itself: a `pj.N` badge sits at the right end of the tab
+bar (and in the vertical tab bar's macOS header) — click opens the About dialog with the full
+version (`frontend/app/tab/versionbadge.tsx`).
+
+One-time caveat, already spent: semver ranks `0.14.5-pj.N` _below_ a plain `0.14.5`, so the
 pj.1–pj.10 builds (all reporting `0.14.5`) cannot auto-update to pj.11 and need a manual
 reinstall — which they need anyway, since they are unsigned and pj.11 onward is signed.
 
@@ -193,4 +201,4 @@ This project uses a set of "skill" guides — focused how-to documents for commo
 | electron-api | `.kilocode/skills/electron-api/SKILL.md` | Guide for adding new Electron APIs to Wave Terminal. Use when implementing new frontend-to-electron communications via preload/IPC.                                                                                                         |
 | waveenv      | `.kilocode/skills/waveenv/SKILL.md`      | Guide for creating WaveEnv narrowings in Wave Terminal. Use when writing a named subset type of WaveEnv for a component tree, documenting environmental dependencies, or enabling mock environments for preview/test server usage.          |
 | wps-events   | `.kilocode/skills/wps-events/SKILL.md`   | Guide for working with Wave Terminal's WPS (Wave PubSub) event system. Use when implementing new event types, publishing events, subscribing to events, or adding asynchronous communication between components.                            |
-| run-desktop  | `.kilocode/skills/run-desktop/SKILL.md`  | Build, run, and drive the Wave Terminal Electron app via a Playwright `_electron` REPL driver. Use to launch the app, screenshot it, click through its UI, or verify a change works in the real app (not just tests).                        |
+| run-desktop  | `.kilocode/skills/run-desktop/SKILL.md`  | Build, run, and drive the Wave Terminal Electron app via a Playwright `_electron` REPL driver. Use to launch the app, screenshot it, click through its UI, or verify a change works in the real app (not just tests).                       |

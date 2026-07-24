@@ -71,7 +71,23 @@ if (typeof require !== "undefined" && require.main === module) {
                 // reinstall regardless (unsigned -> Developer ID signed).
                 const base = `${semver.major(VERSION)}.${semver.minor(VERSION)}.${semver.patch(VERSION)}`;
                 const pre = semver.prerelease(VERSION);
-                newVersion = pre && pre[0] === "pj" ? `${base}-pj.${Number(pre[1]) + 1}` : `${base}-pj.1`;
+                const pkgN = pre && pre[0] === "pj" ? Number(pre[1]) : 0;
+                // The counter is global across bases (0.14.5-pj.11 -> 0.14.6-pj.12, no reset).
+                // An upstream merge overwrites package.json with a bare base version, so the
+                // last used N is recovered from the release tags, not just the prerelease field.
+                let tagN = 0;
+                try {
+                    const tags = require("child_process").execSync("git tag --list 'v*-pj.*'", {
+                        cwd: __dirname,
+                        encoding: "utf8",
+                    });
+                    for (const match of tags.matchAll(/-pj\.(\d+)$/gm)) {
+                        tagN = Math.max(tagN, Number(match[1]));
+                    }
+                } catch {
+                    // not a git checkout or git unavailable — package.json is the best we have
+                }
+                newVersion = `${base}-pj.${Math.max(pkgN, tagN) + 1}`;
                 break;
             }
             default:

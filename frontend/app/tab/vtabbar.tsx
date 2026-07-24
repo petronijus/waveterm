@@ -15,6 +15,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { SyncMenu } from "./syncmenu";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
+import { VersionBadge } from "./versionbadge";
 import { VTab, VTabItem } from "./vtab";
 import { VTabBarEnv } from "./vtabbarenv";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
@@ -75,6 +76,7 @@ const MacOSHeader = memo(() => {
                 <Tooltip content="Workspace Switcher" placement="bottom" hideOnClick divClassName="flex items-center">
                     <WorkspaceSwitcher />
                 </Tooltip>
+                <VersionBadge />
                 <UpdateStatusBanner />
             </div>
         </>
