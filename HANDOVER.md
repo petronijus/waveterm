@@ -9,6 +9,47 @@ to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow l
 > The detailed working plan and machine-specific handover steps are tracked **privately, outside
 > this repo**.
 
+## Auto-update wired to the fork's own releases (as of 2026-07-24)
+
+**Committed on `feat/fork-autoupdate` (branch pushed), NOT yet built or runtime-tested.**
+Makes `task version -- pj` / the GitHub feed actually deliver updates instead of silently
+no-op'ing. Three fixes in `97cc9822`:
+
+- **Versioning** — `package.json` used to stay at a bare `0.14.5` for every pj release, so an
+  installed app never saw a version change and reported "up to date" forever. New `pj` action in
+  `version.cjs` keeps the upstream base and appends the fork iteration (`0.14.5-pj.11`, `-pj.12`,
+  …); `package.json` is seeded at `0.14.5-pj.10` so the next bump yields `-pj.11`.
+- **Update channel** — the `pj` prerelease identifier is also the updater channel.
+  `electron-builder.config.cjs` now sets `publish.channel = "pj"`; without it the tag-derived
+  channel in `GitHubProvider` matches no release.
+- **Stale setting** — existing installs carry `autoupdate:channel: "latest"`; `emain/updater.ts`
+  now lets the binary's channel win over that stale setting.
+
+macOS signing/notarization is **opt-in via env** (`APPLE_TEAM_ID` + `APPLE_ID` present activate
+`mac.notarize`), using the Developer ID Application cert now in 1Password. Plain local builds are
+unaffected. Squirrel.Mac only applies an update whose bundle is signed with the **same** identity
+as the running app, so mac auto-update needs the signed build; Windows/Linux (AppImage) auto-update
+on an unsigned build.
+
+⚠️ The GitHub provider ignores `generateUpdatesFilesForAllChannels`, so it emits only `pj*.yml`.
+The release step must **also** upload a `latest*.yml` copy per OS (+ every `.blockmap`) or older
+`0.14.5` installs — which fetch only `latest-*.yml` — see no update. Full step list is in
+[CLAUDE.md](./CLAUDE.md) "Releasing".
+
+### Next up — per OS
+- **Linux (do this here):** `git fetch && git checkout feat/fork-autoupdate`, `task init` if
+  needed, `task version -- pj` → `0.14.5-pj.11`, `task package` (unsigned AppImage auto-updates
+  fine). Then the **end-to-end test nobody has run yet**: cut the pj.11 GitHub release with the
+  AppImage + `pj-linux.yml` + a `latest-linux.yml` copy + blockmap, install pj.11, bump to pj.12,
+  release, and confirm the pj.11 install actually offers and applies the update.
+- **macOS:** needs the Developer ID env (`CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/
+  `APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from 1Password) wired into the private release
+  skill, then a signed+notarized build. **Open question:** confirm `APPLE_ID` value (likely
+  `petronijus@bastla.com`) and add it as a `username` field on the 1Password app-specific-password
+  item.
+- **Windows:** unsigned NSIS auto-updates; just needs a pj.11 build + `pj.yml`/`latest.yml`/blockmap
+  uploaded.
+
 ## Manual session sync — Save/Load (as of 2026-06-24)
 
 **Implemented on `release`, NOT yet runtime-tested.** Replaces the background autosync with a
@@ -66,7 +107,7 @@ Built per-OS (no hosted CI) — see BUILDING.md.
 | OS | toolchain set up | latest local build | notes |
 |----|------------------|--------------------|-------|
 | **macOS** | yes | `release` @ 2026-06-21, **signed** (Apple Dev cert, Team ID on file) | Wave + Wave (Dev) built & installed; notifications confirmed working on the **signed** Wave (Dev). |
-| **Linux** | build on first use | — | next: build + test agent-waiting (unsigned OK) |
+| **Linux** | build on first use | — | next: build `feat/fork-autoupdate` @ pj.11 + run the auto-update end-to-end test (unsigned AppImage OK); also still owes agent-waiting test |
 | **Windows** | yes | `release` @ 2026-06-21, signed (cert auto-found in the Windows store) | Wave + Wave (Dev) built & installed side-by-side. Built `nsis`+`zip` only (MSI skipped); two-step backend build (`task --force build:backend` before electron-builder) avoids the wavesrv-drop gotcha — see BUILDING.md. |
 
 ## Per-machine reminders
