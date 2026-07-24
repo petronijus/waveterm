@@ -11,9 +11,11 @@ to build/release see [BUILDING.md](./BUILDING.md); the branch model + workflow l
 
 ## Auto-update wired to the fork's own releases (as of 2026-07-24)
 
-**DONE and runtime-verified on Linux (2026-07-24).** Releases `v0.14.5-pj.11` … `-pj.14` are
-live; the end-to-end test (run pj.13, updater finds + downloads pj.14, Restart, app comes back
-as pj.14) passed on Ubuntu. Original wiring in `97cc9822`:
+**DONE and runtime-verified on Linux (2026-07-24).** Everything ships in release
+`v0.14.5-pj.11`; the interim test releases (pj.12–pj.14, used only for the end-to-end
+verification: run old, updater finds + downloads new, Restart, app comes back as the new
+version) were deleted afterwards so the numbering reflects real features — the next feature
+release is `pj.12`. Original wiring in `97cc9822`:
 
 - **Versioning** — `package.json` used to stay at a bare `0.14.5` for every pj release, so an
   installed app never saw a version change and reported "up to date" forever. New `pj` action in
@@ -36,7 +38,7 @@ Added while testing (all on `feat/fork-autoupdate`):
   new instance while the old one still held the single-instance lock, so the update applied but
   the app never came back. `installUpdate()` now installs silently and a detached waiter starts
   the new AppImage only after the old process exits. **The running (old) version performs the
-  relaunch, so the fix only helps from pj.13 onward.**
+  relaunch, so the fix only helps once a machine runs pj.11 or newer.**
 - Linux build deps for a full `task package`: `rpm` (rpmbuild) + `libarchive-tools` (bsdtar for
   the pacman target) — without them the failed target aborts the publish phase and **no
   `pj-linux.yml` is generated**.
@@ -53,20 +55,20 @@ the AppImage blockmap is embedded, no separate file) or older `0.14.5` installs 
 `latest-*.yml` — see no update. Full step list is in [CLAUDE.md](./CLAUDE.md) "Releasing".
 
 Semver caveat (one-time): pj.1–pj.10 installs report a bare `0.14.5` and can never see the pj
-prereleases — every machine needs **one manual reinstall** of pj.14+; auto-update flows from
+prereleases — every machine needs **one manual reinstall** of pj.11+; auto-update flows from
 there on.
 
 ### Next up — per OS
 
-- **Linux:** done (this machine runs the flow); reinstall the prod `/opt/Wave` from the pj.14
-  deb when convenient.
-- **macOS:** build from tag `v0.14.5-pj.14` and upload `Wave-darwin-*` + `pj-mac.yml` +
+- **Linux:** done (this machine runs the flow); prod `/opt/Wave` reinstalled from the pj.11
+  deb.
+- **macOS:** build from tag `v0.14.5-pj.11` and upload `Wave-darwin-*` + `pj-mac.yml` +
   `latest-mac.yml` copy + `.blockmap`s to that release. Needs the Developer ID env
   (`CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from
   1Password) wired into the private release skill for a signed+notarized build. **Open
   question:** confirm `APPLE_ID` value (likely the personal address) and add it as a `username`
   field on the 1Password app-specific-password item.
-- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.14` and upload the
+- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.11` and upload the
   `.exe` with `pj.yml`, a `latest.yml` copy, and the `.blockmap` to that release.
 
 ## Manual session sync — Save/Load (as of 2026-06-24)
