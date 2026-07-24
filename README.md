@@ -116,7 +116,7 @@ Grab the latest build from **[Releases](https://github.com/petronijus/waveterm/r
 
 | Platform                | Notes                                                                                                          |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **macOS** (arm64 / x64) | Signed with a development certificate but **not notarized** — on first launch, right-click the app → **Open**. |
+| **macOS** (arm64 / x64) | Signed (Developer ID) but **not notarized** — on first launch, right-click the app → **Open**. |
 | **Linux**               | `.deb`, `.AppImage`, and `.zip`.                                                                               |
 | **Windows**             | NSIS installer (per release).                                                                                  |
 
