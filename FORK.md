@@ -69,8 +69,8 @@ git checkout feat/<task> && git rebase main
   assign one per tab (shown as a colored dot). Editing a flag's color updates flagged tabs live.
 - **Light-mode polish** — themed the tab bar, tab close button, sidebar/widget icons, AI panel,
   popovers, workspace accent, and CPU/Mem graphs.
-- **Tab activity indicator** — shows in the tab when a terminal is *working* (a long-running
-  foreground command) vs *done*, generically — not tied to one specific tool. Built on the
+- **Tab activity indicator** — shows in the tab when a terminal is _working_ (a long-running
+  foreground command) vs _done_, generically — not tied to one specific tool. Built on the
   existing tab badge system; detection via shell-integration / command lifecycle.
 - **Native OS notifications** — fire a system notification when a long command (≥ a configurable
   threshold, default 30 s) finishes while the window is unfocused; clicking it focuses the window
@@ -102,13 +102,13 @@ git checkout feat/<task> && git rebase main
 - **Folder bookmarks ("projects")** — bookmark folders, surfaced across the Files view, the
   connection dropdown, and a two-pane Connections & Projects settings panel.
 - **System monitor — project resource attribution** — the sysinfo (CPU/Mem) block can show how
-  much of the system load is *the project you're building*, not just global totals. It attributes
+  much of the system load is _the project you're building_, not just global totals. It attributes
   the tracked project's **host processes** (those whose cwd is under the project path) **and its
   containers** (Docker **and** Podman, spoken to directly over the engine unix socket — no CLI/SDK
-  dep — matched by the `com.docker.compose.project` label *or* an image/container-name token, so
+  dep — matched by the `com.docker.compose.project` label _or_ an image/container-name token, so
   plain `docker run` builds are caught too) into dedicated series (`cpu/mem:proj:host` in accent,
   `cpu/mem:proj:docker` in docker-blue). Per-process and per-container CPU% is normalized to a
-  share of *total* capacity, so it overlays/stacks under the system line. New plot views: "CPU +
+  share of _total_ capacity, so it overlays/stacks under the system line. New plot views: "CPU +
   Project", "Mem + Project", and a combined **"CPU & Mem + Project"** dual-chart view. A crosshairs
   button in the block header opens a folder picker that sets the tracked project
   (`sysinfo:trackpath` / `sysinfo:dockerproject`) — no hand-editing `settings.json`.
@@ -126,6 +126,15 @@ git checkout feat/<task> && git rebase main
   positions (clamped to the local display), surplus windows close (never the last one), and saved
   layouts restore losslessly via a single `settree` layout action — nested splits, sizes, focus
   and magnify survive exactly.
+- **Auto-update from the fork's own releases** — the full electron-updater flow runs against this
+  repo's GitHub Releases on a dedicated **`pj` channel**: fork versions are real semver
+  prereleases (`0.14.5-pj.11`), the counter is **global** across upstream rebases
+  (`0.14.5-pj.11` → `0.14.6-pj.12`, recovered from the `v*-pj.*` tags), a **`pj.N` badge** in
+  the tab bar shows the running build (click → About), and on Linux the post-update restart
+  waits for the old instance to fully exit before relaunching (fixes the silent
+  single-instance-lock death). Windows ships a signed NSIS build, macOS a Developer-ID-signed
+  build (notarization pending); per-OS `pj*.yml` + `latest*.yml` manifests are attached to every
+  release.
 - **Portable layout paths** — saved layouts store block locations (terminal cwd, preview file)
   machine-neutrally so a layout saved on one OS restores on another: paths under a named root
   from the machine-local `sync:pathroots` setting save as `${name}/rest` (e.g.
@@ -139,7 +148,7 @@ git checkout feat/<task> && git rebase main
   pty's process tree (foreground-process matching, the technique agent multiplexers use); and
   `wsh agentstate waiting|done` lets agent lifecycle hooks (Claude Code `Notification`/`Stop`,
   codex `notify`) push exact states in-band — precise turn semantics, no false "waiting" while
-  the agent runs subagents or long tools. Silence is deliberately *not* treated as waiting, and
+  the agent runs subagents or long tools. Silence is deliberately _not_ treated as waiting, and
   waiting is sticky against output (an idle agent TUI repaints continuously — no volume
   threshold separates that dribble from real work): only a deliberate keypress (text/Enter,
   not arrow-browsing or the terminal's automatic escape replies) releases it.
@@ -170,17 +179,17 @@ shell (the same process walk the agent probe uses) and reads claude's own sessio
 a second after launch and removes it on exit, so the mapping is exact — no guessing which file
 in a directory changed.
 
-The watch keeps running for as long as claude does, because resuming *from inside* claude (the
+The watch keeps running for as long as claude does, because resuming _from inside_ claude (the
 session picker, `/resume`) swaps the session id on the same process; the block follows it and
 ends up pointing at whatever was actually used. An explicit `--resume <id>` on the command line
 is taken straight from the command.
 
 **Why not the obvious alternatives.** The id is not in claude's environment and claude does not
 hold its transcript open, so a pid alone tells you nothing. Watching transcripts is worse still:
-one is only written on the first *user message*, so a session sitting at the prompt is invisible,
+one is only written on the first _user message_, so a session sitting at the prompt is invisible,
 and claude's startup touches an unrelated transcript in the same directory, which looks exactly
 like activity. Both cost real debugging before the registry turned up. Transcript watching
-survives only as a fallback for builds with no registry, and it requires the file to *grow*, not
+survives only as a fallback for builds with no registry, and it requires the file to _grow_, not
 merely change mtime.
 
 **Limits.** Remote blocks are skipped — the registry lives on the remote host. A session id whose

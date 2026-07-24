@@ -27,7 +27,7 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   push — all running over `wshremote`, so it works on the **local machine and remote SSH hosts**.
 - **Per-hunk stage / unstage** — stage or revert individual hunks straight from the diff, powered
   by `git apply --cached` (git does the splitting, so patches always apply cleanly).
-- **Multi-file review mode** — a *Review* action walks every changed file in one flow;
+- **Multi-file review mode** — a _Review_ action walks every changed file in one flow;
   <kbd>F7</kbd> / <kbd>Shift</kbd>+<kbd>F7</kbd> to jump between files, <kbd>Esc</kbd> to exit.
 - **Push authentication** — HTTPS push prompts for a username / token, stores it in Wave's
   **secret store** (host-keyed), and supplies it to git via a temporary `GIT_ASKPASS` helper —
@@ -55,12 +55,12 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 - **Config sync** — a last-writer-wins merge engine (`wsync`) that converges settings across
   machines over **WebDAV** or a credential-free **local-folder** mode (drop it in a Nextcloud /
-  Drive folder). Background scheduler, a *Sync now* action, and a native folder picker.
+  Drive folder). Background scheduler, a _Sync now_ action, and a native folder picker.
 - **Session save / load** — snapshot all windows, tabs and block layouts to the same sync
   transport and restore them on another machine — nested splits, sizes, focus and window
   positions survive exactly. Block locations travel machine-neutrally (named **path roots** +
   `~`-form paths), so a layout saved on Linux opens the right folders on Windows or macOS.
-- **Duplicate a tab** — right-click a tab → *Duplicate*: a copy opens immediately to its right
+- **Duplicate a tab** — right-click a tab → _Duplicate_: a copy opens immediately to its right
   with the same arrangement and the same block settings (cwd, connection, theme), and fresh
   shells. Nested splits survive intact.
 - **Folder bookmarks ("projects")** — bookmark folders and reach them from the Files view, the
@@ -69,6 +69,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   window is unfocused; plus an **agent-waiting** state that flags a tab as "waiting for you"
   across Claude, Gemini & Codex — driven by agent hooks (`wsh agentstate`) with a process-tree
   fallback, and sticky until you actually answer (an idle agent's TUI repaints can't clear it).
+- **Auto-updates from this fork's releases** — the built-in updater runs against this repo's
+  GitHub Releases on a dedicated `pj` channel: new fork versions download in the background and
+  install on restart (on Linux the app relaunches itself once the old instance is really gone).
+  A **`pj.N` badge** in the tab bar always shows which build you're on — click it for the full
+  version.
 
 ### 🎨 Make it yours
 
@@ -109,11 +114,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 Grab the latest build from **[Releases](https://github.com/petronijus/waveterm/releases)**.
 
-| Platform | Notes |
-| --- | --- |
+| Platform                | Notes                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **macOS** (arm64 / x64) | Signed with a development certificate but **not notarized** — on first launch, right-click the app → **Open**. |
-| **Linux** | `.deb`, `.AppImage`, and `.zip`. |
-| **Windows** | NSIS installer (per release). |
+| **Linux**               | `.deb`, `.AppImage`, and `.zip`.                                                                               |
+| **Windows**             | NSIS installer (per release).                                                                                  |
 
 Want to run this fork **side by side** with a stock Wave? Each release also ships a **Wave (Dev)**
 build with its own app identity and data directory — install both without conflict.

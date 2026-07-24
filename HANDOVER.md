@@ -58,18 +58,20 @@ Semver caveat (one-time): pj.1–pj.10 installs report a bare `0.14.5` and can n
 prereleases — every machine needs **one manual reinstall** of pj.11+; auto-update flows from
 there on.
 
-### Next up — per OS
+### Per-OS status (all pj.11 artifacts are on the release)
 
-- **Linux:** done (this machine runs the flow); prod `/opt/Wave` reinstalled from the pj.11
-  deb.
-- **macOS:** build from tag `v0.14.5-pj.11` and upload `Wave-darwin-*` + `pj-mac.yml` +
-  `latest-mac.yml` copy + `.blockmap`s to that release. Needs the Developer ID env
-  (`CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from
-  1Password) wired into the private release skill for a signed+notarized build. **Open
-  question:** confirm `APPLE_ID` value (likely the personal address) and add it as a `username`
-  field on the 1Password app-specific-password item.
-- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.11` and upload the
-  `.exe` with `pj.yml`, a `latest.yml` copy, and the `.blockmap` to that release.
+- **Linux:** done — built + e2e-verified on the desktop; prod `/opt/Wave` reinstalled from the
+  pj.11 deb.
+- **Windows:** done — built on the build VM (NSIS signed via the cert in the Windows store),
+  `.exe`/`.zip` + `pj.yml`/`latest.yml`/blockmap uploaded. Remaining: install pj.11 on the
+  actual Windows machines once (older installs can't see pj prereleases).
+- **macOS:** built on the build VM **signed with Developer ID** (arm64 + x64 dmg/zip +
+  `pj-mac.yml`/`latest-mac.yml`/blockmaps uploaded). The `errSecInternalComponent`
+  SSH-codesign failure is solved by importing the .p12 and running
+  `security set-key-partition-list -S apple-tool:,apple:` on the login keychain — no GUI
+  session needed. Remaining: **notarization** (needs the `APPLE_ID` e-mail confirmed and set
+  as `username` on the 1Password app-specific-password item; team is `ASFPR2T2DQ`, cert says
+  "Petr Parkan Janda") and a one-time pj.11 install on the real Macs.
 
 ## Manual session sync — Save/Load (as of 2026-06-24)
 
