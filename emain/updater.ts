@@ -1,6 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { spawn } from "child_process";
 import { dialog, ipcMain, Notification } from "electron";
 import { autoUpdater } from "electron-updater";
 import { readFileSync } from "fs";
@@ -210,6 +211,21 @@ export class Updater {
             this.status = "installing";
             await delay(1000);
             setUserConfirmedQuit(true);
+            const appImagePath = process.env.APPIMAGE;
+            if (process.platform === "linux" && appImagePath) {
+                // electron-updater's built-in AppImage restart spawns the new instance while
+                // this one still holds the Electron single-instance lock (and wavesrv's
+                // wave.lock flock is non-blocking), so the relaunched app dies at startup.
+                // Install without the built-in relaunch and hand the restart to a detached
+                // waiter that starts the new AppImage only once this process is gone.
+                spawn(
+                    "/bin/bash",
+                    ["-c", 'while kill -0 "$WAVE_PID" 2>/dev/null; do sleep 0.2; done; sleep 0.5; exec "$APPIMAGE"'],
+                    { detached: true, stdio: "ignore", env: { ...process.env, WAVE_PID: String(process.pid) } }
+                ).unref();
+                autoUpdater.quitAndInstall(true, false);
+                return;
+            }
             autoUpdater.quitAndInstall();
         }
     }
