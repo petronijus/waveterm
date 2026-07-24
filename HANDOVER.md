@@ -66,8 +66,8 @@ there on.
   1Password) wired into the private release skill for a signed+notarized build. **Open
   question:** confirm `APPLE_ID` value (likely the personal address) and add it as a `username`
   field on the 1Password app-specific-password item.
-- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.14` and upload the `.exe`
-  - `pj.yml` + `latest.yml` copy + `.blockmap` to that release.
+- **Windows:** unsigned NSIS auto-updates; build from tag `v0.14.5-pj.14` and upload the
+  `.exe` with `pj.yml`, a `latest.yml` copy, and the `.blockmap` to that release.
 
 ## Manual session sync — Save/Load (as of 2026-06-24)
 
