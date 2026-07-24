@@ -62,6 +62,18 @@ if (typeof require !== "undefined" && require.main === module) {
             case "1":
                 if (isPrerelease) newVersion = semver.inc(VERSION, "prerelease", null, "beta");
                 break;
+            case "pj": {
+                // Fork iteration on top of the upstream base it was cut from: base 0.14.5
+                // stays 0.14.5 and gains `-pj.N`. Note semver ranks `0.14.5-pj.N` BELOW a
+                // plain `0.14.5`, so a build that reports the bare base version will never
+                // be offered `-pj.N` as an update — that only ever affected the pre-pj.11
+                // builds, which all shipped reporting `0.14.5`, and they need a manual
+                // reinstall regardless (unsigned -> Developer ID signed).
+                const base = `${semver.major(VERSION)}.${semver.minor(VERSION)}.${semver.patch(VERSION)}`;
+                const pre = semver.prerelease(VERSION);
+                newVersion = pre && pre[0] === "pj" ? `${base}-pj.${Number(pre[1]) + 1}` : `${base}-pj.1`;
+                break;
+            }
             default:
                 throw new Error(`Unknown action ${action}`);
         }

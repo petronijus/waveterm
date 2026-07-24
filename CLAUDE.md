@@ -117,19 +117,61 @@ packaged build (`isDev()` gating). To show the apps launcher in a packaged build
 ## Releasing
 
 1. Ensure `release` is built and tested.
-2. Tag + create the GitHub release. **Not a pre-release** — GitHub only puts the "Latest"
+2. Bump the version — `task version -- pj` (`0.14.5-pj.10` → `-pj.11` → `-pj.12`, …). Commit it.
+   **The version must change every release or auto-update is a no-op**: electron-updater
+   compares `package.json` versions, never git tags, so ten releases all reading `0.14.5`
+   look identical to an installed app.
+3. Tag + create the GitHub release. **Not a pre-release** — GitHub only puts the "Latest"
    badge on a full release, so marking these as pre-releases left the badge stranded on an
    old version:
    `gh release create <tag> --target release --latest --title "…" --notes "…" --repo petronijus/waveterm`
-3. Build on each OS, then attach every artifact:
+4. Build on each OS, then attach every artifact:
    `gh release upload <tag> ./make/<artifact> --repo petronijus/waveterm`
+5. **Attach the update manifests and blockmaps** — without them the updater 404s and every
+   client reports "up to date" forever. Per OS, upload `./make/pj*.yml`, plus a copy renamed
+   to the `latest*` name, plus every `*.blockmap`:
+
+   | OS | built manifest | also upload as | why the copy |
+   |----|----------------|----------------|--------------|
+   | macOS | `pj-mac.yml` | `latest-mac.yml` | installs still on a non-prerelease version (`0.14.5` and earlier) run with `allowPrerelease=false` and only ever fetch `latest-*.yml` |
+   | Windows | `pj.yml` | `latest.yml` | same |
+   | Linux | `pj-linux.yml` | `latest-linux.yml` | same |
+
+   electron-builder will not generate the `latest*` copies itself: `generateUpdatesFilesForAllChannels`
+   is ignored for the GitHub provider (`app-builder-lib/out/publish/updateInfoBuilder.js:39`),
+   so the rename is manual. The blockmaps are what make updates download a delta instead of
+   the full ~200 MB.
 
 **Upload as its own step, not chained onto the build.** A dropped SSH connection to a build VM
 once killed electron-builder mid-write and produced a 474 KB "installer" instead of 158 MB.
 Before uploading, compare artifact sizes against the previous release — a truncated artifact is
 otherwise indistinguishable from a good one.
 
-Version comes from the upstream base (e.g. `0.14.5`); fork releases tag as `v<ver>-pj.<n>`.
+Fork releases keep the upstream base they were cut from and append the fork iteration:
+base `0.14.5` → `0.14.5-pj.11`, `0.14.5-pj.12`, … and the tag matches (`v0.14.5-pj.11`).
+The version in `package.json` now carries the `-pj.N` suffix too — before pj.11 it read a
+bare `0.14.5` on every release, which is why auto-update could never work.
+
+An upstream merge that lifts the base to `0.14.6` resets the counter: `0.14.6-pj.1`, which
+still sorts above every `0.14.5-pj.N`.
+
+One-time caveat, already spent: semver ranks `0.14.5-pj.N` *below* a plain `0.14.5`, so the
+pj.1–pj.10 builds (all reporting `0.14.5`) cannot auto-update to pj.11 and need a manual
+reinstall — which they need anyway, since they are unsigned and pj.11 onward is signed.
+
+The `pj` prerelease identifier doubles as the **update channel**, wired in
+`electron-builder.config.cjs` (`publish.channel`) — the tag's channel and the updater's
+channel have to agree or `GitHubProvider` matches no release at all.
+
+### macOS signing
+
+Release builds are signed with the **Developer ID Application** cert (Team `ASFPR2T2DQ`) and
+notarized; Squirrel.Mac refuses to install an update whose bundle isn't signed with the same
+identity as the running app, so an unsigned mac build can download an update but never apply
+it. Signing activates only when the env is present — `CSC_LINK`, `CSC_KEY_PASSWORD`,
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — so plain local builds are
+unaffected. Credentials live in 1Password; the release skill pulls them, they are never
+stored in this repo.
 
 ---
 

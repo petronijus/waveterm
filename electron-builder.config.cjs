@@ -5,6 +5,12 @@ const path = require("path");
 
 const windowsShouldSign = !!process.env.SM_CODE_SIGNING_CERT_SHA1_HASH;
 
+// pj fork: mac signing/notarization is opt-in via env so ordinary `task dev` / local
+// packaging keeps working with no Apple credentials. Squirrel.Mac refuses to apply an
+// update whose new bundle isn't signed with the same Developer ID as the running app,
+// so an unsigned build can download an update but never install it.
+const macShouldNotarize = !!process.env.APPLE_TEAM_ID && !!process.env.APPLE_ID;
+
 /**
  * @type {import('electron-builder').Configuration}
  * @see https://www.electron.build/configuration/configuration
@@ -57,6 +63,7 @@ const config = {
         ],
         category: "public.app-category.developer-tools",
         minimumSystemVersion: "10.15.0",
+        notarize: macShouldNotarize && { teamId: process.env.APPLE_TEAM_ID },
         mergeASARs: true,
         singleArchFiles: "**/dist/bin/wavesrv.*",
         entitlements: "build/entitlements.mac.plist",
@@ -123,10 +130,16 @@ const config = {
     // indicator / theme work). With the feed scoped to petronijus/waveterm the updater
     // can only ever offer fork builds — upstream changes still reach the fork through git
     // merges + a fork release, so we always run the fork and never revert to stock.
+    // The channel MUST match the `pj` prerelease identifier in the version. At runtime
+    // GitHubProvider re-derives the channel from the release TAG, and only accepts a
+    // release whose tag channel equals the updater's channel (or is alpha/beta). Leaving
+    // this unset bakes no channel into app-update.yml, the updater falls back to "latest",
+    // and every `-pj.N` tag then fails to match -> ERR_UPDATER_NO_PUBLISHED_VERSIONS.
     publish: {
         provider: "github",
         owner: "petronijus",
         repo: "waveterm",
+        channel: "pj",
     },
     afterPack: (context) => {
         // This is a workaround to restore file permissions to the wavesrv binaries on macOS after packaging the universal binary.

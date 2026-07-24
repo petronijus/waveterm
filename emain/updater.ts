@@ -26,7 +26,12 @@ function getUpdateChannel(settings: SettingsType): string {
 
     // If the user setting doesn't exist yet, set it to the value of the updater config.
     // If the user was previously on the `latest` channel and has downloaded a `beta` version, update their configured channel to `beta` to prevent downgrading.
-    if (!settingsChannel || (settingsChannel == "latest" && updaterChannel == "beta")) {
+    //
+    // pj fork: the binary's channel always wins. The fork ships a single `pj` channel, and
+    // installs predating it still carry `autoupdate:channel: "latest"` in their settings —
+    // a stale value that no longer matches any release tag, which would strand them with
+    // no updates at all. There is nothing to choose between, so honour the built binary.
+    if (!settingsChannel || settingsChannel != updaterChannel) {
         console.log("Update channel setting does not exist, setting to value from updater config.");
         RpcApi.SetConfigCommand(ElectronWshClient, { "autoupdate:channel": updaterChannel });
         retVal = updaterChannel;
