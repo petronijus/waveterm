@@ -30,8 +30,10 @@ export type BlockEnv = WaveEnvSubset<{
         ConnEnsureCommand: WaveEnv["rpc"]["ConnEnsureCommand"];
         ConnDisconnectCommand: WaveEnv["rpc"]["ConnDisconnectCommand"];
         ConnConnectCommand: WaveEnv["rpc"]["ConnConnectCommand"];
+        ConnStopAutoRetryCommand: WaveEnv["rpc"]["ConnStopAutoRetryCommand"];
         SetConnectionsConfigCommand: WaveEnv["rpc"]["SetConnectionsConfigCommand"];
         DismissWshFailCommand: WaveEnv["rpc"]["DismissWshFailCommand"];
+        JobControllerReconnectJobCommand: WaveEnv["rpc"]["JobControllerReconnectJobCommand"];
     };
     wos: WaveEnv["wos"];
     getConnStatusAtom: WaveEnv["getConnStatusAtom"];
