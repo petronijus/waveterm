@@ -71,7 +71,11 @@ git checkout feat/<task> && git rebase main
   popovers, workspace accent, and CPU/Mem graphs.
 - **Tab activity indicator** — shows in the tab when a terminal is _working_ (a long-running
   foreground command) vs _done_, generically — not tied to one specific tool. Built on the
-  existing tab badge system; detection via shell-integration / command lifecycle.
+  existing tab badge system; detection via shell-integration / command lifecycle. Long-running
+  dev servers (`shopify theme dev`, `vite`, `rails server`, `npm run dev`, Django/Laravel, … —
+  matched by command, seeing through `npx` / `bundle exec` / `poetry run` wrappers) leave the tab
+  clean instead of spinning forever: a running server is its normal state, not "work in progress".
+  AI agents still spin while working, and ordinary commands still spin until they finish.
 - **Native OS notifications** — fire a system notification when a long command (≥ a configurable
   threshold, default 30 s) finishes while the window is unfocused; clicking it focuses the window
   and switches to that tab. Bursts of finishes coalesce into one summary notification. Opt-in

@@ -48,7 +48,9 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   Tracked per block, so several terminals in one repo each keep their own, and it follows a
   resume done from inside claude. Nothing to configure on the Claude side.
 - **Tab activity indicator** — an output-driven "working" spinner and a "done" badge on tabs, so a
-  glance tells you which terminal is busy.
+  glance tells you which terminal is busy. Long-running dev servers (`shopify theme dev`, `vite`,
+  `rails server`, `npm run dev`, …) are recognized and leave the tab clean instead of spinning
+  forever — while AI agents keep spinning as they work.
 - **Badge rotation** — `wsh badge --rotation <deg>` spins a badge icon for animated status cues.
 
 ### 🔄 Cross-machine & workflow
