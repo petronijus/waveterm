@@ -92,10 +92,22 @@ var agentCommandRegexes = []struct {
 var envCmdPrefixRegex = regexp.MustCompile(`^env\s+`)
 var envVarPrefixRegex = regexp.MustCompile(`^(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*`)
 
+// Package-runner / exec wrappers that precede the real command. Stripping them lets
+// `npx vite`, `bundle exec rails s`, `poetry run uvicorn` classify by what they actually
+// run, so both agent and server detection see through the wrapper.
+var runnerPrefixRegex = regexp.MustCompile(`^(?:(?:npx|bunx)(?:\s+(?:-y|--yes))?|(?:pnpm|yarn|bun)\s+(?:exec|dlx)|bundle\s+exec|(?:poetry|pipenv|uv|pdm|rye|hatch)\s+run)\s+`)
+
 func normalizeCmd(cmd string) string {
 	s := strings.TrimSpace(cmd)
 	s = envCmdPrefixRegex.ReplaceAllString(s, "")
 	s = envVarPrefixRegex.ReplaceAllString(s, "")
+	for {
+		stripped := runnerPrefixRegex.ReplaceAllString(s, "")
+		if stripped == s {
+			break
+		}
+		s = stripped
+	}
 	return s
 }
 
@@ -110,6 +122,66 @@ func agentKindForCommand(cmd string) string {
 		}
 	}
 	return ""
+}
+
+// Long-running dev servers / file watchers: their normal state is "running forever" and
+// they never emit a command-done marker, so the working spinner would otherwise spin for
+// the entire life of the server. Detected by command (mirroring agentCommandRegexes) so a
+// running server leaves the tab indicator clean instead of pinning a perpetual spinner.
+// Agents and ordinary commands are unaffected.
+var serverCommandRegexes = []*regexp.Regexp{
+	// JS/TS: most projects wrap the dev server in a package.json script
+	regexp.MustCompile(`^(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|watch|preview|storybook)\b`),
+	// ...and the dev servers / watchers when invoked directly
+	regexp.MustCompile(`^vite\b`),
+	regexp.MustCompile(`^(next|nuxt|astro|remix|gatsby|docusaurus|redwood|blitz)\s+(dev|develop|start)\b`),
+	regexp.MustCompile(`^ng\s+serve\b`),
+	regexp.MustCompile(`^vue-cli-service\s+serve\b`),
+	regexp.MustCompile(`^(webpack-dev-server|webpack\s+serve)\b`),
+	regexp.MustCompile(`^parcel\s+(serve|watch)\b`),
+	regexp.MustCompile(`^(nodemon|ts-node-dev|pm2-dev)\b`),
+	regexp.MustCompile(`^tsx\s+watch\b`),
+	regexp.MustCompile(`^node\s+--watch\b`),
+	regexp.MustCompile(`^(http-server|live-server|json-server|browser-sync|serve)\b`),
+	regexp.MustCompile(`^(storybook\s+dev|start-storybook)\b`),
+	regexp.MustCompile(`^expo\s+start\b`),
+	regexp.MustCompile(`^deno\s+(task\s+(dev|start|serve|watch)|run\b.*--watch)`),
+	// cloud / dev-platform local emulators & tunnels
+	regexp.MustCompile(`^(wrangler|netlify|vercel|supabase|firebase|convex|encore)\s+(dev|serve|start|emulators)\b`),
+	regexp.MustCompile(`^shopify\s+(theme|app|hydrogen)\s+dev\b`),
+	// Python
+	regexp.MustCompile(`^python[0-9.]*\s+-m\s+(http\.server|uvicorn|flask|gunicorn)\b`),
+	regexp.MustCompile(`^(?:python[0-9.]*\s+|\./)?manage\.py\s+runserver\b`),
+	regexp.MustCompile(`^(uvicorn|gunicorn|hypercorn|daphne|granian)\b`),
+	regexp.MustCompile(`^flask\s+run\b`),
+	regexp.MustCompile(`^fastapi\s+(dev|run)\b`),
+	regexp.MustCompile(`^streamlit\s+run\b`),
+	// Ruby
+	regexp.MustCompile(`^rails\s+(server|s)\b`),
+	regexp.MustCompile(`^(puma|rackup|thin|unicorn)\b`),
+	regexp.MustCompile(`^foreman\s+start\b`),
+	regexp.MustCompile(`^(jekyll|hugo|mkdocs)\s+serve(r)?\b`),
+	// PHP
+	regexp.MustCompile(`^php\s+-S\b`),
+	regexp.MustCompile(`^php\s+artisan\s+serve\b`),
+	regexp.MustCompile(`^symfony\s+(server:start|serve)\b`),
+	// Go / infra
+	regexp.MustCompile(`^air\b`),
+	regexp.MustCompile(`^caddy\s+run\b`),
+	regexp.MustCompile(`^docker[- ]compose\s+up\b`),
+}
+
+func isServerCommand(cmd string) bool {
+	if cmd == "" {
+		return false
+	}
+	normalized := normalizeCmd(cmd)
+	for _, re := range serverCommandRegexes {
+		if re.MatchString(normalized) {
+			return true
+		}
+	}
+	return false
 }
 
 type termActivityTracker struct {
@@ -859,7 +931,11 @@ func publishActivityBadge(ev baseds.TermActivityData) {
 		// "thinking" = command still running but output paused — keep the spinner so a
 		// long command's indicator doesn't blink out when it goes quiet. pidlinked so
 		// focusing the running tab doesn't clear the live spinner (replaced on done/none).
-		badge = &baseds.Badge{BadgeId: badgeId, Icon: "spinner+spin", Color: "var(--accent-color)", Priority: activityBadgePriority, PidLinked: true}
+		// A long-running dev server is the exception: it never ends, so leave badge nil
+		// (clears any existing) and keep the tab clean rather than spinning forever.
+		if !isServerCommand(ev.Command) {
+			badge = &baseds.Badge{BadgeId: badgeId, Icon: "spinner+spin", Color: "var(--accent-color)", Priority: activityBadgePriority, PidLinked: true}
+		}
 	case termActivityWaiting:
 		badge = &baseds.Badge{BadgeId: badgeId, Icon: "comment-dots", Color: "#fbbf24", Priority: activityBadgePriority}
 	case termActivityDone:

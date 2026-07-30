@@ -200,6 +200,53 @@ func TestAgentKindForCommand(t *testing.T) {
 	}
 }
 
+func TestIsServerCommand(t *testing.T) {
+	cases := map[string]bool{
+		// direct dev servers
+		"shopify theme dev":           true,
+		"shopify app dev --tunnel":    true,
+		"npm run dev":                 true,
+		"yarn dev":                    true,
+		"pnpm start":                  true,
+		"bun run watch":               true,
+		"vite":                        true,
+		"vite --host":                 true,
+		"next dev":                    true,
+		"nodemon server.js":           true,
+		"rails server":                true,
+		"python3 -m http.server 8000": true,
+		"php artisan serve":           true,
+		"php -S localhost:8000":       true,
+		"streamlit run app.py":        true,
+		"wrangler dev":                true,
+		"docker compose up":           true,
+		"docker-compose up":           true,
+		`PORT=3000 npm run dev`:       true,
+		// through a package-runner / exec wrapper (normalizeCmd strips it)
+		"npx vite":                     true,
+		"bundle exec rails s":          true,
+		"poetry run uvicorn main:app":  true,
+		"python manage.py runserver":   true,
+		"./manage.py runserver":        true,
+		// not servers
+		"claude":               false,
+		"npm run build":        false,
+		"npm run test":         false,
+		"docker compose down":  false,
+		"deno task build":      false,
+		"parcel build":         false,
+		"go build ./...":       false,
+		"ls -la":               false,
+		"git status":           false,
+		"":                     false,
+	}
+	for in, want := range cases {
+		if got := isServerCommand(in); got != want {
+			t.Errorf("isServerCommand(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 // captureBadges runs the real state→badge mapping (publishActivityBadge) while
 // capturing the emitted badge events, so a test can assert the working spinner and
 // the done check/xmark are published. It bypasses the wps broker.
@@ -260,6 +307,34 @@ func TestTermActivity_BadgeSpinnerOnStartAndCheckOnDone(t *testing.T) {
 	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":1}\x07"))
 	if got := lastSetIcon(*badges); got != "circle-xmark" {
 		t.Fatalf("after failed command, last set badge icon = %q, want circle-xmark", got)
+	}
+}
+
+// TestTermActivity_ServerCommandNoBadge verifies a long-running dev server (detected by
+// command) shows no tab spinner — it would otherwise spin forever, since a server never
+// emits a command-done marker to clear it.
+func TestTermActivity_ServerCommandNoBadge(t *testing.T) {
+	badges := captureBadges(t)
+	blockId := "test-server-badge"
+	ResetTermActivity(blockId)
+
+	FeedTermActivity(blockId, cmdStartSeq("shopify theme dev"))
+	if got := lastSetIcon(*badges); got != "" {
+		t.Fatalf("server command should set no spinner badge; got icon %q; events=%+v", got, *badges)
+	}
+	if len(*badges) == 0 {
+		t.Fatalf("expected a clear badge event on server command start")
+	}
+	if last := (*badges)[len(*badges)-1]; last.Badge != nil {
+		t.Fatalf("server command last badge event should be a clear (Badge nil); got %+v", last)
+	}
+
+	// contrast: an ordinary command still spins
+	ResetTermActivity(blockId)
+	*badges = nil
+	FeedTermActivity(blockId, cmdStartSeq("ls"))
+	if got := lastSetIcon(*badges); got != "spinner+spin" {
+		t.Fatalf("ordinary command should spin; got %q", got)
 	}
 }
 
