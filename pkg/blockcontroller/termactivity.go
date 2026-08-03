@@ -199,6 +199,7 @@ type termActivityTracker struct {
 	running      bool
 	outputDriven bool // spinner came from raw output, not a shell-integration command start
 	startTs      time.Time
+	turnStartTs  time.Time // start of the current agent work burst (zero ⇒ none); bounds DurationMs for the silent turn-end "done"
 	visible      bool      // spinner currently "on"
 	everShown    bool      // spinner shown at least once this command
 	waiting      bool      // agent "your turn" state
@@ -396,6 +397,7 @@ func SetExternalAgentState(blockId string, state string, agent string) error {
 		t.stopIdleTimer()
 		t.waiting = true
 		t.visible = false
+		t.turnStartTs = time.Time{}
 		t.activeSince = time.Time{}
 		t.stretchBytes = 0
 		if agent != "" {
@@ -413,6 +415,7 @@ func SetExternalAgentState(blockId string, state string, agent string) error {
 		t.visible = false
 		t.everShown = false
 		t.outputDriven = false
+		t.turnStartTs = time.Time{}
 		t.activeSince = time.Time{}
 		t.stretchBytes = 0
 		if agent != "" {
@@ -623,6 +626,7 @@ func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.running = true
 	t.outputDriven = false
 	t.startTs = time.Now()
+	t.turnStartTs = time.Time{}
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -652,6 +656,7 @@ func (t *termActivityTracker) finishCommand(exitCode *int) {
 	}
 	t.running = false
 	t.outputDriven = false
+	t.turnStartTs = time.Time{}
 	t.stopIdleTimer()
 	// End the current output stretch so the marker's own bytes (and the prompt redraw
 	// that follows) don't immediately re-trip the spinner over the ✓ we're about to set.
@@ -691,6 +696,7 @@ func (t *termActivityTracker) cancelCommand() {
 	t.stopIdleTimer()
 	t.running = false
 	t.outputDriven = false
+	t.turnStartTs = time.Time{}
 	t.visible = false
 	t.everShown = false
 	t.waiting = false
@@ -726,6 +732,9 @@ func (t *termActivityTracker) markOutput(n int) {
 	if !t.visible && !t.waiting && now.Sub(t.activeSince) >= cmdActivitySustain {
 		t.visible = true
 		t.everShown = true
+		if t.running && t.agentKind != "" && t.turnStartTs.IsZero() {
+			t.turnStartTs = t.activeSince
+		}
 		if !t.running {
 			t.outputDriven = true // no command boundary; the idle timer will end it
 			if t.startTs.IsZero() {
@@ -784,6 +793,7 @@ func (t *termActivityTracker) markWaiting() {
 	t.stopIdleTimer()
 	t.waiting = true
 	t.visible = false
+	t.turnStartTs = time.Time{}
 	t.activeSince = time.Time{}
 	t.stretchBytes = 0
 	t.setState(termActivityWaiting)
@@ -796,9 +806,11 @@ func (t *termActivityTracker) armIdleTimer() {
 		t.idleTimer.Stop()
 	}
 	// Output-only activity waits out a longer quiet window before calling it "done" so an
-	// agent's mid-turn pauses don't flicker the spinner to a ✓ and back.
+	// agent's mid-turn pauses don't flicker the spinner to a ✓ and back. A tracked agent
+	// command gets the same longer window: its idle-fire resolves to "done" (see below),
+	// which must not trigger on a short mid-turn pause.
 	idleDur := cmdActivityIdle
-	if t.outputDriven {
+	if t.outputDriven || (t.running && t.agentKind != "") {
 		idleDur = cmdActivityDoneIdle
 	}
 	t.idleTimer = time.AfterFunc(idleDur, func() {
@@ -835,6 +847,33 @@ func (t *termActivityTracker) armIdleTimer() {
 				BlockId:    t.blockId,
 				State:      termActivityDone,
 				Visible:    true,
+				Command:    t.command,
+				DurationMs: durMs,
+			})
+		} else if t.running && t.agentKind != "" {
+			// A running agent that goes fully quiet has finished its turn: agent TUIs
+			// repaint continuously while they actually work (spinner animation, streaming),
+			// so prolonged true silence never means "still thinking". Without this, a setup
+			// where the agent's bell/OSC 9 never arrives and no agentstate hook is wired
+			// would park in "thinking" and pin the spinner for the life of the agent.
+			// The command stays running — a later bell still flips to waiting, and the
+			// real D marker on agent exit still finalizes with the true exit code.
+			t.dbg("idle-fire after %dms -> done (agent %q quiet — turn over, no bell/hook arrived)", idleDur.Milliseconds(), t.agentKind)
+			// Sticky waiting, same as the external-done path: the agent now idles at its
+			// prompt and its repaint dribble must not re-trip the spinner over the ✓.
+			t.waiting = true
+			t.everShown = false
+			durMs := int64(0)
+			if !t.turnStartTs.IsZero() {
+				durMs = time.Since(t.turnStartTs).Milliseconds()
+			}
+			t.turnStartTs = time.Time{}
+			t.curState = termActivityDone
+			t.outbox = append(t.outbox, baseds.TermActivityData{
+				BlockId:    t.blockId,
+				State:      termActivityDone,
+				Visible:    true,
+				AgentKind:  t.agentKind,
 				Command:    t.command,
 				DurationMs: durMs,
 			})

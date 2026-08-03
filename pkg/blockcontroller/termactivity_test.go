@@ -223,22 +223,22 @@ func TestIsServerCommand(t *testing.T) {
 		"docker-compose up":           true,
 		`PORT=3000 npm run dev`:       true,
 		// through a package-runner / exec wrapper (normalizeCmd strips it)
-		"npx vite":                     true,
-		"bundle exec rails s":          true,
-		"poetry run uvicorn main:app":  true,
-		"python manage.py runserver":   true,
-		"./manage.py runserver":        true,
+		"npx vite":                    true,
+		"bundle exec rails s":         true,
+		"poetry run uvicorn main:app": true,
+		"python manage.py runserver":  true,
+		"./manage.py runserver":       true,
 		// not servers
-		"claude":               false,
-		"npm run build":        false,
-		"npm run test":         false,
-		"docker compose down":  false,
-		"deno task build":      false,
-		"parcel build":         false,
-		"go build ./...":       false,
-		"ls -la":               false,
-		"git status":           false,
-		"":                     false,
+		"claude":              false,
+		"npm run build":       false,
+		"npm run test":        false,
+		"docker compose down": false,
+		"deno task build":     false,
+		"parcel build":        false,
+		"go build ./...":      false,
+		"ls -la":              false,
+		"git status":          false,
+		"":                    false,
 	}
 	for in, want := range cases {
 		if got := isServerCommand(in); got != want {
@@ -365,6 +365,94 @@ func TestTermActivity_OutputDrivenSpinner(t *testing.T) {
 	time.Sleep(cmdActivityDoneIdle + 400*time.Millisecond)
 	if !hasState(*events, termActivityDone) {
 		t.Fatalf("expected done (✓) after output went idle; got %+v", *events)
+	}
+}
+
+// TestTermActivity_AgentQuietResolvesDoneNotThinking verifies a tracked agent command
+// whose output stops (turn over, but no bell/OSC 9 and no agentstate hook ever arrives)
+// resolves to a visible "done" instead of parking in "thinking" — which maps to the
+// spinner badge and would otherwise spin for the life of the agent process.
+func TestTermActivity_AgentQuietResolvesDoneNotThinking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing-based; skipped in -short")
+	}
+	events := captureEvents(t)
+	blockId := "test-agent-quiet"
+	ResetTermActivity(blockId)
+	FeedTermActivity(blockId, cmdStartSeq("claude"))
+	// stream past the initial delay + sustain window so the spinner turns on
+	deadline := time.Now().Add(cmdActivityDelay + cmdActivitySustain + 500*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("agent streaming a turn...\n"))
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !hasState(*events, termActivityWorking) {
+		t.Fatalf("expected working during the agent turn; got %+v", *events)
+	}
+
+	// turn ends: full silence, no bell, no D marker (agent keeps running)
+	*events = nil
+	time.Sleep(cmdActivityDoneIdle + 500*time.Millisecond)
+	if hasState(*events, termActivityThinking) {
+		t.Fatalf("a quiet agent must not park in thinking (perpetual spinner); got %+v", *events)
+	}
+	var done *baseds.TermActivityData
+	for i := range *events {
+		if (*events)[i].State == termActivityDone {
+			done = &(*events)[i]
+		}
+	}
+	if done == nil || !done.Visible || done.AgentKind != "claude" {
+		t.Fatalf("expected visible done with agentkind claude after agent went quiet; got %+v", *events)
+	}
+	if done.DurationMs <= 0 {
+		t.Fatalf("expected the done event to carry the turn duration, got %d", done.DurationMs)
+	}
+	if running, _, agentKind := trackerSnapshot(blockId); !running || agentKind != "claude" {
+		t.Fatalf("agent is still running — tracker must keep running/agentKind, got running=%v agent=%q", running, agentKind)
+	}
+
+	// the idle prompt's repaint dribble must not re-trip the spinner over the ✓
+	*events = nil
+	deadline = time.Now().Add(cmdActivitySustain + 800*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("\x1b[2K\x1b[1G idle prompt repaint...\n"))
+		time.Sleep(50 * time.Millisecond)
+	}
+	if hasState(*events, termActivityWorking) {
+		t.Fatalf("post-turn idle dribble re-tripped the spinner; got %+v", *events)
+	}
+
+	// the eventual real D marker (agent exit) still finalizes with the exit code
+	FeedTermActivity(blockId, []byte("\x1b]16162;D;{\"exitcode\":0}\x07"))
+	if running, _, _ := trackerSnapshot(blockId); running {
+		t.Fatalf("expected not running after the agent's real D marker")
+	}
+}
+
+// TestTermActivity_NonAgentQuietStillThinking pins the contrast: an ordinary running
+// command (a build, a long test run) that pauses its output keeps the spinner via
+// "thinking" — only agents resolve silence to done.
+func TestTermActivity_NonAgentQuietStillThinking(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing-based; skipped in -short")
+	}
+	events := captureEvents(t)
+	blockId := "test-nonagent-quiet"
+	ResetTermActivity(blockId)
+	FeedTermActivity(blockId, cmdStartSeq("cargo build"))
+	deadline := time.Now().Add(cmdActivityDelay + cmdActivitySustain + 500*time.Millisecond)
+	for time.Now().Before(deadline) {
+		FeedTermActivity(blockId, []byte("compiling...\n"))
+		time.Sleep(50 * time.Millisecond)
+	}
+	*events = nil
+	time.Sleep(cmdActivityIdle + 500*time.Millisecond)
+	if hasState(*events, termActivityDone) {
+		t.Fatalf("a paused non-agent command must not emit done; got %+v", *events)
+	}
+	if !hasState(*events, termActivityThinking) {
+		t.Fatalf("expected thinking for a paused non-agent command; got %+v", *events)
 	}
 }
 

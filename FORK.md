@@ -155,7 +155,13 @@ git checkout feat/<task> && git rebase main
   the agent runs subagents or long tools. Silence is deliberately _not_ treated as waiting, and
   waiting is sticky against output (an idle agent TUI repaints continuously — no volume
   threshold separates that dribble from real work): only a deliberate keypress (text/Enter,
-  not arrow-browsing or the terminal's automatic escape replies) releases it.
+  not arrow-browsing or the terminal's automatic escape replies) releases it. Safety net for
+  setups where neither signal ever arrives (agent has no notif channel configured, no hooks
+  wired): a _running agent_ whose output stops entirely resolves to a ✓ "done" after the long
+  idle window instead of parking in "thinking" — agent TUIs repaint continuously while they
+  actually work, so prolonged true silence means the turn is over. Previously such an agent
+  pinned the tab spinner for the life of the process. Architecture doc:
+  `aiprompts/tab-activity-badges-notifications.md`.
 - **Terminal write batching** — streaming pty output (an agent thinking, a build log) coalesces
   into at most ~30 xterm flushes/s instead of a parse+repaint per chunk; a visible streaming
   terminal dropped from 36–40% renderer CPU (+ ~40% GPU) to ~13–15% (+ ~12%). The first chunk
