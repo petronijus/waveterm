@@ -1940,6 +1940,9 @@ declare global {
         agentkind?: string;
         command?: string;
         durationms?: number;
+        tabid?: string;
+        tabname?: string;
+        workspaceid?: string;
     };
 
     // waveobj.TermSize

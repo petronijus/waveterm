@@ -40,6 +40,7 @@ import {
     unamePlatform,
 } from "./emain-platform";
 import { ensureHotSpareTab, setMaxTabCacheSize } from "./emain-tabview";
+import { initTermActivityNotify } from "./emain-term-notify";
 import { getIsWaveSrvDead, getWaveSrvProc, getWaveSrvReady, runWaveSrv } from "./emain-wavesrv";
 import {
     createBrowserWindow,
@@ -406,6 +407,7 @@ async function appMain() {
         initElectronWshClient();
         initElectronWshrpc(ElectronWshClient, { authKey: AuthKey });
         initMenuEventSubscriptions();
+        initTermActivityNotify();
     } catch (e) {
         console.log("error initializing wshrpc", e);
     }

@@ -27,6 +27,7 @@ import {
 import { log } from "./emain-log";
 import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
 import { getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
+import { termNotifyWindowFocused } from "./emain-term-notify";
 import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
 import { updater } from "./updater";
@@ -296,6 +297,7 @@ export class WaveBrowserWindow extends BaseWindow {
             setWasInFg(true);
             setWasActive(true);
             this.broadcastWindowFocus(true);
+            termNotifyWindowFocused(this.waveWindowId);
             setTimeout(() => globalEvents.emit("windows-updated"), 50);
         });
         this.on("blur", () => {

@@ -136,7 +136,7 @@ export class TermWrap {
     agentKindAtom: jotai.PrimitiveAtom<string>; // which AI agent is running: "claude" | "gemini" | "codex" | null
     // The tab "working"/"done" activity indicator is now derived on the backend from
     // the PTY stream (so it works for background tabs whose view is unmounted) — see
-    // pkg/blockcontroller/termactivity.go and frontend/app/view/term/term-activity.ts.
+    // pkg/blockcontroller/termactivity.go and emain/emain-term-notify.ts.
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
     onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
