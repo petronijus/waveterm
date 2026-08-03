@@ -20,6 +20,7 @@ package blockcontroller
 // a presentation decision and stays in the frontend.
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -35,6 +36,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
+	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
 
 // Activity heuristic timings — must stay in sync with the documented behavior the
@@ -915,17 +917,39 @@ func (t *termActivityTracker) setState(state string) {
 
 // publishActivity is a package var so tests can capture emitted events instead of
 // routing them through the broker. Besides the Event_TermActivity stream (which the
-// frontend uses for focus-aware OS notifications), it sets the tab's working/done
-// badge straight from the backend so the indicator shows on every tab — active,
-// background, or not-yet-opened — without depending on a live renderer.
+// electron main process uses for focus-aware OS notifications), it sets the tab's
+// working/done badge straight from the backend so the indicator shows on every tab —
+// active, background, or not-yet-opened — without depending on a live renderer.
 var publishActivity = func(events []baseds.TermActivityData) {
 	for _, ev := range events {
+		enrichActivityRouting(&ev)
 		wps.Broker.Publish(wps.WaveEvent{
 			Event:  wps.Event_TermActivity,
 			Scopes: []string{waveobj.MakeORef(waveobj.OType_Block, ev.BlockId).String()},
 			Data:   ev,
 		})
 		publishActivityBadge(ev)
+	}
+}
+
+// enrichActivityRouting resolves the block's tab / workspace so the electron main
+// process can target the notification (focus gate + click-to-jump) without keeping
+// its own object store. Transitions are infrequent, so per-event DB lookups are fine.
+// Lookup failures (block mid-teardown) leave the fields empty — the notification
+// side degrades to an untargeted notification rather than failing.
+func enrichActivityRouting(ev *baseds.TermActivityData) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	tabId, err := wstore.DBFindTabForBlockId(ctx, ev.BlockId)
+	if err != nil || tabId == "" {
+		return
+	}
+	ev.TabId = tabId
+	if tab, err := wstore.DBGet[*waveobj.Tab](ctx, tabId); err == nil && tab != nil {
+		ev.TabName = tab.Name
+	}
+	if wsId, err := wstore.DBFindWorkspaceForTabId(ctx, tabId); err == nil {
+		ev.WorkspaceId = wsId
 	}
 }
 

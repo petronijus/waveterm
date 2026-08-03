@@ -139,9 +139,13 @@ export class WaveTabView extends WebContentsView {
             webPreferences: {
                 preload: path.join(getElectronAppBasePath(), "preload", "index.cjs"),
                 webviewTag: true,
-                // Keep background (off-screen) tab renderers running at full speed so they
-                // keep processing terminal-activity events — set their tab's working/done
-                // badge and fire OS notifications — instead of being throttled while hidden.
+                // Off at construction only so the detached hot-spare renderer boots at
+                // full speed (a detached view counts as hidden). positionTabOffScreen
+                // flips it back on the first time the tab goes to the background: badges
+                // are set by the backend and OS notifications fire from the main process
+                // (emain-term-notify.ts), so a background renderer no longer needs to run
+                // at full speed — throttling it (plus setVisible(false)) stops its
+                // animations, rAF loops, and webview guests from burning CPU.
                 backgroundThrottling: false,
             },
         });
@@ -249,6 +253,9 @@ export class WaveTabView extends WebContentsView {
     }
 
     positionTabOnScreen(winBounds: Rectangle) {
+        // setVisible must come before the bounds early-return: a re-activated tab was
+        // hidden by positionTabOffScreen and must be shown even if its bounds are stale.
+        this.setVisible(true);
         const curBounds = this.getBounds();
         if (
             curBounds.width == winBounds.width &&
@@ -262,6 +269,15 @@ export class WaveTabView extends WebContentsView {
     }
 
     positionTabOffScreen(winBounds: Rectangle) {
+        // Hide, don't just move: an attached off-screen view still counts as visible to
+        // Chromium (macOS occlusion detection is disabled), so without setVisible(false)
+        // the renderer would keep painting, animating, and running its webview guests at
+        // full speed forever. Hidden + throttled, its timers clamp and rAF stops; WPS
+        // websocket messages still arrive, so badge/jotai state stays current for the
+        // instant the tab is shown again. Bounds are still tracked so the layout is
+        // correct the moment the tab comes back.
+        this.setVisible(false);
+        this.webContents?.setBackgroundThrottling(true);
         this.setBounds({
             x: -15000,
             y: -15000,

@@ -32,26 +32,7 @@ export class ElectronWshClientType extends WshClient {
     }
 
     async handle_notify(rh: RpcResponseHelper, notificationOptions: WaveNotificationOptions) {
-        const notification = new Notification({
-            title: notificationOptions.title,
-            body: notificationOptions.body,
-            silent: notificationOptions.silent,
-        });
-        if (notificationOptions.windowid) {
-            notification.on("click", () => {
-                void (async () => {
-                    try {
-                        const ww = await focusWaveWindowById(notificationOptions.windowid);
-                        if (ww != null && notificationOptions.tabid) {
-                            await ww.setActiveTab(notificationOptions.tabid, true);
-                        }
-                    } catch (e) {
-                        console.log("error handling notification click", e);
-                    }
-                })();
-            });
-        }
-        notification.show();
+        showWaveNotification(notificationOptions);
     }
 
     async handle_getupdatechannel(rh: RpcResponseHelper): Promise<string> {
@@ -122,6 +103,32 @@ export class ElectronWshClientType extends WshClient {
     //         workspaceMenu.submenu = Menu.buildFromTemplate(updatedWorkspaceMenu);
     //     });
     // }
+}
+
+// Show an OS notification; clicking it focuses the target window (recreating it if
+// closed) and activates the target tab. Exported so main-process callers (e.g. the
+// terminal-activity notifier) share one display path with the "notify" RPC.
+export function showWaveNotification(notificationOptions: WaveNotificationOptions) {
+    const notification = new Notification({
+        title: notificationOptions.title,
+        body: notificationOptions.body,
+        silent: notificationOptions.silent,
+    });
+    if (notificationOptions.windowid) {
+        notification.on("click", () => {
+            void (async () => {
+                try {
+                    const ww = await focusWaveWindowById(notificationOptions.windowid);
+                    if (ww != null && notificationOptions.tabid) {
+                        await ww.setActiveTab(notificationOptions.tabid, true);
+                    }
+                } catch (e) {
+                    console.log("error handling notification click", e);
+                }
+            })();
+        });
+    }
+    notification.show();
 }
 
 // Focus the wave window with this id, recreating it if it has been closed. Returns the window.

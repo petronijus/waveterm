@@ -50,4 +50,10 @@ type TermActivityData struct {
 	AgentKind  string `json:"agentkind,omitempty"`  // which AI agent is running, if any
 	Command    string `json:"command,omitempty"`    // last command string (for notification body)
 	DurationMs int64  `json:"durationms,omitempty"` // command duration so far (for notification duration-gating)
+	// Routing info resolved at publish time so the electron main process can gate and
+	// target OS notifications without a renderer-side object store (background tab
+	// renderers are throttled and can't be relied on to fire notifications).
+	TabId       string `json:"tabid,omitempty"`
+	TabName     string `json:"tabname,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
 }

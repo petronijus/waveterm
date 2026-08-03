@@ -4,7 +4,6 @@
 import { App } from "@/app/app";
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
-import { initTermActivity } from "@/app/view/term/term-activity";
 import { GlobalModel } from "@/app/store/global-model";
 import {
     globalRefocus,
@@ -167,7 +166,6 @@ async function initWave(initOpts: WaveInitOpts) {
         await loadConnStatus();
         await loadBadges();
         initGlobalWaveEventSubs(initOpts);
-        initTermActivity();
         subscribeToConnEvents();
         if (isMacOS()) {
             const macOSVersion = await RpcApi.MacOSVersionCommand(TabRpcClient);
