@@ -87,6 +87,19 @@ git checkout feat/<task> && git rebase main
 - **Agent-waiting notification** — a distinct "waiting for you" tab state + OS notification when
   an AI agent needs input, generalized across Claude, Gemini & Codex via an OSC 9 signal. Always
   on (no toggle).
+- **Background tabs don't burn CPU** — background tab renderers used to be kept unthrottled so
+  they could badge their tab and fire notifications, which meant every cached tab (and its
+  webview guests — a backgrounded Jira tab, say) kept painting, animating and polling at full
+  speed forever; with many tabs open that was ~90 % CPU across renderers even at idle. Both
+  responsibilities moved off the renderers — badges were already backend-driven, and the
+  command-done / agent-waiting notifications now fire from the electron main process off the
+  backend activity stream (events carry tab/workspace routing; the focus gate uses the OS-truth
+  `BaseWindow.isFocused`) — so background tabs are now actually hidden and Chromium-throttled.
+  Measured: a terminal flooding output drops from ~17 % renderer CPU to under 1 % the moment its
+  tab goes to the background. Notifications now also work for tabs whose renderer was evicted
+  from the cache or whose workspace isn't shown in any window — cases the old renderer-side
+  path silently missed. A regression smoke suite guards the pipeline
+  (`node .kilocode/skills/run-desktop/smoke.mjs` — badges, throttling, notification gate).
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

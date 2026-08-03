@@ -103,6 +103,11 @@ task electron:quickdev # faster dev (native arch, no docsite/wsh rebuild)
 task package           # installer for the CURRENT OS → ./make
 ```
 
+**After every bigger feature, run the regression smoke suite** (badges, background-tab
+throttling, main-process notifications): build the dev app, then
+`node .kilocode/skills/run-desktop/smoke.mjs` — see the run-desktop skill for details.
+Extend the suite when a feature adds behavior worth guarding.
+
 `task package` builds **only for the OS it runs on**, so a full release is built per-OS:
 
 | OS          | how / notes                                                                                         | artifacts in `./make`                     |

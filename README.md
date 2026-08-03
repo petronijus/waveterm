@@ -93,6 +93,12 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 <br/>
 
+- **Background tabs cost (almost) nothing** — background tab renderers are now actually hidden
+  and Chromium-throttled instead of running at full speed off-screen: a flooding terminal drops
+  from ~17% renderer CPU to under 1% the moment its tab goes to the background, and webview-heavy
+  tabs (Jira, GitHub…) stop burning CPU entirely. Made possible by moving command-done /
+  agent-waiting notifications into the electron main process (badges were already backend-driven),
+  so nothing depends on a live background renderer anymore.
 - **Terminal write batching** — streaming output (an agent thinking, a build log) coalesces into
   ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
   adding any typing latency.
