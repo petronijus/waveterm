@@ -63,6 +63,11 @@ const config = {
         ],
         category: "public.app-category.developer-tools",
         minimumSystemVersion: "10.15.0",
+        // codesign defaults to plain-HTTP timestamp.apple.com, which transparent
+        // HTTP proxies (captive portals, train wifi) corrupt — "A timestamp was
+        // expected but was not found" kills the build hundreds of files in. The
+        // https endpoint bypasses the proxy and works everywhere.
+        timestamp: "https://timestamp.apple.com/ts01",
         notarize: macShouldNotarize && { teamId: process.env.APPLE_TEAM_ID },
         mergeASARs: true,
         singleArchFiles: "**/dist/bin/wavesrv.*",
