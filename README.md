@@ -50,7 +50,8 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Tab activity indicator** — an output-driven "working" spinner and a "done" badge on tabs, so a
   glance tells you which terminal is busy. Long-running dev servers (`shopify theme dev`, `vite`,
   `rails server`, `npm run dev`, …) are recognized and leave the tab clean instead of spinning
-  forever — while AI agents keep spinning as they work.
+  forever. AI agents spin while they work and flip to a ✓ the moment their turn ends — even in
+  setups where the agent never rings the terminal bell and no lifecycle hook is wired.
 - **Badge rotation** — `wsh badge --rotation <deg>` spins a badge icon for animated status cues.
 
 ### 🔄 Cross-machine & workflow
