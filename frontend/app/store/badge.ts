@@ -6,6 +6,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { fireAndForget, NullAtom } from "@/util/util";
 import { atom, Atom, PrimitiveAtom } from "jotai";
+import { selectAtom } from "jotai/utils";
 import { v7 as uuidv7, version as uuidVersion } from "uuid";
 import { globalStore } from "./jotaiStore";
 import * as WOS from "./wos";
@@ -124,7 +125,7 @@ function getTabBadgeAtom(tabId: string, env?: TabBadgesEnv): Atom<Badge[]> {
     const tabOref = WOS.makeORef("tab", tabId);
     const tabBadgeAtom = getBadgeAtom(tabOref);
     const tabAtom = env != null ? env.wos.getWaveObjectAtom<Tab>(tabOref) : WOS.getWaveObjectAtom<Tab>(tabOref);
-    rtn = atom((get) => {
+    const rawAtom = atom((get) => {
         const tab = get(tabAtom);
         const blockIds = tab?.blockids ?? [];
         const badges: Badge[] = [];
@@ -140,8 +141,23 @@ function getTabBadgeAtom(tabId: string, env?: TabBadgesEnv): Atom<Badge[]> {
         }
         return sortBadgesForTab(badges);
     });
+    // Every badge event recomputes this array in every renderer that shows a tab bar,
+    // and a fresh array reference re-renders the tab chip even when nothing changed.
+    // Badge objects are reference-stable per oref (each lives in its own PrimitiveAtom
+    // until replaced), so a shallow element compare is a correct equality here.
+    rtn = selectAtom(rawAtom, (v) => v, badgeArraysEqual);
     TabBadgeAtomCache.set(tabId, rtn);
     return rtn;
+}
+
+function badgeArraysEqual(a: Badge[], b: Badge[]): boolean {
+    if (a === b) {
+        return true;
+    }
+    if (a.length !== b.length) {
+        return false;
+    }
+    return a.every((badge, i) => badge === b[i]);
 }
 
 async function loadBadges(env?: LoadBadgesEnv) {
