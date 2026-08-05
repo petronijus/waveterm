@@ -20,6 +20,7 @@ declare global {
         hasConfigErrors: jotai.Atom<boolean>; // derived from fullConfig
         staticTabId: jotai.Atom<string>;
         isFullScreen: jotai.PrimitiveAtom<boolean>;
+        tabVisibleAtom: jotai.PrimitiveAtom<boolean>; // whether this renderer's tab is on screen (driven from emain positionTabOnScreen/OffScreen)
         zoomFactorAtom: jotai.PrimitiveAtom<number>;
         controlShiftDelayAtom: jotai.PrimitiveAtom<boolean>;
         prefersReducedMotionAtom: jotai.Atom<boolean>;
@@ -100,6 +101,7 @@ declare global {
         downloadFile: (path: string) => void; // download
         openExternal: (url: string) => void; // open-external
         onFullScreenChange: (callback: (isFullScreen: boolean) => void) => void; // fullscreen-change
+        onTabVisibilityChange: (callback: (visible: boolean) => void) => void; // tab-visibility-change
         onWindowFocusChange: (callback: (focused: boolean) => void) => void; // window-focus-change
         onZoomFactorChange: (callback: (zoomFactor: number) => void) => void; // zoom-factor-change
         onUpdaterStatusChange: (callback: (status: UpdaterStatus) => void) => void; // app-update-status

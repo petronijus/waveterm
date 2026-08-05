@@ -106,6 +106,71 @@ function computeBgColor(fullConfig: FullConfigType): string {
     }
 }
 
+// Electron's WebViewGuestDelegate lacks Chrome's GuestViewBase visibility plumbing:
+// nothing ever calls WasHidden() on a webview guest's RenderWidgetHost, so Chromium's
+// own background throttling can never engage for guests — no public API can hide the
+// widget (verified empirically: throttling flags set, embedder hidden, webview element
+// display:none — guest rAF keeps firing at full refresh rate). Electron instead fakes
+// document.visibilityState in the guest via an internal event we emit on tab switches
+// (notifyGuestsOfVisibility). This script — injected into the guest's MAIN world,
+// since guests force contextIsolation and a preload can't touch page globals —
+// emulates what Chromium would do with that signal: rAF callbacks are parked while
+// hidden (native behavior — browsers don't run rAF in hidden pages) and sub-second
+// timers are clamped to 1s (native throttling). Everything releases on re-show.
+// Deviation from native: an interval CREATED while hidden keeps its 1s floor after
+// re-show — acceptable, most polling intervals are >=1s anyway.
+const GuestBackgroundThrottlePolyfill = `
+(() => {
+    if (globalThis.__waveBgThrottleInstalled) {
+        return;
+    }
+    globalThis.__waveBgThrottleInstalled = true;
+    const origRaf = window.requestAnimationFrame.bind(window);
+    const origCancelRaf = window.cancelAnimationFrame.bind(window);
+    const origSetTimeout = window.setTimeout.bind(window);
+    const origSetInterval = window.setInterval.bind(window);
+    const hidden = () => document.visibilityState === "hidden";
+    let nextParkedId = -2;
+    const parked = new Map();
+    window.requestAnimationFrame = (cb) => {
+        if (!hidden()) {
+            return origRaf(cb);
+        }
+        const id = nextParkedId--;
+        parked.set(id, cb);
+        return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+        if (parked.delete(id)) {
+            return;
+        }
+        origCancelRaf(id);
+    };
+    window.setTimeout = (cb, delay, ...args) => {
+        if (hidden() && (delay ?? 0) < 1000) {
+            delay = 1000;
+        }
+        return origSetTimeout(cb, delay, ...args);
+    };
+    window.setInterval = (cb, delay, ...args) => {
+        if (hidden() && (delay ?? 0) < 1000) {
+            delay = 1000;
+        }
+        return origSetInterval(cb, delay, ...args);
+    };
+    document.addEventListener("visibilitychange", () => {
+        if (hidden()) {
+            return;
+        }
+        const cbs = [...parked.values()];
+        parked.clear();
+        for (const cb of cbs) {
+            origRaf(cb);
+        }
+    });
+})();
+`;
+
 const wcIdToWaveTabMap = new Map<number, WaveTabView>();
 
 export function getWaveTabViewByWebContentsId(webContentsId: number): WaveTabView {
@@ -119,6 +184,7 @@ export class WaveTabView extends WebContentsView {
     waveWindowId: string; // this will be set for any tabviews that are initialized. (unset for the hot spare)
     isActiveTab: boolean;
     attachedGuests: Set<Electron.WebContents> = new Set();
+    offscreenGen: number = 0;
     isWaveAIOpen: boolean;
     private _waveTabId: string; // always set, WaveTabViews are unique per tab
     lastUsedTs: number; // ts milliseconds
@@ -253,10 +319,33 @@ export class WaveTabView extends WebContentsView {
         }
     }
 
+    // Electron only tells webview guests about visibility when the embedder's
+    // *window* visibility changes: GuestViewManager listens for the internal
+    // "-window-visibility-change" event on the embedder webContents and forwards it
+    // to each guest (guest-view-manager.ts, verified against v41.1.0), which is what
+    // flips the guest's document.visibilityState. WebContentsView.setVisible() never
+    // emits it, so guests in hidden background tabs kept reporting "visible" and ran
+    // rAF/timers at full speed (measured 120/s rAF in a hidden tab's guest). Emitting
+    // the event ourselves drives Electron's own forwarding path; if a future Electron
+    // drops the internal event this becomes a harmless no-op emit.
+    notifyGuestsOfVisibility(state: "visible" | "hidden") {
+        if (this.webContents == null || this.webContents.isDestroyed()) {
+            return;
+        }
+        (this.webContents as any).emit("-window-visibility-change", state);
+    }
+
     positionTabOnScreen(winBounds: Rectangle) {
+        // Invalidates any pending deferred hide from positionTabOffScreen.
+        this.offscreenGen++;
         // setVisible must come before the bounds early-return: a re-activated tab was
         // hidden by positionTabOffScreen and must be shown even if its bounds are stale.
         this.setVisible(true);
+        this.notifyGuestsOfVisibility("visible");
+        // WebContentsView.setVisible never flips the page's document.visibilityState
+        // (macOS occlusion detection is off), so the renderer cannot see tab switches
+        // on its own — tell it explicitly (drives atoms.tabVisibleAtom).
+        this.webContents?.send("tab-visibility-change", true);
         const curBounds = this.getBounds();
         if (
             curBounds.width == winBounds.width &&
@@ -277,21 +366,44 @@ export class WaveTabView extends WebContentsView {
         // websocket messages still arrive, so badge/jotai state stays current for the
         // instant the tab is shown again. Bounds are still tracked so the layout is
         // correct the moment the tab comes back.
-        this.setVisible(false);
-        this.webContents?.setBackgroundThrottling(true);
-        // Re-assert throttling on guests here too: a page (or our own code via the
-        // webview webpreferences attribute) may have flipped it since attach.
-        for (const guest of this.attachedGuests) {
-            if (!guest.isDestroyed()) {
-                guest.setBackgroundThrottling(true);
-            }
-        }
+        //
+        // The hide happens in two phases. The renderer reacts to tab-visibility-change
+        // by display:none-ing its webviews, but the "child frame is hidden" signal only
+        // reaches the browser process through a compositor commit — and a page hidden
+        // by setVisible(false) never commits again. So: move off-screen immediately
+        // (the visual switch — same as before), let the still-unthrottled renderer
+        // commit the hidden webviews for ~2 frames, then hide + throttle everything.
+        // offscreenGen guards the deferred phase against a quick switch back.
+        this.webContents?.send("tab-visibility-change", false);
         this.setBounds({
             x: -15000,
             y: -15000,
             width: winBounds.width,
             height: winBounds.height,
         });
+        const gen = ++this.offscreenGen;
+        setTimeout(() => {
+            if (gen !== this.offscreenGen || this.isDestroyed) {
+                return;
+            }
+            // Throttling must be enabled BEFORE the view hides: Electron's
+            // disable_hidden patch short-circuits RenderWidgetHost::WasHidden while
+            // disable_hidden_ is set (it is, from the construction-time
+            // backgroundThrottling:false), so a hide-then-throttle order leaves the
+            // widget logically "shown" forever — timers clamp but rAF keeps running
+            // and the hidden state never propagates to inner (webview guest)
+            // WebContents.
+            this.webContents?.setBackgroundThrottling(true);
+            // Re-assert throttling on guests too: a page (or our own code via the
+            // webview webpreferences attribute) may have flipped it since attach.
+            for (const guest of this.attachedGuests) {
+                if (!guest.isDestroyed()) {
+                    guest.setBackgroundThrottling(true);
+                }
+            }
+            this.setVisible(false);
+            this.notifyGuestsOfVisibility("hidden");
+        }, 100);
     }
 
     isOnScreen() {
@@ -389,18 +501,30 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
     tabView.waveTabId = tabId;
     tabView.webContents.on("will-navigate", shNavHandler);
     tabView.webContents.on("will-frame-navigate", shFrameNavHandler);
+    // Webview guests inherit the embedder's backgroundThrottling:false construction
+    // pref, and Electron's disable_hidden patch bakes that flag into the guest's
+    // RenderWidgetHost at creation — a later setBackgroundThrottling(true) cannot undo
+    // it, the widget just never honors hidden state. will-attach-webview is the only
+    // hook that runs before the guest exists, so flip the pref there. Without this a
+    // guest in a hidden background tab keeps running its JS and submitting frames at
+    // full speed forever (measured ~19% CPU for an idle Jira board). Throttling only
+    // engages when the guest is actually hidden, and Chromium exempts audible pages,
+    // so visible webviews and background audio are unaffected.
+    tabView.webContents.on("will-attach-webview", (_event, webPreferences) => {
+        webPreferences.backgroundThrottling = true;
+    });
     tabView.webContents.on("did-attach-webview", (event, wc) => {
-        // Webview guests inherit the embedder's backgroundThrottling:false construction
-        // pref, so without this a guest in a hidden background tab keeps running its JS
-        // and submitting frames at full speed forever (measured ~19% CPU for an idle
-        // Jira board). Throttling only engages when the guest is actually hidden, and
-        // Chromium exempts audible pages, so visible webviews and background audio are
-        // unaffected.
         wc.setBackgroundThrottling(true);
         tabView.attachedGuests.add(wc);
         wc.once("destroyed", () => {
             tabView.attachedGuests.delete(wc);
         });
+        // Re-install per document — each navigation creates a fresh main world.
+        const installThrottlePolyfill = () => {
+            wc.executeJavaScript(GuestBackgroundThrottlePolyfill, true).catch(() => {});
+        };
+        installThrottlePolyfill();
+        wc.on("dom-ready", installThrottlePolyfill);
         wc.setWindowOpenHandler((details) => {
             if (wc == null || wc.isDestroyed() || tabView.webContents == null || tabView.webContents.isDestroyed()) {
                 return { action: "deny" };

@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("api", {
     getEnv: (varName) => ipcRenderer.sendSync("get-env", varName),
     onFullScreenChange: (callback) =>
         ipcRenderer.on("fullscreen-change", (_event, isFullScreen) => callback(isFullScreen)),
+    onTabVisibilityChange: (callback) =>
+        ipcRenderer.on("tab-visibility-change", (_event, visible) => callback(visible)),
     onWindowFocusChange: (callback) => ipcRenderer.on("window-focus-change", (_event, focused) => callback(focused)),
     onZoomFactorChange: (callback) =>
         ipcRenderer.on("zoom-factor-change", (_event, zoomFactor) => callback(zoomFactor)),

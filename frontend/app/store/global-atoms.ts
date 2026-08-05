@@ -33,6 +33,18 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         console.log("failed to initialize isFullScreenAtom", e);
     }
 
+    // WebContentsView.setVisible never flips document.visibilityState, so tab
+    // switches are invisible to the renderer without this explicit signal from
+    // emain (positionTabOnScreen/OffScreen).
+    const tabVisibleAtom = atom(true) as PrimitiveAtom<boolean>;
+    try {
+        getApi().onTabVisibilityChange((visible) => {
+            globalStore.set(tabVisibleAtom, visible);
+        });
+    } catch (e) {
+        console.log("failed to initialize tabVisibleAtom", e);
+    }
+
     const zoomFactorAtom = atom(1.0) as PrimitiveAtom<number>;
     try {
         globalStore.set(zoomFactorAtom, getApi().getZoomFactor());
@@ -150,6 +162,7 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         hasConfigErrors,
         staticTabId: staticTabIdAtom,
         isFullScreen: isFullScreenAtom,
+        tabVisibleAtom,
         zoomFactorAtom,
         controlShiftDelayAtom,
         updaterStatusAtom,

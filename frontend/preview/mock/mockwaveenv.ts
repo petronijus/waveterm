@@ -178,6 +178,7 @@ function makeMockGlobalAtoms(
         }),
         staticTabId: atom(tabId ?? ""),
         isFullScreen: atom(false) as any,
+        tabVisibleAtom: atom(true) as any,
         zoomFactorAtom: atom(1.0) as any,
         controlShiftDelayAtom: atom(false) as any,
         prefersReducedMotionAtom: atom(false),

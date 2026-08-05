@@ -15,7 +15,7 @@ import {
 } from "@/app/suggestion/suggestion";
 import { MockBoundary } from "@/app/waveenv/mockboundary";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { openLink } from "@/store/global";
+import { atoms, openLink } from "@/store/global";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
@@ -857,6 +857,25 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
     const metaPartition = useAtomValue(env.getBlockMetaKeyAtom(model.blockId, "web:partition"));
     const webPartition = partitionOverride || metaPartition || undefined;
     const userAgentType = useAtomValue(model.userAgentType) || "default";
+    const mediaPlaying = useAtomValue(model.mediaPlaying);
+    const tabVisible = useAtomValue(atoms.tabVisibleAtom);
+    const [docHidden, setDocHidden] = useState(document.hidden);
+    useEffect(() => {
+        const onVisibilityChange = () => setDocHidden(document.hidden);
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    }, []);
+    // display:none is the only lever that actually stops a guest's frame scheduler:
+    // Electron only fakes the guest's document.visibilityState on embedder hide (see
+    // emain-tabview notifyGuestsOfVisibility), while rAF and the compositor keep
+    // running at full speed. Hiding the <webview> marks the guest's remote frame
+    // hidden-for-painting, which stops BeginFrames and lets background throttling
+    // engage. tabVisibleAtom covers tab switches (which never touch
+    // document.visibilityState), document.hidden covers window hide. Skipped while
+    // media plays — audible pages are exempt from throttling anyway, and this keeps
+    // background audio/video untouched. display:none does not unload the guest; its
+    // page state survives untouched.
+    const suspendGuest = (!tabVisible || docHidden) && !mediaPlaying;
 
     // Determine user agent string based on type
     let userAgent: string | undefined = undefined;
@@ -1109,7 +1128,7 @@ const WebView = memo(({ model, onFailLoad, blockRef, initialSrc }: WebViewProps)
             <MockBoundary fallback={<WebViewPreviewFallback url={metaUrl} />}>
                 <webview
                     id="webview"
-                    className="webview"
+                    className={clsx("webview", suspendGuest && "!hidden")}
                     ref={model.webviewRef}
                     src={metaUrlInitial}
                     data-blockid={model.blockId}
