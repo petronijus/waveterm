@@ -100,6 +100,24 @@ git checkout feat/<task> && git rebase main
   from the cache or whose workspace isn't shown in any window — cases the old renderer-side
   path silently missed. A regression smoke suite guards the pipeline
   (`node .kilocode/skills/run-desktop/smoke.mjs` — badges, throttling, notification gate).
+  **Round 2 (pj.15)** closed what the first pass couldn't reach. Webview guest processes
+  escaped the throttling entirely — Electron has no way to hide a guest's render widget
+  (its guest delegate lacks Chrome's visibility plumbing), so a Jira board in a hidden tab
+  kept running at ~19 % CPU forever. Fixed in layers: guests are made throttleable before
+  they exist (`will-attach-webview`), tab switches now emit Electron's internal
+  window-visibility event so guests get a correct `document.visibilityState`, and a
+  main-world polyfill parks `requestAnimationFrame` and clamps sub-second timers while
+  hidden — emulating native background throttling exactly (measured: guest rAF 120/s → 0/s,
+  clean resume, audible pages exempt so background music keeps playing). Since
+  `document.visibilityState` never flips on tab switches (Electron shims it per-window),
+  a new `tab-visibility-change` IPC drives `atoms.tabVisibleAtom`; the git view's 2 s
+  status poll and the sysinfo plot rebuilds pause on it in background tabs and catch up
+  on re-show. The tab-bar working spinner — which a long-running agent session keeps
+  alive for hours — now animates at 6 steps/s instead of 60 (it was the main feeder of a
+  ~20 % GPU-process load), and the derived tab-badge atom got an equality check so badge
+  events stop re-rendering tab chips in every renderer. The smoke suite grew
+  webview-throttle + webview-resume checks, runs fully sandboxed (throwaway data dirs),
+  and defaults to a background mode that never steals focus.
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

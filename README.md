@@ -98,7 +98,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   from ~17% renderer CPU to under 1% the moment its tab goes to the background, and webview-heavy
   tabs (Jira, GitHub…) stop burning CPU entirely. Made possible by moving command-done /
   agent-waiting notifications into the electron main process (badges were already backend-driven),
-  so nothing depends on a live background renderer anymore.
+  so nothing depends on a live background renderer anymore. Webview guests — which Electron
+  cannot throttle at all natively — get an injected polyfill that parks `requestAnimationFrame`
+  and clamps timers while their tab is hidden (measured 120 rAF/s → 0), with audible pages
+  exempt so background music keeps playing; git status polling, sysinfo plot rebuilds, and the
+  tab-bar spinner's repaint rate are similarly gated.
 - **Terminal write batching** — streaming output (an agent thinking, a build log) coalesces into
   ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
   adding any typing latency.
