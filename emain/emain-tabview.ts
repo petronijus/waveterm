@@ -118,6 +118,7 @@ export function getWaveTabViewByWebContentsId(webContentsId: number): WaveTabVie
 export class WaveTabView extends WebContentsView {
     waveWindowId: string; // this will be set for any tabviews that are initialized. (unset for the hot spare)
     isActiveTab: boolean;
+    attachedGuests: Set<Electron.WebContents> = new Set();
     isWaveAIOpen: boolean;
     private _waveTabId: string; // always set, WaveTabViews are unique per tab
     lastUsedTs: number; // ts milliseconds
@@ -278,6 +279,13 @@ export class WaveTabView extends WebContentsView {
         // correct the moment the tab comes back.
         this.setVisible(false);
         this.webContents?.setBackgroundThrottling(true);
+        // Re-assert throttling on guests here too: a page (or our own code via the
+        // webview webpreferences attribute) may have flipped it since attach.
+        for (const guest of this.attachedGuests) {
+            if (!guest.isDestroyed()) {
+                guest.setBackgroundThrottling(true);
+            }
+        }
         this.setBounds({
             x: -15000,
             y: -15000,
@@ -382,6 +390,17 @@ export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: stri
     tabView.webContents.on("will-navigate", shNavHandler);
     tabView.webContents.on("will-frame-navigate", shFrameNavHandler);
     tabView.webContents.on("did-attach-webview", (event, wc) => {
+        // Webview guests inherit the embedder's backgroundThrottling:false construction
+        // pref, so without this a guest in a hidden background tab keeps running its JS
+        // and submitting frames at full speed forever (measured ~19% CPU for an idle
+        // Jira board). Throttling only engages when the guest is actually hidden, and
+        // Chromium exempts audible pages, so visible webviews and background audio are
+        // unaffected.
+        wc.setBackgroundThrottling(true);
+        tabView.attachedGuests.add(wc);
+        wc.once("destroyed", () => {
+            tabView.attachedGuests.delete(wc);
+        });
         wc.setWindowOpenHandler((details) => {
             if (wc == null || wc.isDestroyed() || tabView.webContents == null || tabView.webContents.isDestroyed()) {
                 return { action: "deny" };
