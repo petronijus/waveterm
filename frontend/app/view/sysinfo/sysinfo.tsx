@@ -429,6 +429,14 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
             eventType: "sysinfo",
             scope: connName,
             handler: (event) => {
+                // Hidden renderers still receive WPS events (websocket delivery is not
+                // throttled), and every dataAtom update rebuilds the full Plot.plot()
+                // SVG. Skip updates while hidden — the >2000ms gap check below then
+                // triggers loadInitialData() on the first event after re-show, so the
+                // plot catches up with full history automatically.
+                if (document.hidden) {
+                    return;
+                }
                 const loading = globalStore.get(model.loadingAtom);
                 if (loading) {
                     return;

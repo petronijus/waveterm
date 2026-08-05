@@ -108,6 +108,9 @@ export class GitViewModel implements ViewModel {
 
     disposed = false;
     cancelPoll: (() => void) | null = null;
+    wakePoll: (() => void) | null = null;
+    pollSkippedWhileHidden = false;
+    visibilityHandler: (() => void) | null = null;
     cwdUnsub: (() => void) | null = null;
     connStatusUnsub: (() => void) | null = null;
     lastResolvedCwd: string = null;
@@ -239,6 +242,19 @@ export class GitViewModel implements ViewModel {
                 fireAndForget(() => this.refreshAll());
             }
         });
+
+        // A hidden renderer (background tab) keeps its timers running at a clamped
+        // rate, and the actual `git status` runs backend-side in wavesrv — so without
+        // this gate every background git block keeps spawning subprocesses forever.
+        // The tick skips while hidden; on re-show, wake the sleeping loop for an
+        // immediate catch-up instead of waiting out the interval.
+        this.visibilityHandler = () => {
+            if (!document.hidden && this.pollSkippedWhileHidden) {
+                this.pollSkippedWhileHidden = false;
+                this.wakePoll?.();
+            }
+        };
+        document.addEventListener("visibilitychange", this.visibilityHandler);
 
         this.startPolling();
     }
@@ -412,18 +428,27 @@ export class GitViewModel implements ViewModel {
             while (!cancelled && !this.disposed) {
                 await new Promise<void>((resolve) => {
                     const timer = setTimeout(resolve, StatusPollIntervalMs);
+                    this.wakePoll = () => {
+                        clearTimeout(timer);
+                        resolve();
+                    };
                     this.cancelPoll = () => {
                         clearTimeout(timer);
                         cancelled = true;
                         resolve();
                     };
                 });
+                this.wakePoll = null;
                 if (cancelled || this.disposed) {
                     break;
                 }
                 this.cancelPoll = () => {
                     cancelled = true;
                 };
+                if (document.hidden) {
+                    this.pollSkippedWhileHidden = true;
+                    continue;
+                }
                 // the tick must never throw — an escaped rejection would end the while
                 // loop and silently kill auto-refresh for the lifetime of the block
                 try {
@@ -946,6 +971,10 @@ export class GitViewModel implements ViewModel {
 
     dispose() {
         this.disposed = true;
+        if (this.visibilityHandler) {
+            document.removeEventListener("visibilitychange", this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
         if (this.cwdUnsub) {
             this.cwdUnsub();
             this.cwdUnsub = null;
