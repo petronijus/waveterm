@@ -86,21 +86,29 @@ sequentially.)
 
 `smoke.mjs` (next to the driver) launches the built dev app once and verifies the
 pipeline end-to-end: app launch, backend-driven tab badges, background-tab CPU
-throttling, and the main-process command-done notification gate (SKIP when the
-window is focused, QUEUED→fire when the app is hidden). It temporarily adjusts the
-dev `settings.json` (notify threshold) and restores it, and exits non-zero on any
-failure:
+throttling, webview-guest throttling (rAF stops in a backgrounded tab's webview)
+plus guest resume after re-show, and the main-process command-done notification
+gate (SKIP when the window is focused, QUEUED→fire when the app is hidden). It
+exits non-zero on any failure:
 
 ```bash
 task build:backend:quickdev && npm run build:dev
 node .kilocode/skills/run-desktop/smoke.mjs
 ```
 
-The throttle and notify-fire checks are macOS-only (they need `top` sampling and
-`app.hide()`); on other platforms they report SKIP. The run leaves one extra tab
-with two terminal blocks in the dev workspace — close them by hand if you care.
-When adding a bigger feature, extend the suite with a check for it rather than
-writing a one-off test script.
+The run is fully sandboxed: fresh throwaway `WAVETERM_DATA_HOME`/`CONFIG_HOME`
+under a mkdtemp dir (removed afterwards), so nothing accumulates between runs and
+the user's `waveterm-dev` dirs are never touched. The fresh install shows the
+onboarding modal; the suite clicks through it.
+
+By default the suite runs in **background mode**: the app becomes a macOS
+accessory app (no dock icon, focus returns to the user) parked in a small corner
+window — it must stay rendered somewhere or the visible-baseline measurements
+would read zero. The focus-dependent notify-skip check reports SKIP in this mode;
+run with `SMOKE_FOREGROUND=1` on an idle machine to exercise it (it steals OS
+focus). The throttle and notify-fire checks are macOS-only (`top` sampling,
+`app.hide()`); elsewhere they report SKIP. When adding a bigger feature, extend
+the suite with a check for it rather than writing a one-off test script.
 
 ## Pointing a view at a specific directory
 

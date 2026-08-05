@@ -11,20 +11,23 @@
 //   2. badge         — a running command gets its backend-driven spinner badge in the tab bar
 //   3. throttle      — a tab flooding terminal output stops burning CPU once its tab
 //                      goes to the background (macOS only; needs `top`)
-//   4. notify-skip   — command-done is suppressed while the window is focused
-//   5. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
+//   4. webview-throttle — a webview guest process stops its rAF loop once its tab goes
+//                      to the background (guests don't inherit the embedder's throttling)
+//   5. notify-skip   — command-done is suppressed while the window is focused
+//   6. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
 //
 // Notes:
-//   - Uses the dev identity (waveterm-dev data/config dirs), same as the driver.
-//   - Temporarily sets notify:commanddone + a low threshold in the dev settings.json
-//     and restores the file afterwards.
-//   - Leaves behind one extra tab with two terminal blocks in the dev workspace —
-//     close them by hand if you care.
+//   - Runs in a throwaway sandbox (WAVETERM_DATA_HOME/WAVETERM_CONFIG_HOME under a
+//     mkdtemp dir, removed afterwards): every run starts from a fresh workspace, so
+//     no state accumulates between runs and the user's waveterm-dev dirs are never
+//     touched. The fresh install means the onboarding modal appears — the suite
+//     clicks through it.
 //   - Exit code 0 = all pass / skipped, 1 = any failure.
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -39,10 +42,11 @@ const IsMac = process.platform === "darwin";
 const electronBin = IsMac
     ? path.join(APP_DIR, "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron")
     : path.join(APP_DIR, "node_modules/electron/dist/electron");
-const DevLogPath = IsMac
-    ? path.join(os.homedir(), "Library/Application Support/waveterm-dev/waveapp.log")
-    : path.join(os.homedir(), ".local/share/waveterm-dev/waveapp.log");
-const DevSettingsPath = path.join(os.homedir(), ".config/waveterm-dev/settings.json");
+const SandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-smoke-"));
+const SandboxDataDir = path.join(SandboxDir, "data");
+const SandboxConfigDir = path.join(SandboxDir, "config");
+const DevLogPath = path.join(SandboxDataDir, "waveapp.log");
+const DevSettingsPath = path.join(SandboxConfigDir, "settings.json");
 
 const results = [];
 function report(name, ok, detail) {
@@ -100,22 +104,14 @@ function rendererCpuSum() {
     return { sum, detail: second.map((s) => s.trim()).join(" | ") };
 }
 
-// --- dev settings (set low notify threshold, restore afterwards)
-let settingsBackup = null;
+// --- sandbox settings (fresh dirs each run; the whole sandbox is removed at the end)
 function prepareSettings() {
-    settingsBackup = fs.existsSync(DevSettingsPath) ? fs.readFileSync(DevSettingsPath, "utf8") : null;
-    const cur = settingsBackup ? JSON.parse(settingsBackup) : {};
-    cur["notify:commanddone"] = true;
-    cur["notify:commanddonethresholdms"] = 1500;
-    fs.mkdirSync(path.dirname(DevSettingsPath), { recursive: true });
-    fs.writeFileSync(DevSettingsPath, JSON.stringify(cur, null, 2));
-}
-function restoreSettings() {
-    if (settingsBackup == null) {
-        fs.rmSync(DevSettingsPath, { force: true });
-    } else {
-        fs.writeFileSync(DevSettingsPath, settingsBackup);
-    }
+    fs.mkdirSync(SandboxDataDir, { recursive: true });
+    fs.mkdirSync(SandboxConfigDir, { recursive: true });
+    fs.writeFileSync(
+        DevSettingsPath,
+        JSON.stringify({ "notify:commanddone": true, "notify:commanddonethresholdms": 1500 }, null, 2)
+    );
 }
 
 // --- page helpers
@@ -133,11 +129,24 @@ async function clickWidget(page, label) {
 }
 
 async function runTerminalCommand(page, cmd) {
+    // Another block (a webview, an earlier flooding terminal) can hold keyboard
+    // focus — diff the block ids around the widget click and focus the NEW block's
+    // xterm textarea explicitly, so the typed command deterministically lands in
+    // the fresh terminal.
+    const blocksBefore = await page.evaluate(() =>
+        [...document.querySelectorAll("[data-blockid]")].map((e) => e.getAttribute("data-blockid"))
+    );
     const w = await clickWidget(page, "terminal");
     if (w !== "OK") {
         throw new Error("widget terminal not found");
     }
     await sleep(3000);
+    await page.evaluate((prev) => {
+        const fresh = [...document.querySelectorAll("[data-blockid]")].find(
+            (e) => !prev.includes(e.getAttribute("data-blockid")) && e.querySelector(".xterm-helper-textarea")
+        );
+        fresh?.querySelector(".xterm-helper-textarea")?.focus();
+    }, blocksBefore);
     await page.keyboard.type(cmd, { delay: 30 });
     await page.keyboard.press("Enter");
 }
@@ -150,6 +159,19 @@ if (!fs.existsSync(path.join(APP_DIR, "dist/frontend/index.html"))) {
 prepareSettings();
 markLog();
 
+// The webview-throttle check needs a page running a rAF loop. A data: URL gets
+// rewritten to a web search by the webview's URL handling, so serve the page from
+// a throwaway localhost server instead — self-contained, no network needed.
+const rafServer = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(
+        "<body style='background:#222;margin:0'><div id='c' style='font:64px monospace;color:#0f0;padding:40px'></div>" +
+            "<script>window.__raf=0;(function l(){window.__raf++;document.getElementById('c').textContent=window.__raf;requestAnimationFrame(l)})()</script>"
+    );
+});
+await new Promise((r) => rafServer.listen(0, "127.0.0.1", r));
+const rafUrl = `http://127.0.0.1:${rafServer.address().port}/`;
+
 let app = null;
 let failedHard = false;
 try {
@@ -159,6 +181,8 @@ try {
         cwd: APP_DIR,
         env: {
             ...process.env,
+            WAVETERM_DATA_HOME: SandboxDataDir,
+            WAVETERM_CONFIG_HOME: SandboxConfigDir,
             WAVETERM_NOCONFIRMQUIT: "1",
             WAVETERM_ENVFILE: path.join(APP_DIR, ".env"),
             WCLOUD_PING_ENDPOINT: "https://ping-dev.waveterm.dev/central",
@@ -185,8 +209,50 @@ try {
     if (!page) {
         throw new Error("no renderer window within 40s");
     }
+    // Background mode (default): don't disturb the user — the app becomes a macOS
+    // "accessory" app (no dock icon, no cmd-tab, focus returns to the user's app)
+    // parked in a small corner window. It keeps rendering there, which the visible-
+    // baseline measurements need — app.hide() would zero them. The focus-dependent
+    // notify-skip check needs SMOKE_FOREGROUND=1.
+    const Background = process.env.SMOKE_FOREGROUND !== "1";
+    if (Background) {
+        await app
+            .evaluate(({ app: eApp, BrowserWindow, screen }) => {
+                if (process.platform === "darwin") {
+                    eApp.dock?.hide();
+                    eApp.setActivationPolicy?.("accessory");
+                }
+                const wa = screen.getPrimaryDisplay().workArea;
+                for (const w of BrowserWindow.getAllWindows()) {
+                    w.setBounds({ x: wa.x + wa.width - 810, y: wa.y + wa.height - 610, width: 800, height: 600 });
+                    w.blur();
+                }
+            })
+            .catch(() => {});
+    }
     await sleep(6000);
-    report("launch", true, `${app.windows().length} window(s)`);
+    report("launch", true, `${app.windows().length} window(s)${Background ? " [background mode]" : ""}`);
+
+    // Fresh sandbox install → the onboarding modal is up. Click through its pages
+    // ("Continue" accepts the TOS, "Maybe Later" skips the GitHub-star page).
+    for (let i = 0; i < 8; i++) {
+        const clicked = await page.evaluate(() => {
+            const labels = ["Continue", "Maybe Later", "Get Started", "Done"];
+            const btns = [...document.querySelectorAll("button")];
+            for (const label of labels) {
+                const b = btns.find((el) => (el.textContent || "").trim() === label);
+                if (b) {
+                    b.click();
+                    return label;
+                }
+            }
+            return null;
+        });
+        if (!clicked) {
+            break;
+        }
+        await sleep(1500);
+    }
 
     // 2. badge: flood a fresh terminal, expect a spinner badge on a tab in the tab bar
     await runTerminalCommand(page, "while true; do date; done");
@@ -205,22 +271,89 @@ try {
     })();
     report("badge", badge, badge ? "spinner badge visible in tab bar" : "no spinner badge within 15s");
 
-    // 3. throttle: CPU with the flooding tab active vs hidden behind a fresh empty tab
-    if (IsMac) {
-        await sleep(4000);
-        const active = rendererCpuSum();
-        const added = await page.evaluate(() => {
-            const btn = document.querySelector("button[title='Add Tab']");
-            if (!btn) {
-                return "NOT_FOUND";
-            }
-            btn.click();
-            return "OK";
-        });
-        if (added !== "OK") {
-            report("throttle", false, "Add Tab button not found");
+    // webview guest setup (current tab, still visible): open a web block and point its
+    // webview at a self-contained rAF counter page, so step 4 can verify the guest
+    // process actually throttles when the tab goes to the background.
+    let wvReady = false;
+    {
+        const w = await clickWidget(page, "web");
+        if (w !== "OK") {
+            report("webview-throttle", false, "web widget not found");
         } else {
-            await sleep(12_000);
+            await sleep(6000);
+            const nav = await page.evaluate(async (url) => {
+                // The starter layout (or leftovers) can contain other webviews — load
+                // the counter page into the newest one; measurements select by URL.
+                const wvs = [...document.querySelectorAll("webview")];
+                if (!wvs.length) {
+                    return "NO_WEBVIEW";
+                }
+                const wv = wvs[wvs.length - 1];
+                let lastErr = null;
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        await wv.loadURL(url);
+                        return "OK";
+                    } catch (e) {
+                        lastErr = String(e?.message ?? e);
+                        await new Promise((r) => setTimeout(r, 2000));
+                    }
+                }
+                return `LOAD_FAILED: ${lastErr}`;
+            }, rafUrl);
+            wvReady = nav === "OK";
+            if (!wvReady) {
+                report("webview-throttle", false, `setup: ${nav}`);
+            }
+        }
+    }
+    function readGuestRaf() {
+        return page.evaluate((url) => {
+            const wv = [...document.querySelectorAll("webview")].find((w) => {
+                try {
+                    return w.getURL() === url;
+                } catch {
+                    return false;
+                }
+            });
+            if (!wv) {
+                throw new Error("raf webview not found");
+            }
+            return wv.executeJavaScript("window.__raf");
+        }, rafUrl);
+    }
+    async function guestRafRate(sampleMs) {
+        try {
+            const a = await readGuestRaf();
+            await sleep(sampleMs);
+            const b = await readGuestRaf();
+            return ((b - a) * 1000) / sampleMs;
+        } catch {
+            return -1;
+        }
+    }
+    const visRafRate = wvReady ? await guestRafRate(2000) : 0;
+
+    // 3./4. background the flooding tab (and the webview) behind a fresh empty tab;
+    // on macOS compare renderer CPU, everywhere compare the guest's rAF rate
+    await sleep(4000);
+    const active = IsMac ? rendererCpuSum() : null;
+    const added = await page.evaluate(() => {
+        const btn = document.querySelector("button[title='Add Tab']");
+        if (!btn) {
+            return "NOT_FOUND";
+        }
+        btn.click();
+        return "OK";
+    });
+    if (added !== "OK") {
+        report("throttle", false, "Add Tab button not found");
+        if (wvReady) {
+            report("webview-throttle", false, "could not background the tab");
+        }
+    } else {
+        await sleep(12_000);
+        if (IsMac) {
             const hidden = rendererCpuSum();
             const ok = hidden.sum < Math.max(15, active.sum * 0.5);
             report(
@@ -228,18 +361,123 @@ try {
                 ok,
                 `renderer CPU sum ${active.sum.toFixed(1)}% active → ${hidden.sum.toFixed(1)}% hidden (${hidden.detail})`
             );
+        } else {
+            report("throttle", null, "macOS-only (top sampling)");
         }
-    } else {
-        report("throttle", null, "macOS-only (top sampling)");
+        if (wvReady) {
+            const guestVis = await page
+                .evaluate((url) => {
+                    const wv = [...document.querySelectorAll("webview")].find((w) => {
+                        try {
+                            return w.getURL() === url;
+                        } catch {
+                            return false;
+                        }
+                    });
+                    return wv ? wv.executeJavaScript("document.visibilityState") : "not-found";
+                }, rafUrl)
+                .catch(() => "unknown");
+            const hidRafRate = await guestRafRate(3000);
+            const mainState = await app
+                .evaluate(({ webContents }, url) => {
+                    const guest = webContents.getAllWebContents().find((w) => {
+                        try {
+                            return w.getType() === "webview" && w.getURL() === url;
+                        } catch {
+                            return false;
+                        }
+                    });
+                    if (!guest) {
+                        return "guest=not-found";
+                    }
+                    const host = guest.hostWebContents;
+                    return `guestThrottling=${guest.getBackgroundThrottling()} embedderThrottling=${host?.getBackgroundThrottling()}`;
+                }, rafUrl)
+                .catch((e) => `main=? (${e.message})`);
+            const embedderState = await page
+                .evaluate((url) => {
+                    const wv = [...document.querySelectorAll("webview")].find((w) => {
+                        try {
+                            return w.getURL() === url;
+                        } catch {
+                            return false;
+                        }
+                    });
+                    return `embedderVis=${document.visibilityState} wvDisplay=${wv ? getComputedStyle(wv).display : "?"}`;
+                }, rafUrl)
+                .catch(() => "embedder=?");
+            const ok = visRafRate > 20 && hidRafRate >= 0 && hidRafRate < 5;
+            report(
+                "webview-throttle",
+                ok,
+                `guest rAF ${visRafRate.toFixed(0)}/s visible → ${hidRafRate.toFixed(0)}/s hidden (guest visibilityState=${guestVis}, ${embedderState}, ${mainState})`
+            );
+        }
     }
 
-    // 4. notify-skip: done while focused → main process logs SKIP
-    markLog();
-    await runTerminalCommand(page, "sleep 3 && echo SMOKE_SKIP");
-    const skip = await waitForLog(/\[term-notify\] done blk=\w+ SKIP \(window focused\)/, 20_000);
-    report("notify-skip", skip != null, skip ? skip[0].trim() : "no SKIP line within 20s");
+    // 4b. webview-resume: switch back to the first tab — the guest must come back to
+    // life (parked rAF callbacks release, compositing restores after display:none)
+    if (wvReady) {
+        const back = await page.evaluate(() => {
+            const chip = document.querySelector(".tab-bar [data-tab-id]");
+            if (!chip) {
+                return "NOT_FOUND";
+            }
+            chip.click();
+            return "OK";
+        });
+        if (back !== "OK") {
+            report("webview-resume", false, "first tab chip not found");
+        } else {
+            await sleep(3000);
+            const resumeRate = await guestRafRate(2000);
+            const shotDir = process.env.SCREENSHOT_DIR || "/tmp/shots";
+            fs.mkdirSync(shotDir, { recursive: true });
+            await page.screenshot({ path: path.join(shotDir, "webview-resume.png") }).catch(() => {});
+            report(
+                "webview-resume",
+                resumeRate > 20,
+                `guest rAF ${resumeRate.toFixed(0)}/s after re-show (screenshot: ${shotDir}/webview-resume.png)`
+            );
+        }
+    }
 
-    // 5. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
+    // 5. notify-skip: done while focused → main process logs SKIP. Needs the window
+    // to be OS-focused, which means stealing focus from the user — only done with
+    // SMOKE_FOREGROUND=1; in background mode the check reports SKIP.
+    markLog();
+    if (Background) {
+        report("notify-skip", null, "background mode (needs focus steal; run with SMOKE_FOREGROUND=1)");
+    } else {
+        await app.evaluate(({ app: eApp }) => eApp.focus({ steal: true }));
+        await sleep(500);
+        await runTerminalCommand(page, "sleep 3 && echo SMOKE_SKIP");
+        await app.evaluate(({ app: eApp }) => eApp.focus({ steal: true }));
+        const skip = await waitForLog(/\[term-notify\] done blk=\w+ SKIP \(window focused\)/, 20_000);
+        if (skip != null) {
+            report("notify-skip", true, skip[0].trim());
+        } else {
+            // On a desktop where the user is actively working, the app cannot hold OS
+            // focus, the done event QUEUEs instead of SKIPping, and the check cannot
+            // assert anything — report SKIP (not FAIL) in that case.
+            const focused = await app
+                .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isFocused()))
+                .catch(() => false);
+            const termNotifyLines =
+                logTail()
+                    .split("\n")
+                    .filter((l) => l.includes("[term-notify]"))
+                    .slice(-3)
+                    .join(" | ") || "(none)";
+            if (!focused) {
+                report("notify-skip", null, `window focus contended (user active elsewhere); ${termNotifyLines}`);
+            } else {
+                report("notify-skip", false, `no SKIP line within 20s; term-notify lines: ${termNotifyLines}`);
+            }
+        }
+    }
+
+    // 6. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
     if (IsMac) {
         markLog();
         await runTerminalCommand(page, "sleep 3 && echo SMOKE_FIRE");
@@ -264,7 +502,8 @@ try {
     } catch {
         /* already gone */
     }
-    restoreSettings();
+    rafServer.close();
+    fs.rmSync(SandboxDir, { recursive: true, force: true });
 }
 
 console.log("\n=== smoke summary ===");
