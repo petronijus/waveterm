@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { atoms } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { makeORef } from "@/app/store/wos";
 import * as util from "@/util/util";
@@ -431,10 +432,12 @@ function SysinfoView({ model, blockId }: SysinfoViewProps) {
             handler: (event) => {
                 // Hidden renderers still receive WPS events (websocket delivery is not
                 // throttled), and every dataAtom update rebuilds the full Plot.plot()
-                // SVG. Skip updates while hidden — the >2000ms gap check below then
-                // triggers loadInitialData() on the first event after re-show, so the
-                // plot catches up with full history automatically.
-                if (document.hidden) {
+                // SVG. Skip updates while hidden — tabVisibleAtom covers tab switches
+                // (document.visibilityState never flips for those), document.hidden
+                // covers window hide. The >2000ms gap check below then triggers
+                // loadInitialData() on the first event after re-show, so the plot
+                // catches up with full history automatically.
+                if (!globalStore.get(atoms.tabVisibleAtom) || document.hidden) {
                     return;
                 }
                 const loading = globalStore.get(model.loadingAtom);

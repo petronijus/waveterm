@@ -111,6 +111,7 @@ export class GitViewModel implements ViewModel {
     wakePoll: (() => void) | null = null;
     pollSkippedWhileHidden = false;
     visibilityHandler: (() => void) | null = null;
+    tabVisibleUnsub: (() => void) | null = null;
     cwdUnsub: (() => void) | null = null;
     connStatusUnsub: (() => void) | null = null;
     lastResolvedCwd: string = null;
@@ -246,15 +247,19 @@ export class GitViewModel implements ViewModel {
         // A hidden renderer (background tab) keeps its timers running at a clamped
         // rate, and the actual `git status` runs backend-side in wavesrv — so without
         // this gate every background git block keeps spawning subprocesses forever.
-        // The tick skips while hidden; on re-show, wake the sleeping loop for an
-        // immediate catch-up instead of waiting out the interval.
+        // Tab switches never touch document.visibilityState (WebContentsView
+        // setVisible doesn't flip it), so the gate combines atoms.tabVisibleAtom
+        // (tab switches, from emain) with document.hidden (window hide). The tick
+        // skips while hidden; on re-show, wake the sleeping loop for an immediate
+        // catch-up instead of waiting out the interval.
         this.visibilityHandler = () => {
-            if (!document.hidden && this.pollSkippedWhileHidden) {
+            if (this.rendererVisible() && this.pollSkippedWhileHidden) {
                 this.pollSkippedWhileHidden = false;
                 this.wakePoll?.();
             }
         };
         document.addEventListener("visibilitychange", this.visibilityHandler);
+        this.tabVisibleUnsub = globalStore.sub(atoms.tabVisibleAtom, this.visibilityHandler);
 
         this.startPolling();
     }
@@ -414,6 +419,10 @@ export class GitViewModel implements ViewModel {
         return `${status.branch} ${status.head} ${status.detached}`;
     }
 
+    rendererVisible(): boolean {
+        return globalStore.get(atoms.tabVisibleAtom) && !document.hidden;
+    }
+
     startPolling() {
         let cancelled = false;
         this.cancelPoll = () => {
@@ -445,7 +454,7 @@ export class GitViewModel implements ViewModel {
                 this.cancelPoll = () => {
                     cancelled = true;
                 };
-                if (document.hidden) {
+                if (!this.rendererVisible()) {
                     this.pollSkippedWhileHidden = true;
                     continue;
                 }
@@ -974,6 +983,10 @@ export class GitViewModel implements ViewModel {
         if (this.visibilityHandler) {
             document.removeEventListener("visibilitychange", this.visibilityHandler);
             this.visibilityHandler = null;
+        }
+        if (this.tabVisibleUnsub) {
+            this.tabVisibleUnsub();
+            this.tabVisibleUnsub = null;
         }
         if (this.cwdUnsub) {
             this.cwdUnsub();
