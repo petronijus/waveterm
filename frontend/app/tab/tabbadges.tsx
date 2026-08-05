@@ -13,7 +13,7 @@ export interface TabBadgesProps {
 }
 
 const DefaultClassName =
-    "pointer-events-none absolute left-[4px] top-1/2 z-[3] flex h-[20px] w-[20px] -translate-y-1/2 items-center justify-center px-[2px] py-[1px]";
+    "tab-badges pointer-events-none absolute left-[4px] top-1/2 z-[3] flex h-[20px] w-[20px] -translate-y-1/2 items-center justify-center px-[2px] py-[1px]";
 
 export function TabBadges({ badges, flagColor, className }: TabBadgesProps) {
     const flagBadgeId = useMemo(() => uuidv7(), []);

@@ -125,3 +125,11 @@ svg [aria-label="tip"] g path {
         opacity: 0;
     }
 }
+
+/* The tab-bar working badge can spin for hours (a long-running agent session keeps its
+   block in state=working), and fa-spin's continuous rotation forces a compositor frame
+   every vsync — measured as the main feeder of a ~20% GPU-process load. steps(12) keeps
+   the spinner readable at 12px while cutting repaints from 60/s to 6/s. */
+.tab-badges .fa-spin {
+    animation-timing-function: steps(12, end);
+}
