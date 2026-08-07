@@ -165,11 +165,18 @@ git checkout feat/<task> && git rebase main
   repo's GitHub Releases on a dedicated **`pj` channel**: fork versions are real semver
   prereleases (`0.14.5-pj.11`), the counter is **global** across upstream rebases
   (`0.14.5-pj.11` → `0.14.6-pj.12`, recovered from the `v*-pj.*` tags), a **`pj.N` badge** in
-  the tab bar shows the running build (click → About), and on Linux the post-update restart
-  waits for the old instance to fully exit before relaunching (fixes the silent
-  single-instance-lock death). Windows ships a signed NSIS build, macOS a Developer-ID-signed
-  build (notarization pending); per-OS `pj*.yml` + `latest*.yml` manifests are attached to every
-  release.
+  the tab bar shows the running build (click → About), and on Linux the post-update restart is
+  owned by the fork end to end: it waits for the old instance to fully exit before relaunching
+  (fixes the silent single-instance-lock death) and starts the new instance as a transient
+  `systemd --user` service. That second half is what makes `sudo` work inside Wave. Electron's
+  own relauncher starts the replacement through Chromium's `base::LaunchProcess`, which sets
+  `PR_SET_NO_NEW_PRIVS` on the child — a bit that can never be cleared in a running process and
+  is inherited by wavesrv, by every terminal under it and by everything those terminals run, so
+  every setuid binary broke from the first auto-update onward and stayed broken across later
+  ones. Only having the service manager fork the new process escapes it; a detached spawn
+  inherits the bit, and so does `systemd-run --scope`. Applies to deb/rpm/pacman as well as
+  AppImage. Windows ships a signed NSIS build, macOS a Developer-ID-signed and notarized build;
+  per-OS `pj*.yml` + `latest*.yml` manifests are attached to every release.
 - **Portable layout paths** — saved layouts store block locations (terminal cwd, preview file)
   machine-neutrally so a layout saved on one OS restores on another: paths under a named root
   from the machine-local `sync:pathroots` setting save as `${name}/rest` (e.g.

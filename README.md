@@ -112,6 +112,12 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Git panel auto-refresh** — explicit RPC timeouts plus a client-side settle timer keep the 2s
   status poll alive across sleep/wake and reconnects, with a toolbar warning when refresh fails;
   history gets an All | Branch switch showing only the current branch's own commits.
+- **`sudo` keeps working after an update (Linux)** — Electron's post-update relauncher starts the
+  new app through Chromium's process launcher, which stamps `PR_SET_NO_NEW_PRIVS` on it. The flag
+  is inherited by wavesrv, by every terminal below it and by everything those terminals run, and
+  it can never be cleared in a running process — so from the first auto-update on, `sudo` and
+  every other setuid binary failed in every Wave shell. The fork restarts itself as a transient
+  `systemd --user` service instead, the one launch method the flag does not survive.
 - **WPS broker** — user-input events are buffered so a password prompt fired during startup or a
   reconnect is never lost, and locked route-matching was split to remove a reentrant-lock deadlock.
 - **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling.
