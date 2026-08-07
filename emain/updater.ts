@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { dialog, ipcMain, Notification } from "electron";
 import { autoUpdater } from "electron-updater";
 import { readFileSync } from "fs";
@@ -16,6 +16,80 @@ import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 
 export let updater: Updater;
+
+const RelaunchSessionEnvVars = [
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_RUNTIME_DIR",
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "LANG",
+];
+
+// waits for the old instance to be gone before starting the new one -- $0 is a placeholder so
+// that the app's own arguments line up with "$@"
+const LinuxRelaunchScript =
+    'cd "$WAVE_RELAUNCH_CWD" 2>/dev/null; while kill -0 "$WAVE_RELAUNCH_PID" 2>/dev/null; do sleep 0.2; done; sleep 0.5; exec "$WAVE_RELAUNCH_EXEC" "$@"';
+
+/**
+ * Restarts the app on Linux after an update, bypassing Electron's own relauncher.
+ *
+ * Two independent problems make the built-in relaunch unusable:
+ *   - it starts the replacement while this process still holds the Electron single-instance lock
+ *     (wavesrv's wave.lock flock is non-blocking), so the new app dies during startup, and
+ *   - Chromium starts the replacement through base::LaunchProcess, which sets PR_SET_NO_NEW_PRIVS
+ *     on the child. wavesrv, every terminal below it, and everything those terminals run inherit
+ *     that bit, it can never be cleared in a running process, and it makes sudo (and any other
+ *     setuid binary) fail inside Wave until the app is next started from a clean parent.
+ *
+ * A transient `systemd --user` service is the only launch method that escapes an inherited
+ * no_new_privileges bit, because the service manager -- not this process -- forks the new app.
+ * Systems without systemd fall back to a detached shell, which is still correct as long as this
+ * process was itself started cleanly.
+ */
+function relaunchAfterLinuxInstall() {
+    const relaunchEnv: Record<string, string> = {
+        WAVE_RELAUNCH_PID: String(process.pid),
+        WAVE_RELAUNCH_EXEC: process.env.APPIMAGE ?? process.execPath,
+        WAVE_RELAUNCH_CWD: process.cwd(),
+    };
+    for (const varName of RelaunchSessionEnvVars) {
+        if (process.env[varName] != null) {
+            relaunchEnv[varName] = process.env[varName];
+        }
+    }
+    const appArgs = process.argv.slice(1);
+    const shellArgs = ["-c", LinuxRelaunchScript, "waveterm", ...appArgs];
+    const systemdResult = spawnSync(
+        "systemd-run",
+        [
+            "--user",
+            "--quiet",
+            "--collect",
+            `--unit=waveterm-relaunch-${process.pid}`,
+            ...Object.entries(relaunchEnv).map(([k, v]) => `--setenv=${k}=${v}`),
+            "--",
+            "/bin/bash",
+            ...shellArgs,
+        ],
+        { stdio: "ignore" }
+    );
+    if (systemdResult.status === 0) {
+        console.log("update relaunch handed to systemd --user");
+        return;
+    }
+    console.log(
+        "systemd-run relaunch failed, falling back to detached spawn",
+        systemdResult.error ?? systemdResult.status
+    );
+    spawn("/bin/bash", shellArgs, {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, ...relaunchEnv },
+    }).unref();
+}
 
 function getUpdateChannel(settings: SettingsType): string {
     const updaterConfigPath = path.join(process.resourcesPath!, "app-update.yml");
@@ -211,18 +285,10 @@ export class Updater {
             this.status = "installing";
             await delay(1000);
             setUserConfirmedQuit(true);
-            const appImagePath = process.env.APPIMAGE;
-            if (process.platform === "linux" && appImagePath) {
-                // electron-updater's built-in AppImage restart spawns the new instance while
-                // this one still holds the Electron single-instance lock (and wavesrv's
-                // wave.lock flock is non-blocking), so the relaunched app dies at startup.
-                // Install without the built-in relaunch and hand the restart to a detached
-                // waiter that starts the new AppImage only once this process is gone.
-                spawn(
-                    "/bin/bash",
-                    ["-c", 'while kill -0 "$WAVE_PID" 2>/dev/null; do sleep 0.2; done; sleep 0.5; exec "$APPIMAGE"'],
-                    { detached: true, stdio: "ignore", env: { ...process.env, WAVE_PID: String(process.pid) } }
-                ).unref();
+            if (process.platform === "linux") {
+                // isSilent=true suppresses electron-updater's own restart (see
+                // relaunchAfterLinuxInstall for why it must never run it)
+                relaunchAfterLinuxInstall();
                 autoUpdater.quitAndInstall(true, false);
                 return;
             }
