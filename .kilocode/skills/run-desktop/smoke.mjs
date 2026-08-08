@@ -8,13 +8,17 @@
 //
 // What it verifies (one app launch, sequential):
 //   1. launch        — the built app starts and a renderer window appears
-//   2. badge         — a running command gets its backend-driven spinner badge in the tab bar
-//   3. throttle      — a tab flooding terminal output stops burning CPU once its tab
+//   2. repaint-guard — the on-screen tab has background throttling enabled, so Chromium
+//                      records its hidden state and repaints after an OS-level unmap
+//                      (runs first: a tab that has been backgrounded once reads true
+//                      regardless, so a later check would not catch the regression)
+//   3. badge         — a running command gets its backend-driven spinner badge in the tab bar
+//   4. throttle      — a tab flooding terminal output stops burning CPU once its tab
 //                      goes to the background (macOS only; needs `top`)
-//   4. webview-throttle — a webview guest process stops its rAF loop once its tab goes
+//   5. webview-throttle — a webview guest process stops its rAF loop once its tab goes
 //                      to the background (guests don't inherit the embedder's throttling)
-//   5. notify-skip   — command-done is suppressed while the window is focused
-//   6. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
+//   6. notify-skip   — command-done is suppressed while the window is focused
+//   7. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
 //
 // Notes:
@@ -254,7 +258,67 @@ try {
         await sleep(1500);
     }
 
-    // 2. badge: flood a fresh terminal, expect a spinner badge on a tab in the tab bar
+    // 2. repaint-guard: the on-screen tab must have background throttling *enabled*
+    // (Electron's disable_hidden cleared). While it stays disabled, Chromium never
+    // records the widget's hidden state when the OS unmaps the window (minimize,
+    // workspace switch, screen blank/lock), WasShown() then early-returns without
+    // asking the renderer for a frame, and the tab sits at its #222222 background
+    // color until a tab switch changes its bounds. A screenshot cannot catch this —
+    // Playwright captures the renderer, not the browser compositor — so assert the
+    // invariant instead, plus a hide/show round trip that must leave the view visible.
+    //
+    // This has to run BEFORE any tab switch: positionTabOffScreen enables throttling
+    // on its way to the background, so a tab that has already been backgrounded once
+    // reads true either way and the check would pass against the unfixed code too.
+    {
+        // Wave windows are BaseWindow + WebContentsView, not BrowserWindow, so
+        // BrowserWindow.getAllWindows() comes back empty.
+        const readState = () =>
+            app.evaluate(({ BaseWindow }) => {
+                const win = BaseWindow.getAllWindows().find((w) => w.contentView?.children?.length > 0);
+                if (!win) {
+                    return { err: "no window" };
+                }
+                const onScreen = win.contentView.children.find((v) => {
+                    const b = v.getBounds();
+                    return b.x === 0 && b.y === 0 && b.width > 0;
+                });
+                if (!onScreen) {
+                    return { err: "no on-screen tab view" };
+                }
+                return {
+                    throttling: onScreen.webContents?.getBackgroundThrottling(),
+                    visible: onScreen.getVisible(),
+                };
+            });
+        const before = await readState().catch((e) => ({ err: e.message }));
+        if (before.err) {
+            report("repaint-guard", false, before.err);
+        } else if (Background) {
+            report(
+                "repaint-guard",
+                before.throttling === true,
+                `throttling=${before.throttling} visible=${before.visible} (hide/show round trip needs SMOKE_FOREGROUND=1)`
+            );
+        } else {
+            await app.evaluate(({ BaseWindow }) => {
+                const win = BaseWindow.getAllWindows().find((w) => w.contentView?.children?.length > 0);
+                win?.hide();
+                win?.show();
+            });
+            await sleep(1000);
+            const after = await readState().catch((e) => ({ err: e.message }));
+            const ok = before.throttling === true && !after.err && after.visible === true;
+            report(
+                "repaint-guard",
+                ok,
+                after.err ??
+                    `throttling=${before.throttling}, after hide/show: visible=${after.visible} throttling=${after.throttling}`
+            );
+        }
+    }
+
+    // 3. badge: flood a fresh terminal, expect a spinner badge on a tab in the tab bar
     await runTerminalCommand(page, "while true; do date; done");
     const badge = await (async () => {
         const end = Date.now() + 15_000;
@@ -334,7 +398,7 @@ try {
     }
     const visRafRate = wvReady ? await guestRafRate(2000) : 0;
 
-    // 3./4. background the flooding tab (and the webview) behind a fresh empty tab;
+    // 4./5. background the flooding tab (and the webview) behind a fresh empty tab;
     // on macOS compare renderer CPU, everywhere compare the guest's rAF rate
     await sleep(4000);
     const active = IsMac ? rendererCpuSum() : null;
@@ -415,7 +479,7 @@ try {
         }
     }
 
-    // 4b. webview-resume: switch back to the first tab — the guest must come back to
+    // 5b. webview-resume: switch back to the first tab — the guest must come back to
     // life (parked rAF callbacks release, compositing restores after display:none)
     if (wvReady) {
         const back = await page.evaluate(() => {
@@ -442,7 +506,7 @@ try {
         }
     }
 
-    // 5. notify-skip: done while focused → main process logs SKIP. Needs the window
+    // 6. notify-skip: done while focused → main process logs SKIP. Needs the window
     // to be OS-focused, which means stealing focus from the user — only done with
     // SMOKE_FOREGROUND=1; in background mode the check reports SKIP.
     markLog();
@@ -477,7 +541,7 @@ try {
         }
     }
 
-    // 6. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
+    // 7. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
     if (IsMac) {
         markLog();
         await runTerminalCommand(page, "sleep 3 && echo SMOKE_FIRE");

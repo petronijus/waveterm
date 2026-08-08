@@ -372,6 +372,15 @@ globalEvents.on("windows-updated", () => {
     makeAndSetAppMenu();
 });
 
+function repaintActiveTabs() {
+    for (const ww of getAllWaveWindows()) {
+        if (ww.isDestroyed()) {
+            continue;
+        }
+        ww.activeTabView?.forceRepaint();
+    }
+}
+
 async function appMain() {
     // Set disableHardwareAcceleration as early as possible, if required.
     const launchSettings = getLaunchSettings();
@@ -454,6 +463,13 @@ async function appMain() {
                 console.log("error calling NotifySystemResumeCommand", e);
             }
         });
+        repaintActiveTabs();
+    });
+    // Screen lock/blank never minimizes or hides the window, so neither "restore" nor
+    // "show" fires — but the compositor still drops the surface, which is exactly the
+    // case that left a tab stuck on its background color.
+    electron.powerMonitor.on("unlock-screen", () => {
+        repaintActiveTabs();
     });
     const rawGlobalHotKey = launchSettings?.["app:globalhotkey"];
     if (rawGlobalHotKey) {

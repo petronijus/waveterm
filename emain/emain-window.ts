@@ -284,6 +284,24 @@ export class WaveBrowserWindow extends BaseWindow {
             }
             this.activeTabView?.positionTabOnScreen(this.getContentBounds());
         });
+        // Coming back from an OS-level unmap (minimize, hide, workspace switch) can
+        // leave the active tab's compositor surface evicted with no repaint scheduled:
+        // nothing here changes the view's bounds, and positionTabOnScreen early-returns
+        // when they already match, so the tab would sit at its background color until
+        // the user switched tabs. WaveTabView.enableBackgroundThrottling is the actual
+        // fix; this is the belt-and-braces for a frame that still goes missing.
+        this.on("show", () => {
+            if (this.isDestroyed()) {
+                return;
+            }
+            this.activeTabView?.forceRepaint();
+        });
+        this.on("restore", () => {
+            if (this.isDestroyed()) {
+                return;
+            }
+            this.activeTabView?.forceRepaint();
+        });
         this.on("focus", () => {
             if (this.isDestroyed()) {
                 return;

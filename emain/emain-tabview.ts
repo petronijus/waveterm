@@ -185,6 +185,7 @@ export class WaveTabView extends WebContentsView {
     isActiveTab: boolean;
     attachedGuests: Set<Electron.WebContents> = new Set();
     offscreenGen: number = 0;
+    throttlingEnabled: boolean = false;
     isWaveAIOpen: boolean;
     private _waveTabId: string; // always set, WaveTabViews are unique per tab
     lastUsedTs: number; // ts milliseconds
@@ -335,9 +336,49 @@ export class WaveTabView extends WebContentsView {
         (this.webContents as any).emit("-window-visibility-change", state);
     }
 
+    // Clears Electron's disable_hidden flag, which the construction-time
+    // backgroundThrottling:false set on the RenderWidgetHost. That flag makes
+    // RenderWidgetHostImpl::WasHidden() a no-op, and a widget that never recorded a
+    // hide also early-returns out of WasShown() — while the browser side still evicts
+    // the compositor surface whenever the OS unmaps the window (minimize, workspace
+    // switch, screen blank/lock, occlusion by a fullscreen window). The renderer is
+    // then never asked for a new frame and the tab shows nothing but its #222222
+    // background color until something forces a repaint, which is why switching tabs
+    // (the only path that changes bounds) brought the UI back. backgroundThrottling is
+    // only needed off while the hot spare boots detached, so enable it for real as soon
+    // as the tab is on screen: Chromium throttles hidden pages only, so a visible tab
+    // is unaffected.
+    enableBackgroundThrottling() {
+        if (this.throttlingEnabled || this.webContents == null || this.webContents.isDestroyed()) {
+            return;
+        }
+        this.throttlingEnabled = true;
+        this.webContents.setBackgroundThrottling(true);
+    }
+
+    // Recovery for a view that is on screen but has no compositor frame. A hide/show
+    // cycle drives WasHidden/WasShown, which requests a fresh frame. Preferred over
+    // nudging the bounds: a bounds change would reflow every block and resize every
+    // terminal for what is a purely visual repair. Guests are deliberately not told
+    // about this momentary hide — their document.visibilityState should not churn.
+    forceRepaint() {
+        if (this.isDestroyed || !this.isOnScreen()) {
+            return;
+        }
+        this.enableBackgroundThrottling();
+        this.setVisible(false);
+        setTimeout(() => {
+            if (this.isDestroyed || !this.isOnScreen()) {
+                return;
+            }
+            this.setVisible(true);
+        }, 16);
+    }
+
     positionTabOnScreen(winBounds: Rectangle) {
         // Invalidates any pending deferred hide from positionTabOffScreen.
         this.offscreenGen++;
+        this.enableBackgroundThrottling();
         // setVisible must come before the bounds early-return: a re-activated tab was
         // hidden by positionTabOffScreen and must be shown even if its bounds are stale.
         this.setVisible(true);
@@ -393,7 +434,9 @@ export class WaveTabView extends WebContentsView {
             // widget logically "shown" forever — timers clamp but rAF keeps running
             // and the hidden state never propagates to inner (webview guest)
             // WebContents.
-            this.webContents?.setBackgroundThrottling(true);
+            // (positionTabOnScreen already enabled it — this covers a view that went to
+            // the background without ever having been on screen.)
+            this.enableBackgroundThrottling();
             // Re-assert throttling on guests too: a page (or our own code via the
             // webview webpreferences attribute) may have flipped it since attach.
             for (const guest of this.attachedGuests) {
