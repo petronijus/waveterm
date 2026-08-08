@@ -220,19 +220,26 @@ try {
     // notify-skip check needs SMOKE_FOREGROUND=1.
     const Background = process.env.SMOKE_FOREGROUND !== "1";
     if (Background) {
-        await app
-            .evaluate(({ app: eApp, BrowserWindow, screen }) => {
+        const parked = await app
+            .evaluate(({ app: eApp, BaseWindow, screen }) => {
                 if (process.platform === "darwin") {
                     eApp.dock?.hide();
                     eApp.setActivationPolicy?.("accessory");
                 }
                 const wa = screen.getPrimaryDisplay().workArea;
-                for (const w of BrowserWindow.getAllWindows()) {
+                // Wave windows are BaseWindow, not BrowserWindow — BrowserWindow.getAllWindows()
+                // returns nothing here, so this silently parked no window at all.
+                const wins = BaseWindow.getAllWindows();
+                for (const w of wins) {
                     w.setBounds({ x: wa.x + wa.width - 810, y: wa.y + wa.height - 610, width: 800, height: 600 });
                     w.blur();
                 }
+                return wins.length;
             })
-            .catch(() => {});
+            .catch((e) => `error: ${e.message}`);
+        if (typeof parked !== "number" || parked === 0) {
+            console.log(`WARN  background mode parked no window (${parked}) — the app may steal focus`);
+        }
     }
     await sleep(6000);
     report("launch", true, `${app.windows().length} window(s)${Background ? " [background mode]" : ""}`);
