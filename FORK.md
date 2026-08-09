@@ -118,6 +118,22 @@ git checkout feat/<task> && git rebase main
   events stop re-rendering tab chips in every renderer. The smoke suite grew
   webview-throttle + webview-resume checks, runs fully sandboxed (throwaway data dirs),
   and defaults to a background mode that never steals focus.
+  **Round 3 (pj.17)** removed the last remnant of the old always-unthrottled design, which
+  had been quietly causing a grey window. Tab views were still constructed with
+  `backgroundThrottling: false`, which sets Chromium's `disable_hidden_` flag and makes
+  `RenderWidgetHostImpl::WasHidden()` a no-op — and a widget that never recorded a hide also
+  early-returns out of `WasShown()`. The browser side still evicts the compositor surface
+  whenever the OS unmaps the window (minimize, workspace switch, screen blank/lock, occlusion
+  by a fullscreen window), so on the way back the renderer was never asked for a new frame and
+  the tab showed nothing but its `#222222` background until something forced a repaint —
+  which is why switching tabs, the only path that changes a view's bounds, brought the UI back.
+  The flag is only needed while a hot-spare tab boots detached, so throttling is now enabled for
+  real the moment a tab goes on screen (a visible tab is never throttled anyway). Belt and
+  braces on top: window `show`/`restore` and `powerMonitor`'s `unlock-screen`/`resume` drive a
+  `forceRepaint()` that cycles `setVisible` — chosen over nudging the bounds, which would reflow
+  every block and resize every terminal for a purely visual repair. The smoke suite guards it
+  with a check that has to run before any tab switch, since backgrounding a tab enables
+  throttling on its own and would mask the bug.
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

@@ -103,6 +103,13 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   and clamps timers while their tab is hidden (measured 120 rAF/s → 0), with audible pages
   exempt so background music keeps playing; git status polling, sysinfo plot rebuilds, and the
   tab-bar spinner's repaint rate are similarly gated.
+- **No more grey window** — coming back from a minimize, a workspace switch or a locked screen
+  could leave the active tab painted as a flat grey rectangle until you switched tabs. The
+  compositor surface gets evicted when the OS unmaps the window, and a leftover
+  `backgroundThrottling: false` on tab views suppressed the hide/show bookkeeping Chromium uses
+  to ask for a fresh frame — so nobody ever requested one. Throttling now switches on as soon as
+  a tab is on screen (visible tabs are never throttled anyway), and window `show`/`restore` plus
+  screen-unlock and system-resume force a repaint as a backstop.
 - **Terminal write batching** — streaming output (an agent thinking, a build log) coalesces into
   ≤30 renders/s, cutting a visible streaming terminal from ~40% to ~13% renderer CPU without
   adding any typing latency.
@@ -133,11 +140,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 Grab the latest build from **[Releases](https://github.com/petronijus/waveterm/releases)**.
 
-| Platform                | Notes                                                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **macOS** (arm64 / x64) | Signed (Developer ID) but **not notarized** — on first launch, right-click the app → **Open**. |
-| **Linux**               | `.deb`, `.AppImage`, and `.zip`.                                                                               |
-| **Windows**             | NSIS installer (per release).                                                                                  |
+| Platform                | Notes                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| **macOS** (arm64 / x64) | `.dmg` / `.zip`, signed with a Developer ID and notarized — opens normally, no right-click dance. |
+| **Linux**               | `.deb`, `.AppImage`, `.rpm`, and `.pacman`.                                                       |
+| **Windows**             | NSIS installer (`.exe`) plus a portable `.zip`.                                                   |
 
 Want to run this fork **side by side** with a stock Wave? Each release also ships a **Wave (Dev)**
 build with its own app identity and data directory — install both without conflict.
