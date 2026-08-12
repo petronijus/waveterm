@@ -395,6 +395,9 @@ type ConnRequest struct {
 	Host       string               `json:"host"`
 	Keywords   wconfig.ConnKeywords `json:"keywords,omitempty"`
 	LogBlockId string               `json:"logblockid,omitempty"`
+	// Force, when true, performs CloseInvoluntary then Connect if already
+	// connected/connecting. Preserves password cache (UX-1.3 stalled Reconnect Now).
+	Force bool `json:"force,omitempty"`
 }
 
 type RemoteInfo struct {
@@ -490,12 +493,17 @@ type ConnStatus struct {
 	ReconnectAttempt              int      `json:"reconnectattempt,omitempty"`
 	ReconnectNextAttempt          int64    `json:"reconnectnextattempt,omitempty"`
 	ReconnectError                string   `json:"reconnecterror,omitempty"`
+	ReconnectGaveUp               bool     `json:"reconnectgaveup,omitempty"`     // UX-1.1: scheduler exhausted retries
+	ReconnectStopReason           string   `json:"reconnectstopreason,omitempty"` // UX-1.1: "max-duration", "auth-failed", etc.
 	ForwardingRules               []string `json:"forwardingrules,omitempty"`
 	CanAutoReconnect              bool     `json:"canautoreconnect"` // true if scheduler can auto-reconnect without user input
 	// SuppressAutoReconnect is true after user Disconnect, Stop auto-retry,
 	// password Cancel, or permanent handshake failure. Auto paths no-op until
 	// explicit Reconnect (UX-0.1, UX-0.4, UX-0.5).
 	SuppressAutoReconnect bool `json:"suppressautoreconnect,omitempty"`
+	// AuthQueueWaiting is true while this connection is blocked on the per-window
+	// password prompt lock waiting for another conn to finish signing in (UX-1.6).
+	AuthQueueWaiting bool `json:"authqueuewaiting,omitempty"`
 }
 
 type WebSelectorOpts struct {
@@ -872,6 +880,10 @@ type CommandJobConnectRtnData struct {
 	ExitCode    *int   `json:"exitcode,omitempty"`
 	ExitSignal  string `json:"exitsignal,omitempty"`
 	ExitErr     string `json:"exiterr,omitempty"`
+	// UX-1.7: snapshot of remote StreamManager drain progress at PrepareConnect
+	DrainActive         bool  `json:"drainactive,omitempty"`
+	DrainTotalBytes     int64 `json:"draintotalbytes,omitempty"`
+	DrainRemainingBytes int64 `json:"drainremainingbytes,omitempty"`
 }
 
 type CommandJobCmdExitedData struct {
@@ -934,6 +946,10 @@ type BlockJobStatusData struct {
 	CmdExitTs     int64  `json:"cmdexitts,omitempty"`
 	CmdExitCode   *int   `json:"cmdexitcode,omitempty"`
 	CmdExitSignal string `json:"cmdexitsignal,omitempty"`
+	// UX-1.7: disk drain / catch-up progress after reconnect
+	DrainActive         bool  `json:"drainactive,omitempty"`
+	DrainTotalBytes     int64 `json:"draintotalbytes,omitempty"`
+	DrainRemainingBytes int64 `json:"drainremainingbytes,omitempty"`
 }
 
 type FocusedBlockData struct {
