@@ -140,6 +140,7 @@ declare global {
         saveTextFile: (fileName: string, content: string) => Promise<boolean>; // save-text-file
         selectDirectory: (defaultPath?: string) => Promise<string>; // select-directory
         setIsActive: () => Promise<void>; // set-is-active
+        onWaveResize: (callback: () => void) => void; // wave-resize
     };
 
     type ElectronContextMenuItem = {

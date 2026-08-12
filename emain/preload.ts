@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld("api", {
     saveTextFile: (fileName: string, content: string) => ipcRenderer.invoke("save-text-file", fileName, content),
     selectDirectory: (defaultPath?: string) => ipcRenderer.invoke("select-directory", defaultPath),
     setIsActive: () => ipcRenderer.invoke("set-is-active"),
+    onWaveResize: (callback) => ipcRenderer.on("wave-resize", (_event) => callback()),
 });
 
 // Custom event for "new-window"
