@@ -9,13 +9,13 @@ Update it on every backport round so the next one doesn't have to re-derive the 
 
 ## Sync pointers
 
-| What                                       | Value                                             |
-| ------------------------------------------ | ------------------------------------------------- |
-| Last reviewed commit on `remote-fork/main` | `6d6128e5` (2026-08-12)                           |
-| Last review date                           | 2026-08-16 (Round 4 reviewed, **not yet picked**) |
-| Last _landed_ round                        | Round 3, boundary `7ae1d393` (2026-07-19)         |
-| Previous review boundary                   | `72007f00` (2026-06-12)                           |
-| Upstream base of `release`                 | `a4447c15`, merged in `9480714f` (2026-08-16)     |
+| What                                       | Value                                         |
+| ------------------------------------------ | --------------------------------------------- |
+| Last reviewed commit on `remote-fork/main` | `6d6128e5` (2026-08-12)                       |
+| Last review date                           | 2026-08-16                                    |
+| Last _landed_ round                        | Round 4, boundary `6d6128e5` (2026-08-12)     |
+| Previous review boundary                   | `7ae1d393` (2026-07-19)                       |
+| Upstream base of `release`                 | `a4447c15`, merged in `9480714f` (2026-08-16) |
 
 ## Policy: SSH/auth is fork-first
 
@@ -47,7 +47,7 @@ also prepared to maintain the divergence.
 | `.pi/` (their specs/journal)                                            | Not carried. Drop on every pick.                                                                                                                                                                                                                                                                                     |
 | Their rename / rebrand to **RemoteTerm** (`673d1d72` and any successor) | **Permanent drop — never carried, never re-proposed.** Our identity is load-bearing: the `/opt/Wave` and `/opt/Wave (Dev)` install paths, the `waveterm` deb package name, the `pj` update channel and the `pj.N` version badge all key off it. Drop every rename hunk on sight; do not raise renaming as an option. |
 
-## Round 4 — proposed 2026-08-16 (reviewed, **not yet picked**)
+## Round 4 — 2026-08-16, reconnect UX waves (branch `feat/ssh-backport-4`)
 
 Boundary `7ae1d393` → `6d6128e5`, 73 commits on `remote-fork/main`, which reduce to
 **19 first-parent units**: 15 direct commits and 4 PR merges.
@@ -68,26 +68,28 @@ Decisions taken for this round:
   2026-08-16) is explicitly out of scope for this round, including `172c9652` (nil-pointer deref in
   failed `RemoteForward` cleanup) which touches port forwarding we do carry. Revisit in Round 5.
 
-### Pick list, in order
+### Pick list, as landed
 
-Status column is from a real dry run on a throwaway worktree cut from `release` `9480714f`
-(picks applied in this order, `.pi/` dropped before evaluating conflicts).
+Picked onto `feat/ssh-backport-4`, cut from `release` `9480714f`. All picks used `-x`, merges
+used `-m 1`. `.pi/` was dropped from every pick.
 
-| #   | Theirs     | Kind      | Subject                                                                           | Dry run                                           |
-| --- | ---------- | --------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 1   | `b6f7487a` | single    | reset xterm.js `_isPaused` on resume to restore rendering (Phase 2G)              | clean                                             |
-| 2   | `6f04028a` | single    | close previous stream reader on reconnect — output-loop goroutine leak (Phase 2H) | clean                                             |
-| 3   | `cf039928` | single    | **disk-backed stream history** + round 1–3 edge-case hardening                    | clean                                             |
-| 4   | `953a4961` | single    | round-4 review fixes for disk-backed stream history                               | clean                                             |
-| 5   | `402acb77` | single    | preserve cached password on involuntary disconnect (`CloseInvoluntary`)           | clean                                             |
-| 6   | `d519f484` | single    | visibility-driven reconnect on tab switch and app focus                           | **conflict**: `workspace.tsx`                     |
-| 7   | `98bbd632` | single    | serialize password prompts per-window (one at a time)                             | clean                                             |
-| 8   | `fd78d03a` | single    | scheduler bounds + early terminate on auth-failed / connection-refused            | clean                                             |
-| 9   | `8f9c0a67` | single    | test: `CloseInvoluntary` preserves cached password                                | clean                                             |
-| 10  | `0e284c8b` | merge #40 | **reconnect UX P0** (13 commits)                                                  | **conflict**: 12 files, 6 of them dropdown → drop |
-| 11  | `3752222a` | merge #41 | **reconnect UX P1** (3 commits)                                                   | **conflict**: `wshrpctypes.go`                    |
-| 12  | `e1437470` | merge #42 | **reconnect UX P2 / UX-2.x** (17 commits)                                         | **conflict**: `.gitignore`                        |
-| 13  | `6d6128e5` | merge #43 | background terminal resize + term-file corruption fix (3 commits)                 | clean                                             |
+| #   | Ours       | Theirs     | Kind      | Subject                                                                           |
+| --- | ---------- | ---------- | --------- | --------------------------------------------------------------------------------- |
+| 1   | `c5354b88` | `b6f7487a` | single    | reset xterm.js `_isPaused` on resume to restore rendering (Phase 2G)              |
+| 2   | `ede68594` | `6f04028a` | single    | close previous stream reader on reconnect — output-loop goroutine leak (Phase 2H) |
+| 3   | `49c4b074` | `cf039928` | single    | **disk-backed stream history** + round 1–3 edge-case hardening                    |
+| 4   | `354a5816` | `953a4961` | single    | round-4 review fixes for disk-backed stream history                               |
+| 5   | `b50d0611` | `402acb77` | single    | preserve cached password on involuntary disconnect (`CloseInvoluntary`)           |
+| 6   | `838c7ac2` | `d519f484` | single    | visibility-driven reconnect on tab switch and app focus                           |
+| 7   | `a52bb776` | `98bbd632` | single    | serialize password prompts per-window (one at a time)                             |
+| 8   | `d181b3dc` | `fd78d03a` | single    | scheduler bounds + early terminate on auth-failed / connection-refused            |
+| 9   | `50d5ebca` | `8f9c0a67` | single    | test: `CloseInvoluntary` preserves cached password                                |
+| 10  | `ef97fbb3` | `0e284c8b` | merge #40 | **reconnect UX P0** (13 commits)                                                  |
+| 11  | `3dc72e55` | `3752222a` | merge #41 | **reconnect UX P1** (3 commits)                                                   |
+| 12  | `fd4a7be5` | `e1437470` | merge #42 | **reconnect UX P2 / UX-2.x** (17 commits)                                         |
+| 13  | `daf64cdc` | `6d6128e5` | merge #43 | background terminal resize + term-file corruption fix (3 commits)                 |
+| 14  | `64178815` | —          | fork      | regenerate wshrpc bindings (`task generate`)                                      |
+| 15  | `d3b5280c` | —          | fork      | wire `tabData` in workspace, `ConnStatus` mocks, drop orphan dropdown test        |
 
 What the three UX waves contain:
 
@@ -129,37 +131,57 @@ across a reconnect — worth having on its own for durable shells.
 | `AGENTS.md`, `.github/workflows/build-macos-ci.yml`, their `.gitignore` hunks | their repo furniture                                                                                                                                                                                                                                                            |
 | `673d1d72` (rename to RemoteTerm)                                             | **permanent drop** — see the exceptions table above                                                                                                                                                                                                                             |
 
-### Conflict map
+### Conflict resolutions
 
-Files where `release` has diverged from `upstream/main` **and** a pick touches them. Most divergence
-is there because we already carry their code from Round 3, so those should merge in their favour per
-the fork-first rule. The genuinely ours-vs-theirs cases are marked.
+Every conflict and how it was settled. Ten of thirteen picks needed hand work in at least one file.
 
-| File                                                                                                                                                                                                 | Divergence      | Note                                                                                                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontend/app/workspace/workspace.tsx`                                                                                                                                                               | +22/−1 **ours** | only conflict among picks 1–9; our own workspace wiring                                                                                                               |
-| `pkg/remote/conncontroller/conncontroller.go`                                                                                                                                                        | +1032/−82       | ours = their Round 3 stack; conflict in #40 comes from the skipped dropdown commit's hunks                                                                            |
-| `pkg/wshrpc/wshrpctypes.go`                                                                                                                                                                          | +83/−14         | #41 conflict; regenerate afterwards                                                                                                                                   |
-| `pkg/wconfig/settingsconfig.go`, `pkg/wcore/workspace.go`, `frontend/app/block/blockenv.ts`, `frontend/app/store/keymodel.ts`                                                                        | mixed           | #40 conflicts, small                                                                                                                                                  |
-| `emain/emain.ts` (+18), `emain/emain-window.ts` (+45), `frontend/app/view/term/termwrap.ts` (+276/−24), `frontend/app/view/term/term.tsx` (+68/−17), `pkg/blockcontroller/blockcontroller.go` (+152) | **ours**        | our background throttling / window-unmap repaint / write batching. **Did not conflict in the dry run** — good news, but re-verify, these are the ones that would hurt |
+| Pick | File                                      | Resolution                                                                                                                                                                                                                                                               |
+| ---- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 6    | `frontend/app/workspace/workspace.tsx`    | Took theirs. They **moved** `TabUserInputPromptOverlay` from `tabcontent.tsx` to workspace level (their `271be5e9` = our Round 3 `91247def`, where the move was not carried). Removed our duplicate render + now-dead import from `tabcontent.tsx` so it renders once.   |
+| 10   | `conncontroller.go` hunk 1                | Took their sticky-suppress block and their `errorSubCode` naming; kept **our** `isContextError`, retargeted our telemetry's `ConnSubErrorCode` to `errorSubCode`.                                                                                                        |
+| 10   | `conncontroller.go` hunk 4                | Kept **both** — our `conn:connect` telemetry _and_ their `conn:authpromptused` persist.                                                                                                                                                                                  |
+| 10   | `conncontroller.go` hunk 5 + `SSHConn`    | Took theirs; had to re-add the `ConnectCount int64` struct field and `ConnectCount: connectCount` literal, which arrive only via the skipped dropdown commit but are referenced by #40 code that merged clean.                                                           |
+| 10   | `pkg/wconfig/settingsconfig.go`           | Merged: our stall fields + their `ConnConnectCount`, `ConnLastConnectTime`, `ConnAuthPromptUsed`.                                                                                                                                                                        |
+| 10   | `pkg/wcore/workspace.go`                  | Kept our telemetry; dropped their `RecordConnectionUsage(connName)` call and its import — their `CreateTab` has an extra `connName` parameter that only the dropdown adds. **`RecordConnectionUsage` is therefore never called in our tree and `ConnectCount` stays 0.** |
+| 10   | `frontend/app/block/blockenv.ts`          | Kept our `ActivityCommand`; their `ConnStopAutoRetryCommand` / `JobControllerReconnectJobCommand` additions merged clean.                                                                                                                                                |
+| 10   | `frontend/app/store/keymodel.ts`          | Kept ours (`createTab()`); their `Cmd:t` change toggles the dropdown.                                                                                                                                                                                                    |
+| 10   | `conntypeahead.tsx`, `typeaheadmodal.tsx` | Kept ours wholesale. Their `conntypeahead.tsx` imports `conn-suggestions`, which we drop; `typeaheadmodal.tsx` only gains a `showFilter` prop that nothing in our tree would pass.                                                                                       |
+| 10   | `conncontroller_test.go`                  | Took theirs (both hunks are pure additions).                                                                                                                                                                                                                             |
+| 11   | `pkg/wshrpc/wshrpctypes.go`               | Dropped the whole 122-line block — it is their **Git/SCM types** (`CommandGitStatusData` … `CommandGitSaveCredentialsData`), a feature we do not carry.                                                                                                                  |
+| 11   | `conncontroller.go`                       | Took theirs — UX-1.4 "Incorrect password — please try again." prompt copy.                                                                                                                                                                                               |
+| 12   | `.gitignore`, `keymodel.ts`               | Kept ours both times: their repo furniture, and our `recordTEvent` import.                                                                                                                                                                                               |
 
-Caveat on the dry run: conflicts were auto-resolved by taking their side so the chain could continue,
-so "clean" for a later pick means "applied without textual conflict on that base", not "verified
-correct". Nothing was kept — the worktree and its `tmp/round4-dryrun` branch were deleted.
+Two fork-local follow-ups were needed and are commit `d3b5280c`:
 
-### After the picks
+- `workspace.tsx` had no `tabData` — added the `tabOref`/`tabAtom`/`tabData` hooks their tree already
+  had. Missing these was a genuine breakage introduced by the pick-6 resolution, caught by `tsc`.
+- `ConnStatus` gained `connectcount` / `lastconnecttime`, so `makeDefaultConnStatus` in
+  `frontend/app/store/global.ts` had to set them; and `connectiondropdown.test.ts` arrived with #40
+  importing a module we drop, so it was deleted.
 
-1. `task generate` — `wshrpctypes.go` changes in #40/#41/#42, so `frontend/types/gotypes.d.ts` and
-   `pkg/wshrpc/wshclient/wshclient.go` must be regenerated, never hand-edited.
-2. `tsc --noEmit` must stay at the **16-error baseline**, all in `frontend/preview/**` mocks
-   (confirmed still exactly 16 on `release` `9480714f` after the upstream merge). `go vet ./pkg/... ./cmd/...` clean.
-3. `go test -race -count=1` for `jobcontroller`, `jobmanager`, `remote`, `conncontroller`, `wps`,
-   `userinput`, `streamclient`, `blockcontroller`. `TestTermActivity_OutputDrivenSpinner` is a known
-   pre-existing failure — see the Round 3 notes.
-4. Regression smoke suite: `node .kilocode/skills/run-desktop/smoke.mjs`.
-5. **Live SSH password login test.** Still the outstanding gap carried over from Round 3 — the auth
-   stack has never been exercised against a real password login here, and this round doubles down on
-   it. Do not release Round 4 without it.
+`emain/emain.ts`, `emain/emain-window.ts`, `termwrap.ts`, `term.tsx` and `blockcontroller.go` — our
+own background throttling, window-unmap repaint and write batching — **did not conflict at all**.
+
+### Verification
+
+| Check                        | Result                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `go vet ./pkg/... ./cmd/...` | clean                                                                                                                                |
+| `tsc --noEmit`               | **16 errors = baseline**, all in `frontend/preview/**` mocks                                                                         |
+| `go test -race -count=1`     | `jobcontroller`, `jobmanager`, `remote`, `conncontroller`, `connparse`, `userinput`, `streamclient` — all **ok**                     |
+| `blockcontroller`            | 3 failures: `TestTermActivity_OutputDrivenSpinner`, `_AgentQuietResolvesDoneNotThinking`, `_NonAgentQuietStillThinking`              |
+| ↳ baseline check             | **identical 3 failures on clean `release` `9480714f`** — pre-existing, unrelated to this round (Round 3 notes listed only the first) |
+
+Still outstanding before this ships:
+
+1. Regression smoke suite: `node .kilocode/skills/run-desktop/smoke.mjs`.
+2. **Live SSH password login test.** Still the gap carried over from Round 3 — the auth stack has
+   never been exercised against a real password login here, and this round doubles down on it.
+3. **Their 5s `SendData` timeout leaks a goroutine per timed-out send** (`mainserverconn.go`
+   `routedDataSender.SendData` — the `go func()` stays blocked in `StreamDataCommand`). Their own
+   spec acknowledges it and estimates ~500 goroutines/sec of output during a disconnect for a
+   fast-output process; the suggested cap/context-cancel mitigation is **not implemented**. Worth our
+   own test before trusting it under `dd`-class output.
 
 ## Round 3 — 2026-07-20, fork-first migration (branch `feat/ssh-fork-first`)
 
