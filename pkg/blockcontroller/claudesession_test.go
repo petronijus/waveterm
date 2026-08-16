@@ -254,3 +254,82 @@ func TestReadClaudeSessionRegistryRejectsGarbage(t *testing.T) {
 		}
 	}
 }
+
+func resetClaudeWatchState(t *testing.T) {
+	t.Helper()
+	reset := func() {
+		claudeWatchLock.Lock()
+		claudeWatchActive = make(map[string]bool)
+		claudeWatchLock.Unlock()
+		claudeReconcileLock.Lock()
+		claudeReconcileAt = make(map[string]time.Time)
+		claudeReconcilePid = make(map[string]int)
+		claudeReconcileLock.Unlock()
+	}
+	reset()
+	t.Cleanup(reset)
+}
+
+func TestClaimClaudeWatchSingleOwner(t *testing.T) {
+	resetClaudeWatchState(t)
+	if !claimClaudeWatch("blk1") {
+		t.Fatal("first claim should win")
+	}
+	if claimClaudeWatch("blk1") {
+		t.Fatal("second claim must lose while the first watch is running")
+	}
+	if !claimClaudeWatch("blk2") {
+		t.Fatal("a different block must not be blocked")
+	}
+	releaseClaudeWatch("blk1")
+	if !claimClaudeWatch("blk1") {
+		t.Fatal("claim should be available again after release")
+	}
+}
+
+// The watch already follows the session id, so reconciling underneath it would only race
+// with it on the meta write.
+func TestClaimClaudeReconcileDeclinesWhileWatchActive(t *testing.T) {
+	resetClaudeWatchState(t)
+	claimClaudeWatch("blk1")
+	if claimClaudeReconcile("blk1") {
+		t.Fatal("reconcile must not run while a watch owns the block")
+	}
+	releaseClaudeWatch("blk1")
+	if !claimClaudeReconcile("blk1") {
+		t.Fatal("reconcile should run once the watch is gone")
+	}
+}
+
+func TestClaimClaudeReconcileThrottles(t *testing.T) {
+	resetClaudeWatchState(t)
+	if !claimClaudeReconcile("blk1") {
+		t.Fatal("first reconcile should run")
+	}
+	if claimClaudeReconcile("blk1") {
+		t.Fatal("second reconcile inside the interval must be throttled")
+	}
+	claudeReconcileLock.Lock()
+	claudeReconcileAt["blk1"] = time.Now().Add(-claudeReconcileMinInterval - time.Second)
+	claudeReconcileLock.Unlock()
+	if !claimClaudeReconcile("blk1") {
+		t.Fatal("reconcile should run again once the interval has passed")
+	}
+}
+
+func TestCachedClaudePidRoundTrip(t *testing.T) {
+	resetClaudeWatchState(t)
+	if pid := cachedClaudePid("blk1"); pid != 0 {
+		t.Fatalf("expected no cached pid, got %d", pid)
+	}
+	setCachedClaudePid("blk1", 4242)
+	if pid := cachedClaudePid("blk1"); pid != 4242 {
+		t.Fatalf("expected cached pid 4242, got %d", pid)
+	}
+	// A dead claude resolves to 0; caching that would pin the block to a pid that can
+	// never produce a registry entry again.
+	setCachedClaudePid("blk1", 0)
+	if pid := cachedClaudePid("blk1"); pid != 0 {
+		t.Fatalf("expected cache cleared, got %d", pid)
+	}
+}

@@ -402,9 +402,7 @@ func SetExternalAgentState(blockId string, state string, agent string) error {
 		t.turnStartTs = time.Time{}
 		t.activeSince = time.Time{}
 		t.stretchBytes = 0
-		if agent != "" {
-			t.agentKind = agent
-		}
+		t.noteExternalAgent(agent)
 		t.dbg("external agentstate -> waiting (agent=%q)", t.agentKind)
 		t.setState(termActivityWaiting)
 	case termActivityDone:
@@ -420,9 +418,7 @@ func SetExternalAgentState(blockId string, state string, agent string) error {
 		t.turnStartTs = time.Time{}
 		t.activeSince = time.Time{}
 		t.stretchBytes = 0
-		if agent != "" {
-			t.agentKind = agent
-		}
+		t.noteExternalAgent(agent)
 		durMs := int64(0)
 		if !t.startTs.IsZero() {
 			durMs = time.Since(t.startTs).Milliseconds()
@@ -623,6 +619,21 @@ func decodeCmd64(cmd64 string) string {
 	return string(decoded)
 }
 
+// noteExternalAgent records an agent kind learned outside the shell-integration C marker —
+// from `wsh agentstate` or from probing the process tree. startCommand is the only thing
+// that arms the claude session watch, so a claude discovered this way (typically one that
+// outlived the wavesrv that saw it start) would otherwise keep the session id it was bound
+// to before the restart, and the resume button would hand back the wrong conversation.
+func (t *termActivityTracker) noteExternalAgent(kind string) {
+	if kind == "" {
+		return
+	}
+	t.agentKind = kind
+	if kind == "claude" {
+		reconcileClaudeSession(t.blockId)
+	}
+}
+
 func (t *termActivityTracker) startCommand(cmd64 string) {
 	t.stopIdleTimer()
 	t.running = true
@@ -785,7 +796,7 @@ func (t *termActivityTracker) markWaiting() {
 		// durable session outlived the wavesrv that saw it. The pty's process tree is
 		// ground truth either way: identify the agent from the shell's descendants.
 		// Bells from non-agent programs (bare shell, random TUIs) still get ignored.
-		t.agentKind = probeAgentKind(t.blockId)
+		t.noteExternalAgent(probeAgentKind(t.blockId))
 		if t.agentKind == "" {
 			t.dbg("bell/osc9 ignored (no tracked or probed agent, running=%v command=%q)", t.running, truncCmd(t.command))
 			return

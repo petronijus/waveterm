@@ -166,10 +166,13 @@ func probeAgentKindUncached(blockId string) string {
 	return ""
 }
 
-// claudePidForBlock returns the pid of the claude process running under the block's shell,
-// or 0. Same walk as the agent probe, but it yields the pid rather than the kind, so the
-// session registry can be read for that exact process.
-func claudePidForBlock(blockId string) int {
+// claudePidForBlock is a package var so tests can stub process-tree probing.
+var claudePidForBlock = claudePidForBlockUncached
+
+// claudePidForBlockUncached returns the pid of the claude process running under the block's
+// shell, or 0. Same walk as the agent probe, but it yields the pid rather than the kind, so
+// the session registry can be read for that exact process.
+func claudePidForBlockUncached(blockId string) int {
 	shellPid := localShellPidForBlock(blockId)
 	if shellPid <= 0 {
 		return 0

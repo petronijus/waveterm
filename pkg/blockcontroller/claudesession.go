@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
@@ -33,6 +34,10 @@ const (
 	claudeSessionPollSlow     = 3 * time.Second
 	claudeSessionFastDuration = 30 * time.Second
 	claudeSessionPollTimeout  = 12 * time.Hour
+
+	// Reconciliation is driven by bells, which arrive on every agent turn, but resolving
+	// the claude pid walks the process tree — so throttle it rather than run it per bell.
+	claudeReconcileMinInterval = 30 * time.Second
 )
 
 // A session id is a UUID, which is also what the transcript file is named.
@@ -253,6 +258,122 @@ func readClaudeSessionRegistry(pid int) *claudeSessionRegistryEntry {
 	return rtn
 }
 
+var claudeWatchLock = &sync.Mutex{}
+var claudeWatchActive = make(map[string]bool)
+
+var claudeReconcileLock = &sync.Mutex{}
+var claudeReconcileAt = make(map[string]time.Time)
+var claudeReconcilePid = make(map[string]int)
+
+// claimClaudeWatch reports whether the caller owns the block's watch. Only one may run:
+// the reconcile path can fire on any bell, and a second poller would double the registry
+// reads and race with the first on the meta write.
+func claimClaudeWatch(blockId string) bool {
+	claudeWatchLock.Lock()
+	defer claudeWatchLock.Unlock()
+	if claudeWatchActive[blockId] {
+		return false
+	}
+	claudeWatchActive[blockId] = true
+	return true
+}
+
+func releaseClaudeWatch(blockId string) {
+	claudeWatchLock.Lock()
+	defer claudeWatchLock.Unlock()
+	delete(claudeWatchActive, blockId)
+}
+
+func claimClaudeReconcile(blockId string) bool {
+	claudeReconcileLock.Lock()
+	defer claudeReconcileLock.Unlock()
+	if isClaudeWatchActive(blockId) {
+		return false
+	}
+	last := claudeReconcileAt[blockId]
+	if !last.IsZero() && time.Since(last) < claudeReconcileMinInterval {
+		return false
+	}
+	claudeReconcileAt[blockId] = time.Now()
+	return true
+}
+
+func isClaudeWatchActive(blockId string) bool {
+	claudeWatchLock.Lock()
+	defer claudeWatchLock.Unlock()
+	return claudeWatchActive[blockId]
+}
+
+func cachedClaudePid(blockId string) int {
+	claudeReconcileLock.Lock()
+	defer claudeReconcileLock.Unlock()
+	return claudeReconcilePid[blockId]
+}
+
+func setCachedClaudePid(blockId string, pid int) {
+	claudeReconcileLock.Lock()
+	defer claudeReconcileLock.Unlock()
+	if pid <= 0 {
+		delete(claudeReconcilePid, blockId)
+		return
+	}
+	claudeReconcilePid[blockId] = pid
+}
+
+func claudeSessionIdForBlock(blockId string) string {
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	block, err := wstore.DBMustGet[*waveobj.Block](ctx, blockId)
+	if err != nil {
+		return ""
+	}
+	return block.Meta.GetString(waveobj.MetaKey_ClaudeSessionId, "")
+}
+
+// reconcileClaudeSession re-binds a block whose claude this wavesrv never saw start.
+//
+// The watch is only ever armed from the shell-integration C marker (startCommand), and a
+// durable session that outlived the previous wavesrv never emits that marker again. The
+// block therefore keeps whatever `claude:sessionid` it held before the restart — which is
+// exactly when the resume button matters, and exactly when it hands back the wrong
+// conversation. Ask the registry what the live process is actually on instead.
+func reconcileClaudeSession(blockId string) {
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("blockcontroller:reconcileClaudeSession", recover())
+		}()
+		if !claimClaudeReconcile(blockId) {
+			return
+		}
+		// A remote block's claude runs on the remote host: no local pid, no local registry.
+		ctrl := getController(blockId)
+		if ctrl == nil || ctrl.GetConnName() != "" {
+			return
+		}
+		pid := cachedClaudePid(blockId)
+		entry := readClaudeSessionRegistry(pid)
+		if entry == nil {
+			// Either nothing cached yet, or claude was replaced by a new process.
+			pid = claudePidForBlock(blockId)
+			setCachedClaudePid(blockId, pid)
+			entry = readClaudeSessionRegistry(pid)
+		}
+		if entry == nil {
+			return
+		}
+		cur := claudeSessionIdForBlock(blockId)
+		if entry.SessionId == cur {
+			return
+		}
+		cwd := entry.Cwd
+		if cwd == "" {
+			cwd = claudeCwdForBlock(blockId)
+		}
+		claudeDbg(blockId, "reconciled session %s -> %s (no watch armed for this claude)", cur, entry.SessionId)
+		setClaudeSessionMeta(blockId, entry.SessionId, cwd)
+	}()
+}
+
 // Called from the terminal-output path while the activity tracker's mutex is held, so it
 // must not touch the database or the filesystem here — everything happens on the goroutine.
 func trackClaudeSession(blockId string, command string) {
@@ -265,12 +386,23 @@ func trackClaudeSession(blockId string, command string) {
 		if ctrl == nil || ctrl.GetConnName() != "" {
 			return
 		}
+		if !claimClaudeWatch(blockId) {
+			return
+		}
+		defer releaseClaudeWatch(blockId)
+		// Keep following the session for as long as claude runs rather than binding once:
+		// resuming from inside claude (session picker, /resume) swaps the id on the same
+		// process, and the block should end up pointing at whatever the user actually used.
+		var bound string
 		// An explicit --resume tells us the id outright, before claude has even started.
+		// It seeds the binding but does NOT end the watch: claude can move off that
+		// session from inside (picker, /resume), and a one-shot bind here left the block
+		// pointing at the id that was typed rather than the one being used.
 		if m := claudeResumeArgRegex.FindStringSubmatch(command); m != nil {
 			if claudeSessionIdRegex.MatchString(m[1]) {
 				claudeDbg(blockId, "session %s taken from the command line", m[1])
-				setClaudeSessionMeta(blockId, m[1], claudeCwdForBlock(blockId))
-				return
+				bound = m[1]
+				setClaudeSessionMeta(blockId, bound, claudeCwdForBlock(blockId))
 			}
 		}
 		// Fallback for claude builds that keep no session registry: watch the transcript
@@ -278,11 +410,9 @@ func trackClaudeSession(blockId string, command string) {
 		// we are still waiting on the registry is still detectable.
 		fallbackDir := claudeProjectDirForCwd(claudeCwdForBlock(blockId))
 		fallbackBefore := snapshotClaudeSessions(fallbackDir)
-		claudeDbg(blockId, "waiting for claude to register a session")
-		// Keep following the session for as long as claude runs rather than binding once:
-		// resuming from inside claude (session picker, /resume) swaps the id on the same
-		// process, and the block should end up pointing at whatever the user actually used.
-		var bound string
+		if bound == "" {
+			claudeDbg(blockId, "waiting for claude to register a session")
+		}
 		// Resolved once and reused: walking the process tree is expensive on macOS, where
 		// gopsutil's Children() enumerates every process on the machine and asks each one
 		// for its parent. The claude process itself does not change for the life of the
