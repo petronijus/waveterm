@@ -46,7 +46,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Resume a Claude session** — a terminal remembers the Claude Code session run in it; once that
   session stops, a **Resume session** button in the block header brings it back in one click.
   Tracked per block, so several terminals in one repo each keep their own, and it follows a
-  resume done from inside claude. Nothing to configure on the Claude side.
+  resume done from inside claude — including one that outlived a Wave restart, where it used to
+  hand back the session from _before_ the restart. Nothing to configure on the Claude side.
+- **Remote sessions survive sleep** — closing the lid on an SSH session no longer freezes the
+  process on the far end for hours waiting on a TCP keepalive; the stall is bounded to seconds,
+  and output produced while you were away is kept on disk and replayed when you reconnect.
 - **Tab activity indicator** — an output-driven "working" spinner and a "done" badge on tabs, so a
   glance tells you which terminal is busy. Long-running dev servers (`shopify theme dev`, `vite`,
   `rails server`, `npm run dev`, …) are recognized and leave the tab clean instead of spinning
@@ -127,7 +131,13 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   `systemd --user` service instead, the one launch method the flag does not survive.
 - **WPS broker** — user-input events are buffered so a password prompt fired during startup or a
   reconnect is never lost, and locked route-matching was split to remove a reentrant-lock deadlock.
-- **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling.
+- **SSH** — fork-side reconnect / sleep-wake robustness on top of upstream's handling: a send
+  timeout that stops a sleeping laptop from freezing the remote process, disk-backed scrollback
+  across a disconnect, overlay hysteresis so brief blips don't flash a banner, retries that give
+  up on permanent failures instead of hammering, and one password prompt at a time per window.
+- **Terminal** — rendering restored after sleep/resume, term-file corruption fixed on stream
+  supersession and sequence gaps, a stream-reader goroutine leak closed on reconnect, background
+  sessions get resize events, and native copy keeps ESC while trimming trailing spaces.
 - Features that landed upstream in the meantime (SSH port forwarding, auto-reconnect, the base git
   RPCs) are intentionally **not** re-added — this fork builds on top of them rather than around
   them.

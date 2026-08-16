@@ -61,6 +61,19 @@ git checkout feat/<task> && git rebase main
   implementation instead of maintaining a parallel one. Every pick, every deliberate skip, and
   the few places where our version deliberately wins are recorded in **[BACKPORT.md](./BACKPORT.md)**
   — read it before starting another backport round.
+- **Remote sessions survive sleep** (Round 4) — closing the lid used to _freeze the remote
+  process_: it blocked inside `write()` until TCP recovered or a server-side keepalive expired,
+  which can take hours. A 5s send timeout breaks that backpressure chain, bounding the freeze to
+  ~5 seconds, and output produced while disconnected is buffered **to disk** instead of being
+  dropped past the 2 MB in-memory window, then replayed on reconnect. Note their 5s timeout still
+  leaks a goroutine per timed-out send — acknowledged in their own spec, not yet mitigated.
+- **Reconnect UX** (Round 4) — reconnect on tab switch and app focus for all view types; overlay
+  hysteresis so brief blips stop flashing a disconnect banner; a "gave up" overlay with stop-retry
+  and an attention heartbeat; sticky suppress after an explicit Disconnect / Stop / password
+  cancel; permanent failures (host key changed, credentials rejected) stop retrying instead of
+  hammering; per-connection retry jitter; Linux/Windows resume parity. Password prompts are
+  serialized one-per-window, the cached password survives network flaps but is cleared when the
+  server actually rejects it, and a wrong password now says so instead of silently re-prompting.
 - **UI theme picker** — app-wide color themes (Dracula, Dark+/Light+, One Dark, Monokai, Nord,
   Solarized), live-switchable; a dedicated Themes editor (also a tab in Wave Config) with GUI
   color pickers and live preview; no flash-of-default-theme on launch. The terminal background /
@@ -246,7 +259,17 @@ in a directory changed.
 The watch keeps running for as long as claude does, because resuming _from inside_ claude (the
 session picker, `/resume`) swaps the session id on the same process; the block follows it and
 ends up pointing at whatever was actually used. An explicit `--resume <id>` on the command line
-is taken straight from the command.
+is taken straight from the command — it _seeds_ the binding and the watch keeps going, since
+claude can still move off that session from inside.
+
+**Surviving a wavesrv restart.** The watch is armed from the shell-integration `C` marker, which
+a durable claude that outlives the wavesrv it started under never emits again — so the block used
+to keep the session id it held before the restart and the button handed back the wrong
+conversation, which is precisely when it matters most. A claude discovered any other way — the
+process probe that already recovers the agent kind on a bell, or an `wsh agentstate` report —
+now reconciles the recorded id against the live process through the same pid registry.
+Reconciliation is throttled (bells arrive every turn and resolving the pid walks the process
+tree) and stands down while a watch owns the block, so the two paths never race on the meta write.
 
 **Why not the obvious alternatives.** The id is not in claude's environment and claude does not
 hold its transcript open, so a pid alone tells you nothing. Watching transcripts is worse still:
@@ -258,7 +281,9 @@ merely change mtime.
 
 **Limits.** Remote blocks are skipped — the registry lives on the remote host. A session id whose
 transcript was later deleted still offers a button, and the resume fails at the prompt; checking
-would need a new RPC. The fallback path cannot follow an in-session resume.
+would need a new RPC. The fallback path cannot follow an in-session resume. Reconciliation after
+a restart needs _something_ to happen in the block (a bell or an agentstate report) before it
+fires — a claude sitting idle since the restart is still shown with its pre-restart id.
 
 Meta keys: `claude:sessionid`, `claude:cwd` (`pkg/waveobj/metaconsts.go`), stored with the block
 row so they survive a restart. The button is `TermViewModel.getClaudeResumeHeaderElem`
