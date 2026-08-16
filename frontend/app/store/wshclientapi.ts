@@ -114,12 +114,6 @@ export class RpcApiType {
         return client.wshRpcCall("conndisconnect", data, opts);
     }
 
-    // command "connstopautoretry" [call]
-    ConnStopAutoRetryCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
-        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connstopautoretry", data, opts);
-        return client.wshRpcCall("connstopautoretry", data, opts);
-    }
-
     // command "connensure" [call]
     ConnEnsureCommand(client: WshClient, data: ConnExtData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connensure", data, opts);
@@ -148,6 +142,12 @@ export class RpcApiType {
     ConnStatusCommand(client: WshClient, opts?: RpcOpts): Promise<ConnStatus[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connstatus", null, opts);
         return client.wshRpcCall("connstatus", null, opts);
+    }
+
+    // command "connstopautoretry" [call]
+    ConnStopAutoRetryCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connstopautoretry", data, opts);
+        return client.wshRpcCall("connstopautoretry", data, opts);
     }
 
     // command "connupdatewsh" [call]
