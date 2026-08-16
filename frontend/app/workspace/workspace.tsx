@@ -13,9 +13,10 @@ import { VTabBar } from "@/app/tab/vtabbar";
 import { Widgets } from "@/app/workspace/widgets";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { atoms, getApi, getSettingsKeyAtom } from "@/store/global";
+import * as WOS from "@/store/wos";
 import { isMacOS } from "@/util/platformutil";
 import { useAtomValue } from "jotai";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import {
     ImperativePanelGroupHandle,
     ImperativePanelHandle,
@@ -49,6 +50,9 @@ const WorkspaceElem = memo(() => {
     const showLeftTabBar = tabBarPosition === "left";
     const aiPanelVisible = useAtomValue(workspaceLayoutModel.panelVisibleAtom);
     const widgetsSidebarVisible = useAtomValue(workspaceLayoutModel.widgetsSidebarVisibleAtom);
+    const tabOref = useMemo(() => WOS.makeORef("tab", tabId), [tabId]);
+    const tabAtom = useMemo(() => WOS.getWaveObjectAtom<Tab>(tabOref), [tabOref]);
+    const tabData = useAtomValue(tabAtom);
     const windowWidth = window.innerWidth;
     const leftGroupInitialPct = workspaceLayoutModel.getLeftGroupInitialPercentage(windowWidth, showLeftTabBar);
     const innerVTabInitialPct = workspaceLayoutModel.getInnerVTabInitialPercentage(windowWidth, showLeftTabBar);

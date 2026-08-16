@@ -77,7 +77,11 @@ function initGlobalWaveEventSubs(initOpts: WaveInitOpts) {
         eventType: "userinput",
         handler: (event) => {
             const connName = event.data?.connname;
-            console.log("[DEBUG] userinput event received:", { connName, promptType: event.data?.prompttype, requestId: event.data?.requestid });
+            console.log("[DEBUG] userinput event received:", {
+                connName,
+                promptType: event.data?.prompttype,
+                requestId: event.data?.requestid,
+            });
             if (connName) {
                 modalsModel.upsertUserInputPrompt(connName, "UserInputPrompt", { ...event.data });
                 console.log("[DEBUG] upsertUserInputPrompt called for connName:", connName);
@@ -670,6 +674,8 @@ function makeDefaultConnStatus(conn: string): ConnStatus {
             status: "connected",
             hasconnected: true,
             activeconnnum: 0,
+            connectcount: 0,
+            lastconnecttime: 0,
             wshenabled: false,
             canautoreconnect: false,
         };
@@ -681,6 +687,8 @@ function makeDefaultConnStatus(conn: string): ConnStatus {
         status: "disconnected",
         hasconnected: false,
         activeconnnum: 0,
+        connectcount: 0,
+        lastconnecttime: 0,
         wshenabled: false,
         canautoreconnect: false,
     };
@@ -742,9 +750,8 @@ export {
     getApi,
     getBlockComponentModel,
     getBlockMetaKeyAtom,
-    getBlockUploadStateAtom,
     getBlockTermDurableAtom,
-    getTabMetaKeyAtom,
+    getBlockUploadStateAtom,
     getConfigBackgroundAtom,
     getConnConfigKeyAtom,
     getConnStatusAtom,
@@ -756,6 +763,7 @@ export {
     getOverrideConfigAtom,
     getSettingsKeyAtom,
     getSettingsPrefixAtom,
+    getTabMetaKeyAtom,
     getUserName,
     globalPrimaryTabStartup,
     globalStore,
