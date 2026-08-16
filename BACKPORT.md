@@ -164,20 +164,24 @@ own background throttling, window-unmap repaint and write batching — **did not
 
 ### Verification
 
-| Check                        | Result                                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `go vet ./pkg/... ./cmd/...` | clean                                                                                                                                |
-| `tsc --noEmit`               | **16 errors = baseline**, all in `frontend/preview/**` mocks                                                                         |
-| `go test -race -count=1`     | `jobcontroller`, `jobmanager`, `remote`, `conncontroller`, `connparse`, `userinput`, `streamclient` — all **ok**                     |
-| `blockcontroller`            | 3 failures: `TestTermActivity_OutputDrivenSpinner`, `_AgentQuietResolvesDoneNotThinking`, `_NonAgentQuietStillThinking`              |
-| ↳ baseline check             | **identical 3 failures on clean `release` `9480714f`** — pre-existing, unrelated to this round (Round 3 notes listed only the first) |
+| Check                        | Result                                                                                                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `go vet ./pkg/... ./cmd/...` | clean                                                                                                                                                                |
+| `tsc --noEmit`               | **16 errors = baseline**, all in `frontend/preview/**` mocks                                                                                                         |
+| `go test -race -count=1`     | `jobcontroller`, `jobmanager`, `remote`, `conncontroller`, `connparse`, `userinput`, `streamclient` — all **ok**                                                     |
+| `blockcontroller`            | 3 failures: `TestTermActivity_OutputDrivenSpinner`, `_AgentQuietResolvesDoneNotThinking`, `_NonAgentQuietStillThinking`                                              |
+| ↳ baseline check             | **identical 3 failures on clean `release` `9480714f`** — pre-existing, unrelated to this round (Round 3 notes listed only the first)                                 |
+| smoke suite                  | **exit 0** — launch, repaint-guard, badge, webview-throttle, webview-resume all pass; throttle / notify-fire skip (macOS-only), notify-skip skips in background mode |
+
+Linux build note for the next round: `task build:backend:quickdev` is `platforms: [darwin]` and exits
+0 on Linux without building anything, and a stale `.task` cache makes it claim "up to date" with an
+empty `dist/bin/`. Use `task build:server:linux --force` and check the binary exists.
 
 Still outstanding before this ships:
 
-1. Regression smoke suite: `node .kilocode/skills/run-desktop/smoke.mjs`.
-2. **Live SSH password login test.** Still the gap carried over from Round 3 — the auth stack has
+1. **Live SSH password login test.** Still the gap carried over from Round 3 — the auth stack has
    never been exercised against a real password login here, and this round doubles down on it.
-3. **Their 5s `SendData` timeout leaks a goroutine per timed-out send** (`mainserverconn.go`
+2. **Their 5s `SendData` timeout leaks a goroutine per timed-out send** (`mainserverconn.go`
    `routedDataSender.SendData` — the `go func()` stays blocked in `StreamDataCommand`). Their own
    spec acknowledges it and estimates ~500 goroutines/sec of output during a disconnect for a
    fast-output process; the suggested cap/context-cancel mitigation is **not implemented**. Worth our
