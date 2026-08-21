@@ -7,6 +7,7 @@ import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { GitViewModel } from "@/app/view/git/git-model";
 import { LauncherViewModel } from "@/app/view/launcher/launcher";
 import { PreviewModel } from "@/app/view/preview/preview-model";
+import { ExcalidrawModel } from "@/app/view/excalidraw/excalidraw-model";
 import { ProcessViewerViewModel } from "@/app/view/processviewer/processviewer";
 import { SysinfoViewModel } from "@/app/view/sysinfo/sysinfo";
 import { TsunamiViewModel } from "@/app/view/tsunami/tsunami";
@@ -39,6 +40,7 @@ BlockRegistry.set("waveconfig", WaveConfigViewModel);
 BlockRegistry.set("themeeditor", ThemeEditorViewModel);
 BlockRegistry.set("processviewer", ProcessViewerViewModel);
 BlockRegistry.set("git", GitViewModel);
+BlockRegistry.set("excalidraw", ExcalidrawModel);
 
 function makeDefaultViewModel(viewType: string): ViewModel {
     const viewModel: ViewModel = {

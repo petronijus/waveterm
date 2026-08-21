@@ -27,6 +27,7 @@ declare global {
         | "block:jobstatus"
         | "badge"
         | "block:termactivity"
+        | "excalidraw:pushscene"
     ;
 
     type WaveEvent = {
@@ -55,7 +56,8 @@ declare global {
         { event: "waveai:modeconfig"; data?: AIModeConfigUpdate; } | 
         { event: "block:jobstatus"; data?: BlockJobStatusData; } | 
         { event: "badge"; data?: BadgeEvent; } | 
-        { event: "block:termactivity"; data?: TermActivityData; }
+        { event: "block:termactivity"; data?: TermActivityData; } | 
+        { event: "excalidraw:pushscene"; data?: CommandExcalidrawPushData; }
     );
 
 }
