@@ -20,6 +20,28 @@ import * as React from "react";
 type ValidationResult = { success: true } | { error: string };
 type ConfigValidator = (parsed: any) => ValidationResult;
 
+function validateKeybindings(parsed: any): ValidationResult {
+    if (!Array.isArray(parsed)) {
+        return { error: "keybindings.json must be an array" };
+    }
+    for (let i = 0; i < parsed.length; i++) {
+        const kb = parsed[i];
+        if (typeof kb !== "object" || kb == null || Array.isArray(kb)) {
+            return { error: `entry ${i}: must be an object` };
+        }
+        if (typeof kb.command !== "string" || kb.command === "") {
+            return { error: `entry ${i}: "command" must be a non-empty string` };
+        }
+        if (kb.keys != null && (!Array.isArray(kb.keys) || kb.keys.some((k: any) => typeof k !== "string"))) {
+            return { error: `entry ${i}: "keys" must be an array of strings` };
+        }
+        if (kb.commandstr != null && typeof kb.commandstr !== "string") {
+            return { error: `entry ${i}: "commandstr" must be a string` };
+        }
+    }
+    return { success: true };
+}
+
 export type ConfigFile = {
     name: string;
     path: string;
@@ -29,6 +51,7 @@ export type ConfigFile = {
     docsUrl?: string;
     validator?: ConfigValidator;
     isSecrets?: boolean;
+    isArray?: boolean;
     hasJsonView?: boolean;
     visualComponent?: React.ComponentType<{ model: WaveConfigViewModel }>;
     // render the visual editor and the raw JSON side-by-side (instead of as Visual/Raw tabs)
@@ -110,6 +133,15 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             language: "json",
             description: "App UI color themes",
             visualComponent: ThemeEditorView,
+            hasJsonView: true,
+        },
+        {
+            name: "Keybindings",
+            path: "keybindings.json",
+            language: "json",
+            description: "Custom keyboard shortcuts",
+            isArray: true,
+            validator: validateKeybindings,
             hasJsonView: true,
         },
         {
@@ -323,7 +355,7 @@ export class WaveConfigViewModel implements ViewModel {
             const content = fileData?.data64 ? base64ToString(fileData.data64) : "";
             globalStore.set(this.originalContentAtom, content);
             if (content.trim() === "") {
-                globalStore.set(this.fileContentAtom, "{\n\n}");
+                globalStore.set(this.fileContentAtom, file.isArray ? "[\n\n]" : "{\n\n}");
             } else {
                 globalStore.set(this.fileContentAtom, content);
             }
@@ -375,8 +407,14 @@ export class WaveConfigViewModel implements ViewModel {
         try {
             const parsed = JSON.parse(fileContent);
 
-            if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
-                globalStore.set(this.validationErrorAtom, "JSON must be an object, not an array, primitive, or null");
+            const isArray = Array.isArray(parsed);
+            if (typeof parsed !== "object" || parsed == null || isArray !== !!selectedFile.isArray) {
+                globalStore.set(
+                    this.validationErrorAtom,
+                    selectedFile.isArray
+                        ? "JSON must be an array, not an object, primitive, or null"
+                        : "JSON must be an object, not an array, primitive, or null"
+                );
                 return;
             }
 
