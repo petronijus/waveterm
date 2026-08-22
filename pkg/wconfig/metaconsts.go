@@ -62,6 +62,7 @@ const (
 	ConfigKey_TermDurable                    = "term:durable"
 	ConfigKey_TermShowSplitButtons           = "term:showsplitbuttons"
 	ConfigKey_TermTrimTrailingWhitespace     = "term:trimtrailingwhitespace"
+	ConfigKey_TermCopyUnwrap                 = "term:copyunwrap"
 	ConfigKey_TermActivityDebug              = "term:activitydebug"
 
 	ConfigKey_SysinfoTrackPath               = "sysinfo:trackpath"

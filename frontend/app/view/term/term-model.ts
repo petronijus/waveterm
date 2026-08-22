@@ -46,9 +46,9 @@ import { getBlockingCommand } from "./shellblocking";
 import {
     computeTheme,
     DefaultTermTheme,
+    getTerminalCopyText,
     isLikelyOnSameHost,
     quoteForPosixShell,
-    trimTerminalSelection,
 } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
 
@@ -922,12 +922,13 @@ export class TermViewModel implements ViewModel {
         } else if (keyutil.checkKeyPressed(waveEvent, "Ctrl:Shift:c")) {
             event.preventDefault();
             event.stopPropagation();
-            let sel = this.termRef.current?.terminal.getSelection();
-            if (!sel) {
+            const terminal = this.termRef.current?.terminal;
+            if (terminal == null) {
                 return false;
             }
-            if (globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false) {
-                sel = trimTerminalSelection(sel);
+            const sel = getTerminalCopyText(terminal);
+            if (!sel) {
+                return false;
             }
             navigator.clipboard.writeText(sel);
             return false;
@@ -1000,17 +1001,24 @@ export class TermViewModel implements ViewModel {
         const menu: ContextMenuItem[] = [];
         const hasSelection = this.termRef.current?.terminal?.hasSelection();
         const selection = hasSelection ? this.termRef.current?.terminal.getSelection() : null;
+        const copyText = hasSelection ? getTerminalCopyText(this.termRef.current?.terminal) : null;
 
         if (hasSelection) {
             menu.push({
                 label: "Copy",
                 click: () => {
+                    if (copyText) {
+                        navigator.clipboard.writeText(copyText);
+                    }
+                },
+            });
+            // escape hatch for when the hard-wrap join / whitespace trim heuristics
+            // mangle a selection (e.g. code with lines exactly at the terminal width)
+            menu.push({
+                label: "Copy Raw",
+                click: () => {
                     if (selection) {
-                        const text =
-                            globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false
-                                ? trimTerminalSelection(selection)
-                                : selection;
-                        navigator.clipboard.writeText(text);
+                        navigator.clipboard.writeText(selection);
                     }
                 },
             });

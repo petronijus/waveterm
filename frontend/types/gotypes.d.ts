@@ -1661,6 +1661,7 @@ declare global {
         "term:durable"?: boolean;
         "term:showsplitbuttons"?: boolean;
         "term:trimtrailingwhitespace"?: boolean;
+        "term:copyunwrap"?: boolean;
         "term:activitydebug"?: boolean;
         "sysinfo:trackpath"?: string;
         "sysinfo:dockerproject"?: string;

@@ -5,6 +5,7 @@ export const DefaultTermTheme = "default-dark";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { elevate, getActiveUITheme } from "@/app/uitheme";
+import { getSettingsKeyAtom, globalStore } from "@/store/global";
 import { makeConnRoute } from "@/util/util";
 import * as TermTypes from "@xterm/xterm";
 import base64 from "base64-js";
@@ -17,6 +18,46 @@ export function trimTerminalSelection(text: string): string {
         .split("\n")
         .map((line) => line.trimEnd())
         .join("\n");
+}
+
+// getSelection() already joins xterm's own soft wraps, so every remaining newline is a
+// "hard" break printed by the program. TUI programs (Claude Code, tmux, less, ...) re-wrap
+// output themselves at the terminal width, which shreds copied text into width-sized lines.
+// A line whose length is an exact multiple of the width and that runs right through the
+// last column is (almost always) such a hard-wrap artifact — join it with the next line.
+export function unwrapHardWrappedSelection(text: string, cols: number): string {
+    if (cols == null || cols <= 0) {
+        return text;
+    }
+    const lines = text.split(/\r?\n/);
+    let out = "";
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (i === lines.length - 1) {
+            out += line;
+            break;
+        }
+        const hardWrapArtifact = line.length > 0 && line.length % cols === 0 && !line.endsWith(" ");
+        out += hardWrapArtifact ? line : line + "\n";
+    }
+    return out;
+}
+
+// Single source of truth for every copy path (native copy event, Ctrl+Shift+C,
+// copy-on-select, context menu) — applies the unwrap + trim settings in that order,
+// since unwrapping needs the raw line lengths before trailing whitespace is stripped.
+export function getTerminalCopyText(terminal: TermTypes.Terminal): string {
+    let text = terminal.getSelection();
+    if (!text) {
+        return "";
+    }
+    if (globalStore.get(getSettingsKeyAtom("term:copyunwrap")) !== false) {
+        text = unwrapHardWrappedSelection(text, terminal.cols);
+    }
+    if (globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false) {
+        text = trimTerminalSelection(text);
+    }
+    return text;
 }
 
 export function normalizeCursorStyle(cursorStyle: string): TermTypes.Terminal["options"]["cursorStyle"] {

@@ -25,7 +25,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import * as TermTypes from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
@@ -42,14 +41,15 @@ import {
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
+import { WaveLinkProvider } from "./linkprovider";
 import {
     bufferLinesToText,
     createRemoteTempFileFromBlob,
     createTempFileFromBlob,
     extractAllClipboardData,
+    getTerminalCopyText,
     normalizeCursorStyle,
     quoteForPosixShell,
-    trimTerminalSelection,
     uploadFileToRemoteTemp,
 } from "./termutil";
 
@@ -192,33 +192,36 @@ export class TermWrap {
         this.terminal.loadAddon(this.searchAddon);
         this.terminal.loadAddon(this.fitAddon);
         this.terminal.loadAddon(this.serializeAddon);
-        this.terminal.loadAddon(
-            new WebLinksAddon(
-                (e, uri) => {
-                    e.preventDefault();
-                    switch (PLATFORM) {
-                        case PlatformMacOS:
-                            if (e.metaKey) {
-                                fireAndForget(() => openLink(uri));
-                            }
-                            break;
-                        default:
-                            if (e.ctrlKey) {
-                                fireAndForget(() => openLink(uri));
-                            }
-                            break;
+        this.toDispose.push(
+            this.terminal.registerLinkProvider(
+                new WaveLinkProvider(
+                    this.terminal,
+                    (e, uri) => {
+                        e.preventDefault();
+                        switch (PLATFORM) {
+                            case PlatformMacOS:
+                                if (e.metaKey) {
+                                    fireAndForget(() => openLink(uri));
+                                }
+                                break;
+                            default:
+                                if (e.ctrlKey) {
+                                    fireAndForget(() => openLink(uri));
+                                }
+                                break;
+                        }
+                    },
+                    {
+                        hover: (e, uri) => {
+                            this.hoveredLinkUri = uri;
+                            this.onLinkHover?.(uri, e.clientX, e.clientY);
+                        },
+                        leave: () => {
+                            this.hoveredLinkUri = null;
+                            this.onLinkHover?.(null, 0, 0);
+                        },
                     }
-                },
-                {
-                    hover: (e, uri) => {
-                        this.hoveredLinkUri = uri;
-                        this.onLinkHover?.(uri, e.clientX, e.clientY);
-                    },
-                    leave: () => {
-                        this.hoveredLinkUri = null;
-                        this.onLinkHover?.(null, 0, 0);
-                    },
-                }
+                )
             )
         );
         // Inline terminal images: Sixel + iTerm2 inline (IIP, PNG/JPEG). Best-effort —
@@ -442,10 +445,7 @@ export class TermWrap {
             if (!this.terminal.hasSelection()) {
                 return;
             }
-            let text = this.terminal.getSelection();
-            if (globalStore.get(getSettingsKeyAtom("term:trimtrailingwhitespace")) !== false) {
-                text = trimTerminalSelection(text);
-            }
+            const text = this.getCopyText();
             e.preventDefault();
             e.stopPropagation();
             navigator.clipboard.writeText(text);
@@ -458,10 +458,21 @@ export class TermWrap {
                 },
             });
         }
+
+        // dev-only registry so the smoke suite can drive selection/copy without
+        // pixel coordinates (the WebGL renderer leaves no DOM text to target)
+        if (isDev()) {
+            const wraps: Map<string, TermWrap> = ((window as any).__termwraps ??= new Map());
+            wraps.set(this.blockId, this);
+        }
     }
 
     getZoneId(): string {
         return this.blockId;
+    }
+
+    getCopyText(): string {
+        return getTerminalCopyText(this.terminal);
     }
 
     setCursorStyle(cursorStyle: string) {
@@ -517,7 +528,6 @@ export class TermWrap {
 
     async initTerminal() {
         const copyOnSelectAtom = getSettingsKeyAtom("term:copyonselect");
-        const trimTrailingWhitespaceAtom = getSettingsKeyAtom("term:trimtrailingwhitespace");
         this.toDispose.push(this.terminal.onData(this.handleTermData.bind(this)));
         this.toDispose.push(
             this.terminal.onSelectionChange(
@@ -531,11 +541,8 @@ export class TermWrap {
                     if (active != null && active.closest(".search-container") != null) {
                         return;
                     }
-                    let selectedText = this.terminal.getSelection();
+                    const selectedText = this.getCopyText();
                     if (selectedText.length > 0) {
-                        if (globalStore.get(trimTrailingWhitespaceAtom) !== false) {
-                            selectedText = trimTerminalSelection(selectedText);
-                        }
                         navigator.clipboard.writeText(selectedText);
                     }
                 })
@@ -614,6 +621,9 @@ export class TermWrap {
     }
 
     dispose() {
+        if (isDev()) {
+            (window as any).__termwraps?.delete(this.blockId);
+        }
         if (this.pendingWriteFlushTimer != null) {
             clearTimeout(this.pendingWriteFlushTimer);
             this.pendingWriteFlushTimer = null;

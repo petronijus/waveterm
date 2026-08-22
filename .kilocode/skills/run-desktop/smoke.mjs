@@ -325,6 +325,60 @@ try {
         }
     }
 
+    // copy-unwrap: write a URL hard-wrapped at the terminal width straight into an
+    // existing terminal's xterm buffer (real newlines, the way Claude Code / tmux re-wrap
+    // output — no shell involved, so the check is independent of $COLUMNS and of how
+    // narrow the block happens to be), select both rows programmatically via the dev-only
+    // __termwraps registry (the WebGL renderer leaves no DOM text to drag over), and
+    // verify the copy pipeline joins them back into one unbroken URL. Asserts on
+    // TermWrap.getCopyText() — the same code path every copy route uses; the actual
+    // navigator.clipboard write needs document focus, which a background-mode window
+    // doesn't have, so the clipboard itself is only reported as detail.
+    {
+        const sel = await page.evaluate(async () => {
+            const wraps = window.__termwraps;
+            if (!wraps || !wraps.size) {
+                return { err: "no __termwraps registry (dev hook missing?)" };
+            }
+            const tw = [...wraps.values()][0];
+            const term = tw.terminal;
+            const cols = term.cols;
+            const total = cols + 10;
+            const url = ("https://example.com/SMOKEJOIN" + "x".repeat(total)).slice(0, total);
+            const line1 = url.slice(0, cols);
+            const line2 = url.slice(cols);
+            await new Promise((r) => term.write(`\r\n${line1}\r\n${line2}\r\n`, r));
+            const buf = term.buffer.active;
+            let row = -1;
+            for (let i = buf.length - 1; i >= 0; i--) {
+                if ((buf.getLine(i)?.translateToString(true) ?? "") === line1) {
+                    row = i;
+                    break;
+                }
+            }
+            if (row < 0) {
+                return { err: "written line not found in terminal buffer" };
+            }
+            term.selectLines(row, row + 1);
+            return { cols, url, copyText: tw.getCopyText() };
+        });
+        if (sel.err) {
+            report("copy-unwrap", false, sel.err);
+        } else {
+            const ok = sel.copyText === sel.url;
+            await sleep(500);
+            const clip = await app.evaluate(({ clipboard }) => clipboard.readText()).catch(() => "");
+            const clipJoined = clip.includes(sel.url);
+            report(
+                "copy-unwrap",
+                ok,
+                ok
+                    ? `URL rejoined across the hard wrap (cols=${sel.cols}, copy-on-select clipboard ${clipJoined ? "matches too" : "not asserted — window unfocused"})`
+                    : `copy text still broken: ${JSON.stringify(sel.copyText.slice(0, 120))} (cols=${sel.cols})`
+            );
+        }
+    }
+
     // 3. badge: flood a fresh terminal, expect a spinner badge on a tab in the tab bar
     await runTerminalCommand(page, "while true; do date; done");
     const badge = await (async () => {

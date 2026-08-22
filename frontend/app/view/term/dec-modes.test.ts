@@ -35,13 +35,13 @@ vi.mock("@xterm/xterm", () => ({
         onResize = vi.fn(() => ({ dispose: mockDispose }));
         onWriteParsed = vi.fn(() => ({ dispose: mockDispose }));
         onSelectionChange = vi.fn(() => ({ dispose: mockDispose }));
+        registerLinkProvider = vi.fn(() => ({ dispose: mockDispose }));
     },
 }));
 
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class MockFitAddon { fit = vi.fn(); } }));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: class MockSearchAddon {} }));
 vi.mock("@xterm/addon-serialize", () => ({ SerializeAddon: class MockSerializeAddon {} }));
-vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class MockWebLinksAddon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class MockWebglAddon {} }));
 
 vi.mock("@/store/global", () => ({
@@ -53,7 +53,7 @@ vi.mock("@/store/global", () => ({
     getApi: vi.fn(() => ({})),
     getOverrideConfigAtom: vi.fn(() => vi.fn()),
     getSettingsKeyAtom: vi.fn(() => vi.fn()),
-    isDev: false,
+    isDev: vi.fn(() => false),
     openLink: vi.fn(),
     WOS: {},
     fetchWaveFile: vi.fn(),

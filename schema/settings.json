@@ -177,6 +177,9 @@
         "term:trimtrailingwhitespace": {
           "type": "boolean"
         },
+        "term:copyunwrap": {
+          "type": "boolean"
+        },
         "term:activitydebug": {
           "type": "boolean"
         },

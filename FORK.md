@@ -48,6 +48,14 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **Hard-wrap aware copy & links** — TUI programs (Claude Code, tmux, less, ...) re-wrap
+  their output themselves and print real newlines at the terminal width, so copied text came
+  out shredded into width-sized lines and URLs split across lines weren't clickable. The
+  terminal link detector now follows a URL across such hard wraps (a line running through its
+  last column joins the next one), and every copy path (Cmd+C, Ctrl+Shift+C, copy-on-select,
+  context menu) re-joins hard-wrapped lines via the same heuristic. Governed by
+  `term:copyunwrap` (default true); the context menu gains **Copy Raw** as an exact-selection
+  escape hatch.
 - **Claude session resume per terminal** — a terminal block remembers the Claude Code session
   it ran, and after a Wave restart shows a small history button in the block header that types
   `claude --resume <id>` at the prompt (without pressing Enter, so you can edit or back out).

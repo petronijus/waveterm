@@ -116,6 +116,7 @@ type SettingsType struct {
 	TermDurable                *bool    `json:"term:durable,omitempty"`
 	TermShowSplitButtons       bool     `json:"term:showsplitbuttons,omitempty"`
 	TermTrimTrailingWhitespace *bool    `json:"term:trimtrailingwhitespace,omitempty"`
+	TermCopyUnwrap             *bool    `json:"term:copyunwrap,omitempty"`
 	TermActivityDebug          bool     `json:"term:activitydebug,omitempty"`
 
 	SysinfoTrackPath     string `json:"sysinfo:trackpath,omitempty"`
