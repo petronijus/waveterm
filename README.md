@@ -35,6 +35,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 ### 🖼️ A richer terminal
 
+- **Hard-wrap aware copy & links** — TUI programs (Claude Code, tmux, `less`, …) print real
+  newlines at the terminal width, which used to shred copied text into width-sized lines and cut
+  URLs in half. Copying now re-joins those hard-wrapped lines (setting `term:copyunwrap`, with a
+  **Copy Raw** escape hatch in the context menu), and a URL split across lines is clickable again,
+  tooltip included.
 - **Inline images** — Sixel and the iTerm2 inline-image protocol (IIP) render pictures right in
   the terminal (`chafa`, image CLIs, and friends just work).
 - **Remote file transfer** — paste or drop an image/file into a **remote** SSH terminal and it's
