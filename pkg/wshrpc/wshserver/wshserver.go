@@ -353,10 +353,11 @@ func (ws *WshServer) ListTmuxSessionsCommand(ctx context.Context, connName strin
 		return []string{}, nil
 	}
 	shellClient := genconn.MakeSSHShellClient(client)
-	// Use a login shell so the full PATH is available (including locations such as Homebrew's /opt/homebrew/bin).
-	// Single-quote the tmux command here; HardQuote adds the outer quoting for the remote shell command.
+	// Use a login shell so the full PATH is available (including locations such as Homebrew's
+	// /opt/homebrew/bin). Login startup files may write to stdout, so each tmux record is prefixed
+	// with a sentinel and parsing only accepts sentinel-prefixed lines (see parseTmuxSessionList).
 	stdout, _, err := genconn.RunSimpleCommand(ctx, shellClient, genconn.CommandSpec{
-		Cmd: `bash -lc 'tmux list-sessions -F "#{session_name}" 2>/dev/null' 2>/dev/null || true`,
+		Cmd: `bash -lc 'tmux list-sessions -F "` + tmuxSessionSentinel + `#{session_name}" 2>/dev/null' 2>/dev/null || true`,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error listing tmux sessions: %w", err)
@@ -364,15 +365,31 @@ func (ws *WshServer) ListTmuxSessionsCommand(ctx context.Context, connName strin
 	return parseTmuxSessionList(stdout), nil
 }
 
-// parseTmuxSessionList parses `tmux list-sessions -F '#{session_name}'` output into session names,
-// discarding blank lines and surrounding whitespace.
+// tmuxSessionSentinel prefixes each listed session so session names can be told apart from
+// arbitrary stdout written by login-shell startup files.
+const tmuxSessionSentinel = "WAVETERM_TMUX_SESSION:"
+
+// parseTmuxSessionList parses `tmux list-sessions` output into session names. It only accepts
+// lines prefixed with tmuxSessionSentinel, so login-shell profile output that shares the stdout
+// stream cannot leak into the session list; blank lines and surrounding whitespace are discarded.
 func parseTmuxSessionList(stdout string) []string {
 	sessions := []string{}
 	for _, line := range strings.Split(stdout, "\n") {
-		name := strings.TrimSpace(line)
-		if name != "" {
-			sessions = append(sessions, name)
-		}
+		sessions = appendTmuxSessionLine(sessions, line, tmuxSessionSentinel)
+	}
+	return sessions
+}
+
+// appendTmuxSessionLine appends the session name extracted from a single output line, or leaves
+// the slice unchanged when the line is not a valid sentinel-prefixed record.
+func appendTmuxSessionLine(sessions []string, line, sentinel string) []string {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, sentinel) {
+		return sessions
+	}
+	name := strings.TrimSpace(strings.TrimPrefix(trimmed, sentinel))
+	if name != "" {
+		sessions = append(sessions, name)
 	}
 	return sessions
 }

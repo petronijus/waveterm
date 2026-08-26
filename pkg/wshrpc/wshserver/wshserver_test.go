@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseTmuxSessionList(t *testing.T) {
+	const s = tmuxSessionSentinel
 	tests := []struct {
 		name   string
 		stdout string
@@ -21,23 +22,33 @@ func TestParseTmuxSessionList(t *testing.T) {
 		},
 		{
 			name:   "single session",
-			stdout: "mactop\n",
+			stdout: s + "mactop\n",
 			want:   []string{"mactop"},
 		},
 		{
 			name:   "multiple sessions",
-			stdout: "mactop\nomlx-11335\nomlx-11336\n",
+			stdout: s + "mactop\n" + s + "omlx-11335\n" + s + "omlx-11336\n",
 			want:   []string{"mactop", "omlx-11335", "omlx-11336"},
 		},
 		{
 			name:   "blank lines and surrounding whitespace",
-			stdout: "\n  mactop  \n\nomlx-11335\n\n",
+			stdout: "\n  " + s + "mactop  \n\n" + s + "omlx-11335\n\n",
 			want:   []string{"mactop", "omlx-11335"},
 		},
 		{
 			name:   "session name with spaces",
-			stdout: "my session with spaces\n",
+			stdout: s + "my session with spaces\n",
 			want:   []string{"my session with spaces"},
+		},
+		{
+			name:   "ignores unsentineled lines",
+			stdout: "some other output\n" + s + "mactop\n",
+			want:   []string{"mactop"},
+		},
+		{
+			name:   "login shell profile output before tmux records",
+			stdout: "Last login: Thu Aug 26 14:00:00 2026 on ttys000\nWelcome to bash\n" + s + "mactop\n" + s + "omlx-11335\n",
+			want:   []string{"mactop", "omlx-11335"},
 		},
 	}
 	for _, tt := range tests {
@@ -47,5 +58,18 @@ func TestParseTmuxSessionList(t *testing.T) {
 				t.Fatalf("parseTmuxSessionList(%q) = %#v, want %#v", tt.stdout, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAppendTmuxSessionLine(t *testing.T) {
+	const s = tmuxSessionSentinel
+	var sessions []string
+	sessions = appendTmuxSessionLine(sessions, "not a tmux record", s)
+	sessions = appendTmuxSessionLine(sessions, s+"mactop", s)
+	sessions = appendTmuxSessionLine(sessions, "  "+s+"  spaced name  ", s)
+	sessions = appendTmuxSessionLine(sessions, s, s) // sentinel with no name
+	sessions = appendTmuxSessionLine(sessions, "", s)
+	if !reflect.DeepEqual(sessions, []string{"mactop", "spaced name"}) {
+		t.Fatalf("appendTmuxSessionLine produced %#v", sessions)
 	}
 }

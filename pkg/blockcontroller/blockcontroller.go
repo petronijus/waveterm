@@ -651,20 +651,24 @@ func makeSwapToken(ctx context.Context, logCtx context.Context, blockId string, 
 		token.Env[k] = v
 	}
 	token.ScriptText = getCustomInitScript(logCtx, blockMeta, remoteName, shellType)
-	token.ScriptText += buildTmuxAttachScript(blockMeta, remoteName)
+	token.ScriptText += buildTmuxAttachScript(blockMeta, remoteName, shellType)
 	return token
 }
 
 // buildTmuxAttachScript returns an inline script fragment that auto-attaches to a tmux
 // session (or an empty string when it does not apply). It is injected only when the block
-// carries a term:tmux:session meta key AND the connection is a remote SSH block, so opening
-// a remote block attaches with `tmux new -A -t` without any manual typing.
-func buildTmuxAttachScript(blockMeta waveobj.MetaMapType, remoteName string) string {
+// carries a term:tmux:session meta key, the connection is a remote SSH block, and the shell
+// is a POSIX-compatible shell (bash/zsh). fish and pwsh use a different syntax, so the
+// fragment is skipped for them rather than emitting syntax they cannot parse.
+func buildTmuxAttachScript(blockMeta waveobj.MetaMapType, remoteName string, shellType string) string {
 	tmuxSession := blockMeta.GetString(waveobj.MetaKey_TermTmuxSession, "")
 	if tmuxSession == "" {
 		return ""
 	}
 	if conncontroller.IsLocalConnName(remoteName) {
+		return ""
+	}
+	if shellType != shellutil.ShellType_bash && shellType != shellutil.ShellType_zsh {
 		return ""
 	}
 	// Wrap the session name in shell single quotes, escaping any inner single quote as '\''
