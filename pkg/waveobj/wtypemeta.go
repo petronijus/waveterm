@@ -136,6 +136,7 @@ type MetaTSType struct {
 	TermBellIndicator       *bool    `json:"term:bellindicator,omitempty"`
 	TermOsc52               string   `json:"term:osc52,omitempty"`
 	TermDurable             *bool    `json:"term:durable,omitempty"`
+	TermTmuxSession         string   `json:"term:tmux:session,omitempty"`
 
 	// Written by a Claude Code SessionStart hook via `wsh setmeta`, so the block
 	// can offer to resume that exact session after a restart. Per-block, because

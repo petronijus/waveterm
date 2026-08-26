@@ -132,6 +132,7 @@ const (
 	MetaKey_TermBellIndicator                = "term:bellindicator"
 	MetaKey_TermOsc52                        = "term:osc52"
 	MetaKey_TermDurable                      = "term:durable"
+	MetaKey_TermTmuxSession                  = "term:tmux:session"
 
 	MetaKey_ClaudeSessionId                  = "claude:sessionid"
 	MetaKey_ClaudeCwd                        = "claude:cwd"

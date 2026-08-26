@@ -1419,6 +1419,7 @@ declare global {
         "term:durable"?: boolean;
         "claude:sessionid"?: string;
         "claude:cwd"?: string;
+        "term:tmux:session"?: string;
         "web:zoom"?: number;
         "web:hidenav"?: boolean;
         "web:partition"?: string;
