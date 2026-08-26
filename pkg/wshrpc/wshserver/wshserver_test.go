@@ -31,14 +31,24 @@ func TestParseTmuxSessionList(t *testing.T) {
 			want:   []string{"mactop", "omlx-11335", "omlx-11336"},
 		},
 		{
-			name:   "blank lines and surrounding whitespace",
-			stdout: "\n  " + s + "mactop  \n\n" + s + "omlx-11335\n\n",
+			name:   "blank lines are discarded",
+			stdout: "\n" + s + "mactop\n\n" + s + "omlx-11335\n\n",
+			want:   []string{"mactop", "omlx-11335"},
+		},
+		{
+			name:   "CRLF line endings",
+			stdout: s + "mactop\r\n" + s + "omlx-11335\r\n",
 			want:   []string{"mactop", "omlx-11335"},
 		},
 		{
 			name:   "session name with spaces",
 			stdout: s + "my session with spaces\n",
 			want:   []string{"my session with spaces"},
+		},
+		{
+			name:   "session name with leading/trailing whitespace is preserved",
+			stdout: s + "  padded-name  \n",
+			want:   []string{"  padded-name  "},
 		},
 		{
 			name:   "ignores unsentineled lines",
@@ -66,10 +76,12 @@ func TestAppendTmuxSessionLine(t *testing.T) {
 	var sessions []string
 	sessions = appendTmuxSessionLine(sessions, "not a tmux record", s)
 	sessions = appendTmuxSessionLine(sessions, s+"mactop", s)
-	sessions = appendTmuxSessionLine(sessions, "  "+s+"  spaced name  ", s)
-	sessions = appendTmuxSessionLine(sessions, s, s) // sentinel with no name
+	sessions = appendTmuxSessionLine(sessions, s+"  spaced name  ", s)             // name whitespace preserved
+	sessions = appendTmuxSessionLine(sessions, "  "+s+"leading-space-sentinel", s) // sentinel not at line start → ignored
+	sessions = appendTmuxSessionLine(sessions, s, s)                               // sentinel with no name
 	sessions = appendTmuxSessionLine(sessions, "", s)
-	if !reflect.DeepEqual(sessions, []string{"mactop", "spaced name"}) {
+	sessions = appendTmuxSessionLine(sessions, s+"crlf\r", s) // trailing CR stripped
+	if !reflect.DeepEqual(sessions, []string{"mactop", "  spaced name  ", "crlf"}) {
 		t.Fatalf("appendTmuxSessionLine produced %#v", sessions)
 	}
 }

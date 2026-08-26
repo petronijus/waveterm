@@ -371,7 +371,8 @@ const tmuxSessionSentinel = "WAVETERM_TMUX_SESSION:"
 
 // parseTmuxSessionList parses `tmux list-sessions` output into session names. It only accepts
 // lines prefixed with tmuxSessionSentinel, so login-shell profile output that shares the stdout
-// stream cannot leak into the session list; blank lines and surrounding whitespace are discarded.
+// stream cannot leak into the session list; the sentinel and any trailing CRLF are stripped, but
+// a session name's own leading/trailing whitespace is preserved (tmux allows it in names).
 func parseTmuxSessionList(stdout string) []string {
 	sessions := []string{}
 	for _, line := range strings.Split(stdout, "\n") {
@@ -383,11 +384,11 @@ func parseTmuxSessionList(stdout string) []string {
 // appendTmuxSessionLine appends the session name extracted from a single output line, or leaves
 // the slice unchanged when the line is not a valid sentinel-prefixed record.
 func appendTmuxSessionLine(sessions []string, line, sentinel string) []string {
-	trimmed := strings.TrimSpace(line)
-	if !strings.HasPrefix(trimmed, sentinel) {
+	line = strings.TrimSuffix(line, "\r")
+	if !strings.HasPrefix(line, sentinel) {
 		return sessions
 	}
-	name := strings.TrimSpace(strings.TrimPrefix(trimmed, sentinel))
+	name := strings.TrimPrefix(line, sentinel)
 	if name != "" {
 		sessions = append(sessions, name)
 	}
