@@ -51,6 +51,7 @@ import {
     quoteForPosixShell,
 } from "./termutil";
 import { TermWrap, WebGLSupported } from "./termwrap";
+import { applyTmuxSessionChange, toggleTmuxSession } from "./tmux-session";
 
 // Show an absolute local cwd as ~/… so the terminal header matches the files/git panels
 // (which work in tilde-space). The shell reports its cwd absolutely via OSC 7, so without
@@ -999,7 +1000,7 @@ export class TermViewModel implements ViewModel {
         });
     }
 
-    getContextMenuItems(): ContextMenuItem[] {
+    async getContextMenuItems(): Promise<ContextMenuItem[]> {
         const menu: ContextMenuItem[] = [];
         const hasSelection = this.termRef.current?.terminal?.hasSelection();
         const selection = hasSelection ? this.termRef.current?.terminal.getSelection() : null;
@@ -1092,13 +1093,68 @@ export class TermViewModel implements ViewModel {
 
         menu.push({ type: "separator" });
 
-        const settingsItems = this.getSettingsMenuItems();
+        const settingsItems = await this.getSettingsMenuItems(false);
         menu.push(...settingsItems);
 
         return menu;
     }
 
-    getSettingsMenuItems(): ContextMenuItem[] {
+    // Returns the Tmux Sessions submenu for remote blocks, or null when it does not apply.
+    // Fetches a fresh session snapshot when the settings menu opens and marks the active session as checked.
+    async getTmuxSessionMenuItems(): Promise<ContextMenuItem | null> {
+        const blockData = globalStore.get(this.blockAtom);
+        const connName = blockData?.meta?.connection ?? "";
+        if (connName == "" || connName == "local" || connName.startsWith("local:")) {
+            return null;
+        }
+        const curSession = (globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:tmux:session")) ?? "") as string;
+        let sessions: string[] = [];
+        try {
+            sessions = await RpcApi.ListTmuxSessionsCommand(TabRpcClient, connName);
+        } catch (e) {
+            // Keep the settings menu usable when the connection is down, tmux is unavailable, or listing fails.
+            sessions = [];
+        }
+        const submenu: ContextMenuItem[] = [];
+        // Keep a missing active session visible so the user can still clear the association.
+        if (curSession != "" && !sessions.includes(curSession)) {
+            sessions = [curSession, ...sessions];
+        }
+        if (sessions.length == 0) {
+            submenu.push({ label: "(No tmux sessions)", enabled: false });
+        } else {
+            for (const name of sessions) {
+                submenu.push({
+                    label: name,
+                    type: "checkbox",
+                    checked: name == curSession,
+                    click: () => {
+                        fireAndForget(() => this.applyTmuxSession(toggleTmuxSession(curSession, name)));
+                    },
+                });
+            }
+        }
+        return { label: "Tmux Sessions", type: "submenu", submenu };
+    }
+
+    // Persists or clears term:tmux:session, then restarts this block controller so the change takes effect immediately.
+    // An empty session clears the association; a non-empty session associates or switches without stopping remote tmux.
+    async applyTmuxSession(session: string): Promise<void> {
+        const oldSession = (globalStore.get(getBlockMetaKeyAtom(this.blockId, "term:tmux:session")) ?? "") as string;
+        await applyTmuxSessionChange(
+            oldSession,
+            session,
+            async (nextSession) => {
+                await RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef("block", this.blockId),
+                    meta: { "term:tmux:session": nextSession || null },
+                });
+            },
+            () => this.forceRestartController()
+        );
+    }
+
+    async getSettingsMenuItems(includeTmuxSessions = true): Promise<ContextMenuItem[]> {
         const fullConfig = globalStore.get(atoms.fullConfigAtom);
         const termThemes = fullConfig?.termthemes ?? {};
         const termThemeKeys = Object.keys(termThemes);
@@ -1120,6 +1176,12 @@ export class TermViewModel implements ViewModel {
         };
 
         const fullMenu: ContextMenuItem[] = [];
+        if (includeTmuxSessions) {
+            const tmuxSubmenu = await this.getTmuxSessionMenuItems();
+            if (tmuxSubmenu != null) {
+                fullMenu.push(tmuxSubmenu, { type: "separator" });
+            }
+        }
         fullMenu.push({
             label: "Split Horizontally",
             click: () => {

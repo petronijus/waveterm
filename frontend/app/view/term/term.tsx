@@ -390,8 +390,10 @@ const TerminalView = ({ blockId, blockRef, model }: ViewComponentProps<TermViewM
         (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
             e.stopPropagation();
-            const menuItems = model.getContextMenuItems();
-            ContextMenuModel.getInstance().showContextMenu(menuItems, e);
+            fireAndForget(async () => {
+                const menuItems = await model.getContextMenuItems();
+                ContextMenuModel.getInstance().showContextMenu(menuItems, e);
+            });
         },
         [model]
     );

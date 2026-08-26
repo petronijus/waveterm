@@ -932,6 +932,17 @@ func TestBuildTmuxAttachScript_RemoteConn(t *testing.T) {
 	}
 }
 
+func TestBuildTmuxAttachScript_UnsupportedShell(t *testing.T) {
+	meta := waveobj.MetaMapType{
+		waveobj.MetaKey_TermTmuxSession: "omlx-11335",
+	}
+	for _, shellType := range []string{shellutil.ShellType_fish, shellutil.ShellType_pwsh, shellutil.ShellType_unknown} {
+		if script := buildTmuxAttachScript(meta, "aws:co-gpu", shellType); script != "" {
+			t.Fatalf("expected no script for shell %q, got %q", shellType, script)
+		}
+	}
+}
+
 func TestBuildTmuxAttachScript_LocalConn(t *testing.T) {
 	meta := waveobj.MetaMapType{
 		waveobj.MetaKey_TermTmuxSession: "omlx-11335",

@@ -334,6 +334,49 @@ func (ws *WshServer) ControllerInputCommand(ctx context.Context, data wshrpc.Com
 	return blockcontroller.SendInput(data.BlockId, inputUnion)
 }
 
+// ListTmuxSessionsCommand returns the names of running tmux sessions on the requested connection.
+// Local or disconnected connections, a missing tmux executable, and an absent tmux server all return an empty list.
+func (ws *WshServer) ListTmuxSessionsCommand(ctx context.Context, connName string) ([]string, error) {
+	if conncontroller.IsLocalConnName(connName) {
+		return []string{}, nil
+	}
+	opts, err := remote.ParseOpts(connName)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing connection name: %w", err)
+	}
+	conn := conncontroller.MaybeGetConn(opts)
+	if conn == nil {
+		return []string{}, nil
+	}
+	client := conn.GetClient()
+	if client == nil {
+		return []string{}, nil
+	}
+	shellClient := genconn.MakeSSHShellClient(client)
+	// Use a login shell so the full PATH is available (including locations such as Homebrew's /opt/homebrew/bin).
+	// Single-quote the tmux command here; HardQuote adds the outer quoting for the remote shell command.
+	stdout, _, err := genconn.RunSimpleCommand(ctx, shellClient, genconn.CommandSpec{
+		Cmd: `bash -lc 'tmux list-sessions -F "#{session_name}" 2>/dev/null' 2>/dev/null || true`,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error listing tmux sessions: %w", err)
+	}
+	return parseTmuxSessionList(stdout), nil
+}
+
+// parseTmuxSessionList parses `tmux list-sessions -F '#{session_name}'` output into session names,
+// discarding blank lines and surrounding whitespace.
+func parseTmuxSessionList(stdout string) []string {
+	sessions := []string{}
+	for _, line := range strings.Split(stdout, "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			sessions = append(sessions, name)
+		}
+	}
+	return sessions
+}
+
 func (ws *WshServer) ControllerAppendOutputCommand(ctx context.Context, data wshrpc.CommandControllerAppendOutputData) error {
 	outputBuf := make([]byte, base64.StdEncoding.DecodedLen(len(data.Data64)))
 	nw, err := base64.StdEncoding.Decode(outputBuf, []byte(data.Data64))
