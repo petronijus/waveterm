@@ -84,6 +84,15 @@ Rules that hold **with or without** worktrees:
 - The detailed working plan and cross-machine build-handover tasks are tracked **privately,
   outside this public repo** — don't reproduce them here.
 
+## Inline terminal images
+
+Sixel + iTerm2 IIP render in terminal blocks (`@xterm/addon-image`, loaded in
+`frontend/app/view/term/termwrap.ts`) — the addon also advertises sixel in its DA1 reply, so
+tools auto-detect it. Nothing renders unless something *emits* an image, so a producer has to
+be installed: `brew install chafa libsixel timg`. Use `chafa -f sixel` — `chafa -f iterm2`
+emits TIFF inside the IIP envelope, which the browser cannot decode (the original fork's
+hand-rolled TIFF decoder was deliberately not carried over).
+
 ## Staying current with upstream
 
 ```sh
