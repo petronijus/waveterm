@@ -141,6 +141,17 @@
             .typeahead-current-checkbox {
                 margin-left: auto;
             }
+
+            &.current {
+                .typeahead-item-name {
+                    font-weight: 700;
+                    color: var(--main-text-color);
+                }
+            }
+
+            &.current:not(.selected) .typeahead-current-checkbox {
+                color: var(--accent-color);
+            }
         }
     }
 }

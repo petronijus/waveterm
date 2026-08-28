@@ -57,7 +57,7 @@ const ToolbarButton = React.memo(function ToolbarButton({
 }) {
     return (
         <button
-            className="flex items-center justify-center w-6 h-6 rounded hover:bg-white/10 transition-colors cursor-pointer text-secondary hover:text-primary disabled:opacity-40 disabled:cursor-default"
+            className="flex items-center justify-center shrink-0 w-6 h-6 rounded hover:bg-white/10 transition-colors cursor-pointer text-secondary hover:text-primary disabled:opacity-40 disabled:cursor-default"
             title={title}
             disabled={disabled}
             onClick={onClick}
@@ -812,27 +812,27 @@ export const GitView: React.FC<ViewComponentProps<GitViewModel>> = React.memo(fu
                 <div className="git-toolbar shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border bg-panel">
                     <button
                         ref={branchAnchorRef}
-                        className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border text-xs text-secondary hover:text-primary hover:bg-white/5 transition-colors cursor-pointer max-w-[40%]"
-                        title="Switch branch"
+                        className="flex min-w-0 items-center gap-1.5 px-2 py-0.5 rounded border border-border text-xs text-secondary hover:text-primary hover:bg-white/5 transition-colors cursor-pointer"
+                        title={`Switch branch (current: ${branchLabel})`}
                         onClick={() => model.toggleBranchSwitcher()}
                     >
-                        <i className="fa-sharp fa-solid fa-code-branch text-[10px]" />
+                        <i className="fa-sharp fa-solid fa-code-branch shrink-0 text-[10px]" />
                         <span className="truncate">{branchLabel}</span>
-                        <i className="fa-sharp fa-solid fa-caret-down text-[10px]" />
+                        <i className="fa-sharp fa-solid fa-caret-down shrink-0 text-[10px]" />
                     </button>
                     {(status?.ahead > 0 || status?.behind > 0) && (
-                        <span className="text-xs text-secondary font-mono whitespace-pre">
+                        <span className="shrink-0 text-xs text-secondary font-mono whitespace-pre">
                             {status?.ahead > 0 ? ` ↑${status.ahead}` : ""}
                             {status?.behind > 0 ? ` ↓${status.behind}` : ""}
                         </span>
                     )}
                     {refreshError != null && (
                         <i
-                            className="fa-sharp fa-solid fa-triangle-exclamation text-[11px] text-warning"
+                            className="fa-sharp fa-solid fa-triangle-exclamation shrink-0 text-[11px] text-warning"
                             title={`Auto-refresh failing — shown data may be stale: ${refreshError}`}
                         />
                     )}
-                    <span className="flex-1" />
+                    <span className="min-w-2 flex-1" />
                     <ToolbarButton
                         icon="cloud-arrow-down"
                         title="Fetch"

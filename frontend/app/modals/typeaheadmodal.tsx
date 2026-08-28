@@ -35,7 +35,10 @@ const Suggestions = forwardRef<HTMLDivElement, SuggestionsProps>(
                         onSelect(item.value);
                     }
                 }}
-                className={clsx("suggestion-item", { selected: selectIndex === index })}
+                className={clsx("suggestion-item", {
+                    selected: selectIndex === index,
+                    current: "current" in item && item.current,
+                })}
             >
                 <div className="typeahead-item-name ellipsis">
                     {item.icon &&
