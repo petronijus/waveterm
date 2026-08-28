@@ -24,6 +24,7 @@ export const DefaultFullConfig: FullConfigType = {
     connections: {},
     projects: {},
     bookmarks: {},
+    filebookmarks: {},
     waveai: waveaiJson as unknown as { [key: string]: AIModeConfigType },
     backgrounds: backgroundsJson as { [key: string]: BackgroundConfigType },
     keybindings: keybindingsJson as unknown as KeybindingConfigType[],

@@ -91,6 +91,8 @@ type WshRpcInterface interface {
 	ListLayoutsCommand(ctx context.Context) ([]string, error)
 	DeleteLayoutCommand(ctx context.Context, name string) error
 	DuplicateTabCommand(ctx context.Context, tabId string) (string, error)
+	SetFileBookmarkCommand(ctx context.Context, data FileBookmarkSetRequest) error
+	DeleteFileBookmarkCommand(ctx context.Context, key string) error
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
@@ -475,6 +477,11 @@ type FlagRequest struct {
 	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
 }
 
+type FileBookmarkSetRequest struct {
+	Key      string               `json:"key"`
+	Bookmark wconfig.FileBookmark `json:"bookmark"`
+}
+
 type ConnStatus struct {
 	Status                        string   `json:"status"`
 	ConnHealthStatus              string   `json:"connhealthstatus,omitempty"`
@@ -503,7 +510,7 @@ type ConnStatus struct {
 	// password Cancel, or permanent handshake failure. Auto paths no-op until
 	// explicit Reconnect (UX-0.1, UX-0.4, UX-0.5).
 	SuppressAutoReconnect bool `json:"suppressautoreconnect,omitempty"`
-	FlappingMode   bool `json:"flappingmode,omitempty"` // true when ≥3 reconnect attempts in last 30s (UX-2.2)
+	FlappingMode          bool `json:"flappingmode,omitempty"` // true when ≥3 reconnect attempts in last 30s (UX-2.2)
 	// AuthQueueWaiting is true while this connection is blocked on the per-window
 	// password prompt lock waiting for another conn to finish signing in (UX-1.6).
 	AuthQueueWaiting bool `json:"authqueuewaiting,omitempty"`

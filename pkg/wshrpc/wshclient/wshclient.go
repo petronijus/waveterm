@@ -221,6 +221,12 @@ func DeleteBuilderCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) 
 	return err
 }
 
+// command "deletefilebookmark", wshserver.DeleteFileBookmarkCommand
+func DeleteFileBookmarkCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "deletefilebookmark", data, opts)
+	return err
+}
+
 // command "deletelayout", wshserver.DeleteLayoutCommand
 func DeleteLayoutCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "deletelayout", data, opts)
@@ -1001,6 +1007,12 @@ func SetConfigCommand(w *wshutil.WshRpc, data wshrpc.MetaSettingsType, opts *wsh
 // command "setconnectionsconfig", wshserver.SetConnectionsConfigCommand
 func SetConnectionsConfigCommand(w *wshutil.WshRpc, data wshrpc.ConnConfigRequest, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setconnectionsconfig", data, opts)
+	return err
+}
+
+// command "setfilebookmark", wshserver.SetFileBookmarkCommand
+func SetFileBookmarkCommand(w *wshutil.WshRpc, data wshrpc.FileBookmarkSetRequest, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "setfilebookmark", data, opts)
 	return err
 }
 

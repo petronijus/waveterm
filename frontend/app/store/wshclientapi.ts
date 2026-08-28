@@ -222,6 +222,12 @@ export class RpcApiType {
         return client.wshRpcCall("deletebuilder", data, opts);
     }
 
+    // command "deletefilebookmark" [call]
+    DeleteFileBookmarkCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "deletefilebookmark", data, opts);
+        return client.wshRpcCall("deletefilebookmark", data, opts);
+    }
+
     // command "deletelayout" [call]
     DeleteLayoutCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "deletelayout", data, opts);
@@ -1006,6 +1012,12 @@ export class RpcApiType {
     SetConnectionsConfigCommand(client: WshClient, data: ConnConfigRequest, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setconnectionsconfig", data, opts);
         return client.wshRpcCall("setconnectionsconfig", data, opts);
+    }
+
+    // command "setfilebookmark" [call]
+    SetFileBookmarkCommand(client: WshClient, data: FileBookmarkSetRequest, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setfilebookmark", data, opts);
+        return client.wshRpcCall("setfilebookmark", data, opts);
     }
 
     // command "setflag" [call]

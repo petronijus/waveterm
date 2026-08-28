@@ -1057,6 +1057,23 @@ declare global {
         suggestions: SuggestionType[];
     };
 
+    // wconfig.FileBookmark
+    type FileBookmark = {
+        "display:order"?: number;
+        bookmarktype: string;
+        label: string;
+        path: string;
+        connection?: string;
+        anchor?: string;
+        line?: number;
+    };
+
+    // wshrpc.FileBookmarkSetRequest
+    type FileBookmarkSetRequest = {
+        key: string;
+        bookmark: FileBookmark;
+    };
+
     // wshrpc.FileCopyOpts
     type FileCopyOpts = {
         overwrite?: boolean;
@@ -1160,6 +1177,7 @@ declare global {
         connections: {[key: string]: ConnKeywords};
         projects: {[key: string]: ProjectConfigType};
         bookmarks: {[key: string]: WebBookmark};
+        filebookmarks: {[key: string]: FileBookmark};
         waveai: {[key: string]: AIModeConfigType};
         keybindings: KeybindingConfigType[];
         configerrors: ConfigError[];
