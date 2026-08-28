@@ -460,12 +460,7 @@ export class TermViewModel implements ViewModel {
     // The session id is recorded per block by the backend when shell integration
     // reports that claude started (pkg/blockcontroller/claudesession.go). Meta lives in
     // the block row, so it is still there after a restart — the point of the button.
-    claudeResumeSessionId(
-        get: jotai.Getter,
-        blockData: Block,
-        shellProcStatus: string,
-        isCmd: boolean
-    ): string | null {
+    claudeResumeSessionId(get: jotai.Getter, blockData: Block, shellProcStatus: string, isCmd: boolean): string | null {
         const sessionId = blockData?.meta?.["claude:sessionid"];
         // Reading through termRef (a plain ref, not an atom) means this recomputes only
         // when one of the atoms above changes — good enough, since shellProcStatus moves
@@ -945,6 +940,13 @@ export class TermViewModel implements ViewModel {
         }
         const appHandled = appHandleKeyDown(waveEvent);
         if (appHandled) {
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+        }
+        const ctrlAscii = keyutil.keyboardEventToCtrlASCII(waveEvent);
+        if (ctrlAscii != "") {
+            this.sendDataToController(ctrlAscii);
             event.preventDefault();
             event.stopPropagation();
             return false;

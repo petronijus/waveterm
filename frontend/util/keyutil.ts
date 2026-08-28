@@ -288,6 +288,27 @@ const keyMap = {
     PageDown: "\x1b[6~",
 };
 
+// Physical-key → ASCII control character. When Ctrl is held on a non-US layout
+// the browser can report the wrong event.key (upstream #3334: the physical "["
+// key arriving as "]"), so xterm.js resolves these from the layout character and
+// sends the wrong byte. Keying off event.code sidesteps the layout entirely.
+// Only keys that have a real ASCII control equivalent belong here — Ctrl+digit
+// and friends have none, and deriving one via `charCode & 0x1f` would invent a
+// byte no terminal sends.
+const CtrlCodeMap: Record<string, string> = {
+    BracketLeft: "\x1b", // ESC
+    Backslash: "\x1c", // FS
+    BracketRight: "\x1d", // GS
+    Slash: "\x1f", // US
+};
+
+function keyboardEventToCtrlASCII(event: WaveKeyboardEvent): string {
+    if (!event.control || event.alt || event.meta) {
+        return "";
+    }
+    return CtrlCodeMap[event.code] ?? "";
+}
+
 function keyboardEventToASCII(event: WaveKeyboardEvent): string {
     // check modifiers
     // if no modifiers are set, just send the key
@@ -329,6 +350,7 @@ export {
     isCharacterKeyEvent,
     isInputEvent,
     keyboardEventToASCII,
+    keyboardEventToCtrlASCII,
     keydownWrapper,
     parseKeyDescription,
     setKeyUtilPlatform,
