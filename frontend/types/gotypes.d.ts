@@ -1417,9 +1417,9 @@ declare global {
         "term:bellindicator"?: boolean;
         "term:osc52"?: string;
         "term:durable"?: boolean;
+        "term:tmux:session"?: string;
         "claude:sessionid"?: string;
         "claude:cwd"?: string;
-        "term:tmux:session"?: string;
         "web:zoom"?: number;
         "web:hidenav"?: boolean;
         "web:partition"?: string;

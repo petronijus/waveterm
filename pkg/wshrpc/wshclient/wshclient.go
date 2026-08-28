@@ -640,6 +640,12 @@ func ListLayoutsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]string, erro
 	return resp, err
 }
 
+// command "listtmuxsessions", wshserver.ListTmuxSessionsCommand
+func ListTmuxSessionsCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) ([]string, error) {
+	resp, err := sendRpcRequestCallHelper[[]string](w, "listtmuxsessions", data, opts)
+	return resp, err
+}
+
 // command "loadlayout", wshserver.LoadLayoutCommand
 func LoadLayoutCommand(w *wshutil.WshRpc, data wshrpc.CommandLayoutData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "loadlayout", data, opts)

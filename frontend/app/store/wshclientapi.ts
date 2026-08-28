@@ -642,6 +642,12 @@ export class RpcApiType {
         return client.wshRpcCall("listlayouts", null, opts);
     }
 
+    // command "listtmuxsessions" [call]
+    ListTmuxSessionsCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<string[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "listtmuxsessions", data, opts);
+        return client.wshRpcCall("listtmuxsessions", data, opts);
+    }
+
     // command "loadlayout" [call]
     LoadLayoutCommand(client: WshClient, data: CommandLayoutData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "loadlayout", data, opts);
