@@ -281,6 +281,17 @@ deviation is noted where the patch had to change.
 Upstream `main` itself is fully merged; the only thing it carries beyond the last fork release
 is dependabot noise plus `wsh tab list` / `tab move`, which `release` already has.
 
+Shipped in **v0.14.5-pj.21**.
+
+> **Linux build note (pj.21).** The Excalidraw port grows the renderer bundle enough that
+> `vite build:prod` on the 4 GB Linux VM now trips **`systemd-oomd`**, which kills on PSI memory
+> _pressure_ rather than actual exhaustion — the build died at "rendering chunks" with `exit=137`
+> while 17 GB of swap sat 94% unused, so adding RAM would not necessarily have helped. Run the
+> build inside a scope oomd will not pick as a victim:
+> `systemd-run --user --scope -p ManagedOOMPreference=avoid bash -lc '… task package …'`
+> (no root needed). `journalctl -u systemd-oomd` names the killed cgroup and the pressure that
+> triggered it.
+
 ## Claude session resume
 
 A terminal block remembers the Claude Code session started in it and, once that session is no

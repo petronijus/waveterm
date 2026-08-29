@@ -25,6 +25,8 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 - **Git view** — branch switcher, staged/unstaged/untracked file lists, inline diff, commit &
   push — all running over `wshremote`, so it works on the **local machine and remote SSH hosts**.
+  The branch field takes as much of the toolbar as it needs (long `feat/…` names stay readable),
+  and the switcher shows the branch you are on in bold.
 - **Per-hunk stage / unstage** — stage or revert individual hunks straight from the diff, powered
   by `git apply --cached` (git does the splitting, so patches always apply cleanly).
 - **Multi-file review mode** — a _Review_ action walks every changed file in one flow;
@@ -41,7 +43,9 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   **Copy Raw** escape hatch in the context menu), and a URL split across lines is clickable again,
   tooltip included.
 - **Inline images** — Sixel and the iTerm2 inline-image protocol (IIP) render pictures right in
-  the terminal (`chafa`, image CLIs, and friends just work).
+  the terminal. Nothing renders until something _emits_ an image, so install a producer
+  (`brew install chafa`, `apt install chafa`, …) and use `chafa -f sixel` — `chafa -f iterm2`
+  wraps TIFF, which browsers cannot decode.
 - **Remote file transfer** — paste or drop an image/file into a **remote** SSH terminal and it's
   uploaded to that host, with the remote path pasted back (upload indicator included).
 - **Non-blocking SSH auth prompts** — password / passphrase / keyboard-interactive prompts appear
@@ -102,6 +106,12 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 <br/>
 
+- **Ports of stalled upstream PRs** — upstream's `main` has not moved since July 2026 while ~40
+  community pull requests sit open, so the fork cherry-picks the useful ones: SSH agent
+  forwarding, configurable keybindings (`keybindings.json`), tmux auto-attach on remote blocks,
+  an Excalidraw widget, file/document bookmarks in the preview, restore-all-windows, and a fix
+  for `Ctrl+[` sending the wrong control byte on non-US keyboard layouts. See
+  [FORK.md](./FORK.md#ported-upstream-prs) for the list and the fork-side deviations.
 - **Background tabs cost (almost) nothing** — background tab renderers are now actually hidden
   and Chromium-throttled instead of running at full speed off-screen: a flooding terminal drops
   from ~17% renderer CPU to under 1% the moment its tab goes to the background, and webview-heavy
