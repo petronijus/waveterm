@@ -254,6 +254,14 @@ git checkout feat/<task> && git rebase main
   sizes to its content and shrinks only when the toolbar actually runs out of room (full name
   in the tooltip). The branch switcher bolds the checked-out branch instead of only marking it
   with a trailing check.
+- **Linux dock icon** — the window is matched to its `waveterm.desktop` entry again, instead of
+  showing up as a blank icon beside the launcher it was started from. Electron derives
+  `CHROME_DESKTOP` from the app name, and Chromium names both the systemd scope it relocates
+  itself into (`app-wave-<pid>.scope`) and its XDG app id after it; GNOME resolves a window's
+  desktop entry from that scope, so it looked for a `wave.desktop` that does not exist. The fork
+  pins the desktop name to the packaged executable's basename — the same value electron-builder
+  names the entry after, so the dev-channel build stays correct too. Regressed with the Electron
+  41.1.0 → 41.10.3 bump in pj.20.
 - **Ported upstream PRs** — merged from `wavetermdev/waveterm` pull requests that are open but
   unmerged upstream (upstream's last merge to `main` was 2026-07-29). See
   [Ported upstream PRs](#ported-upstream-prs).

@@ -112,6 +112,10 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   an Excalidraw widget, file/document bookmarks in the preview, restore-all-windows, and a fix
   for `Ctrl+[` sending the wrong control byte on non-US keyboard layouts. See
   [FORK.md](./FORK.md#ported-upstream-prs) for the list and the fork-side deviations.
+- **Correct icon in the Linux dock** — GNOME identifies a window through the systemd scope
+  Chromium moves itself into, which Electron names after the app rather than after the installed
+  `.desktop` entry; the fork pins that name, so the window docks onto its own launcher instead of
+  appearing as a second, blank icon.
 - **Background tabs cost (almost) nothing** — background tab renderers are now actually hidden
   and Chromium-throttled instead of running at full speed off-screen: a flooding terminal drops
   from ~17% renderer CPU to under 1% the moment its tab goes to the background, and webview-heavy
