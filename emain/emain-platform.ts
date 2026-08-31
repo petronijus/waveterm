@@ -35,6 +35,19 @@ const paths = envPaths("waveterm", { suffix: waveDirNameSuffix });
 app.setName(isDev ? "Wave (Dev)" : "Wave");
 const unamePlatform = process.platform;
 const unameArch: string = process.arch;
+
+// Electron derives CHROME_DESKTOP from the app name, and Chromium then names both the
+// systemd scope it moves itself into ("app-wave-<pid>.scope") and its XDG app id after it.
+// GNOME resolves a window's desktop entry from that scope, so it looks for wave.desktop,
+// finds nothing, and shows a blank dock icon detached from the waveterm.desktop launcher.
+// The packaged executable carries the same name as the desktop entry electron-builder
+// writes (executableName), so its basename is the entry we have to point Chromium at.
+// Must run before Chromium initializes, i.e. before the app is ready.
+if (unamePlatform === "linux") {
+    const desktopBaseName = app.isPackaged ? path.basename(process.execPath) : waveDirName;
+    app.setDesktopName(`${desktopBaseName}.desktop`);
+}
+
 keyutil.setKeyUtilPlatform(unamePlatform);
 
 const WaveConfigHomeVarName = "WAVETERM_CONFIG_HOME";
