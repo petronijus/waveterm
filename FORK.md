@@ -262,6 +262,17 @@ git checkout feat/<task> && git rebase main
   pins the desktop name to the packaged executable's basename — the same value electron-builder
   names the entry after, so the dev-channel build stays correct too. Regressed with the Electron
   41.1.0 → 41.10.3 bump in pj.20.
+- **GPU-process crash fallback** — Chromium's Skia Graphite raster backend (Metal via Dawn on
+  macOS) terminates the whole GPU process with a `CHECK` when an async shader compile fails,
+  instead of falling back; every WebGL context — so every terminal — goes with it, and the
+  process only logged to the OS crash reporter. New opt-in `window:disablegraphite` launch
+  setting passes `--disable-features=SkiaGraphite`, keeping hardware acceleration on Ganesh
+  (a much lighter hammer than `window:disablehardwareacceleration`). The main process now
+  also logs every non-clean child-process exit (`[child-process-gone] type=GPU …`) to
+  `waveapp.log`, so a GPU crash lines up with the `.ips` report instead of being invisible.
+  Diagnosed on macOS 27 beta 6 / M3 Pro with Electron 41 (Chromium 146); the same `CHECK`
+  is still present through Chromium 152 (Electron 44), so an Electron bump alone does not
+  fix it.
 - **Ported upstream PRs** — merged from `wavetermdev/waveterm` pull requests that are open but
   unmerged upstream (upstream's last merge to `main` was 2026-07-29). See
   [Ported upstream PRs](#ported-upstream-prs).

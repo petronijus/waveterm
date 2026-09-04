@@ -388,6 +388,14 @@ async function appMain() {
         console.log("disabling hardware acceleration, per launch settings");
         electronApp.disableHardwareAcceleration();
     }
+    if (launchSettings?.["window:disablegraphite"]) {
+        // Skia Graphite (Chromium's Metal/Dawn raster backend) CHECK-fails the whole GPU process
+        // when an async shader compile fails instead of falling back to Ganesh, which takes every
+        // WebGL context (so every terminal) down with it. Opting out keeps Ganesh on ANGLE, which
+        // is still hardware accelerated. Has to be set before app.ready to take effect.
+        console.log("disabling Skia Graphite, per launch settings");
+        electronApp.commandLine.appendSwitch("disable-features", "SkiaGraphite");
+    }
     const startTs = Date.now();
     const instanceLock = electronApp.requestSingleInstanceLock();
     if (!instanceLock) {
@@ -399,6 +407,19 @@ async function appMain() {
     electronApp.on("second-instance", (_event, argv, workingDirectory) => {
         console.log("second-instance event, argv:", argv, "workingDirectory:", workingDirectory);
         fireAndForget(createNewWaveWindow);
+    });
+    // A crashed GPU process blanks every window and drops all WebGL contexts, yet nothing in
+    // waveapp.log recorded it — the only trace was the OS crash report. Chromium relaunches the
+    // process and, after enough crashes, silently falls back to software compositing, so log every
+    // non-clean child exit (GPU, utility, ...) to give the .ips report a matching line here.
+    electronApp.on("child-process-gone", (_event, details) => {
+        if (details.reason === "clean-exit") {
+            return;
+        }
+        const name = details.name ?? details.serviceName ?? "";
+        console.log(
+            `[child-process-gone] type=${details.type} name=${name} reason=${details.reason} exitCode=${details.exitCode}`
+        );
     });
     try {
         await runWaveSrv(handleWSEvent);

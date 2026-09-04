@@ -110,6 +110,7 @@ const (
 	ConfigKey_WindowShowMenuBar              = "window:showmenubar"
 	ConfigKey_WindowNativeTitleBar           = "window:nativetitlebar"
 	ConfigKey_WindowDisableHardwareAcceleration = "window:disablehardwareacceleration"
+	ConfigKey_WindowDisableGraphite          = "window:disablegraphite"
 	ConfigKey_WindowMaxTabCacheSize          = "window:maxtabcachesize"
 	ConfigKey_WindowMagnifiedBlockOpacity    = "window:magnifiedblockopacity"
 	ConfigKey_WindowMagnifiedBlockSize       = "window:magnifiedblocksize"
