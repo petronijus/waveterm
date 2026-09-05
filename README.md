@@ -106,6 +106,8 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 <br/>
 
+- **Current Electron** — the fork runs on Electron 44 (Chromium 152 / Node 24); upstream is still on
+  Electron 41, which went end-of-life in August 2026. Requires macOS 13 (Ventura) or newer.
 - **Ports of stalled upstream PRs** — upstream's `main` has not moved since July 2026 while ~40
   community pull requests sit open, so the fork cherry-picks the useful ones: SSH agent
   forwarding, configurable keybindings (`keybindings.json`), tmux auto-attach on remote blocks,
@@ -169,11 +171,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 
 Grab the latest build from **[Releases](https://github.com/petronijus/waveterm/releases)**.
 
-| Platform                | Notes                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| **macOS** (arm64 / x64) | `.dmg` / `.zip`, signed with a Developer ID and notarized — opens normally, no right-click dance. |
-| **Linux**               | `.deb`, `.AppImage`, `.rpm`, and `.pacman`.                                                       |
-| **Windows**             | NSIS installer (`.exe`) plus a portable `.zip`.                                                   |
+| Platform                | Notes                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **macOS** (arm64 / x64) | `.dmg` / `.zip`, signed with a Developer ID and notarized — opens normally, no right-click dance. macOS 13+. |
+| **Linux**               | `.deb`, `.AppImage`, `.rpm`, and `.pacman`.                                                                  |
+| **Windows**             | NSIS installer (`.exe`) plus a portable `.zip`.                                                              |
 
 Want to run this fork **side by side** with a stock Wave? Each release also ships a **Wave (Dev)**
 build with its own app identity and data directory — install both without conflict.
