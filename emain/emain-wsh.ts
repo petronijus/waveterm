@@ -114,6 +114,11 @@ export function showWaveNotification(notificationOptions: WaveNotificationOption
         body: notificationOptions.body,
         silent: notificationOptions.silent,
     });
+    // Electron 42+ posts macOS notifications through UNUserNotificationCenter, which drops
+    // them from unsigned bundles (dev builds) and only reports it via "failed".
+    notification.on("failed", (_event, error) => {
+        console.log("[notification] failed to show:", error);
+    });
     if (notificationOptions.windowid) {
         notification.on("click", () => {
             void (async () => {

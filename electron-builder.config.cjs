@@ -62,7 +62,7 @@ const config = {
             },
         ],
         category: "public.app-category.developer-tools",
-        minimumSystemVersion: "10.15.0",
+        minimumSystemVersion: "13.0.0",
         // electron-builder 26.x: notarize must be a boolean — credentials come from the
         // APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID env vars directly.
         notarize: macShouldNotarize,

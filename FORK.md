@@ -273,6 +273,21 @@ git checkout feat/<task> && git rebase main
   Diagnosed on macOS 27 beta 6 / M3 Pro with Electron 41 (Chromium 146); the same `CHECK`
   is still present through Chromium 152 (Electron 44), so an Electron bump alone does not
   fix it.
+- **Electron 44** (`^44.2.0`, Chromium 152 / Node 24) — upstream sits on Electron 41, which
+  went end-of-life on 2026-08-25 (Electron supports the latest three majors). Chromium 152
+  also adds the `graphite-insert-error` crash key that names the exact Metal failure behind
+  the GPU crash above. What moved with it: `@types/node` 24, `node-abi` 4.35 (the older one
+  does not know Electron 44's ABI, so `install-app-deps` aborted), `electron-builder`
+  26.15, the Vite bundle targets (`chrome152` / `node24`), and `tsconfig` `lib` to `es2022`
+  (the new `@types/node` no longer drags it in and the code uses `Array.prototype.at`).
+  Behavior changes worth knowing from the 42–44 notes: the macOS minimum is now 13
+  (Ventura; the DMG's `minimumSystemVersion` was raised to match), 32-bit Windows/Linux
+  ARMv7 builds are gone (never built here), and macOS notifications go through
+  `UNUserNotificationCenter`, which refuses to show them from an **unsigned** bundle —
+  release builds are signed, but a `task dev` / dev-channel build silently shows nothing.
+  Both notification call sites now log the `failed` event so that case is visible in
+  `waveapp.log`. The Playwright driver behind the smoke suite needed `playwright-core`
+  1.63 to launch Chromium 152 (1.61 hung after the DevTools handshake).
 - **Ported upstream PRs** — merged from `wavetermdev/waveterm` pull requests that are open but
   unmerged upstream (upstream's last merge to `main` was 2026-07-29). See
   [Ported upstream PRs](#ported-upstream-prs).

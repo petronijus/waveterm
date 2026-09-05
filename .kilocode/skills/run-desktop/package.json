@@ -5,6 +5,6 @@
     "description": "Playwright _electron driver for running/driving the Wave Terminal desktop app",
     "type": "module",
     "dependencies": {
-        "playwright-core": "^1.49.0"
+        "playwright-core": "^1.63.0"
     }
 }

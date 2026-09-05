@@ -179,6 +179,9 @@ export class Updater {
             updateNotification.on("click", () => {
                 fireAndForget(this.promptToInstallUpdate.bind(this));
             });
+            updateNotification.on("failed", (_event, error) => {
+                console.log("[updater] update notification failed to show:", error);
+            });
             updateNotification.show();
         });
     }

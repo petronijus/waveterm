@@ -9,8 +9,8 @@ import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // from our electron build
-const CHROME = "chrome140";
-const NODE = "node22";
+const CHROME = "chrome152";
+const NODE = "node24";
 
 // for debugging
 // target is like -- path.resolve(__dirname, "frontend/app/workspace/workspace-layout-model.ts");

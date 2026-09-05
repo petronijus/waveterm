@@ -334,8 +334,40 @@ try {
     // TermWrap.getCopyText() — the same code path every copy route uses; the actual
     // navigator.clipboard write needs document focus, which a background-mode window
     // doesn't have, so the clipboard itself is only reported as detail.
+    //
+    // The shell is still starting when the onboarding modal closes; its init sequence
+    // (clear + prompt) would wipe anything written before it lands, so wait for the
+    // prompt to show up in the buffer before writing.
     {
-        const sel = await page.evaluate(async () => {
+        const promptReady = await (async () => {
+            const end = Date.now() + 20_000;
+            while (Date.now() < end) {
+                const ready = await page.evaluate(() => {
+                    const tw = window.__termwraps ? [...window.__termwraps.values()][0] : null;
+                    const term = tw?.terminal;
+                    if (!term || term.cols <= 0) {
+                        return false;
+                    }
+                    const buf = term.buffer.active;
+                    for (let i = 0; i < buf.length; i++) {
+                        if ((buf.getLine(i)?.translateToString(true) ?? "") !== "") {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+                if (ready) {
+                    await sleep(1500);
+                    return true;
+                }
+                await sleep(500);
+            }
+            return false;
+        })();
+        const sel = await page.evaluate(async (promptReady) => {
+            if (!promptReady) {
+                return { err: "terminal never printed a prompt within 20s" };
+            }
             const wraps = window.__termwraps;
             if (!wraps || !wraps.size) {
                 return { err: "no __termwraps registry (dev hook missing?)" };
@@ -361,7 +393,7 @@ try {
             }
             term.selectLines(row, row + 1);
             return { cols, url, copyText: tw.getCopyText() };
-        });
+        }, promptReady);
         if (sel.err) {
             report("copy-unwrap", false, sel.err);
         } else {

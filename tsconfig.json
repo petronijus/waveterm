@@ -25,7 +25,7 @@
             "@/shadcn/*": ["frontend/app/shadcn/*"],
             "@/preview/*": ["frontend/preview/*"]
         },
-        "lib": ["dom", "dom.iterable", "es6"],
+        "lib": ["dom", "dom.iterable", "es2022"],
         "allowJs": true,
         "strict": false,
         "noEmit": true
