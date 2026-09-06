@@ -7,9 +7,14 @@ branch (or whatever branch you want to ship).
 ## Prerequisites (all platforms)
 
 - **Go** (1.24+)
-- **Node** (22+) + npm
+- **Node** (22.12+) + npm — `@electron/rebuild` / `node-abi` refuse older Node with `EBADENGINE`
 - **[Task](https://taskfile.dev)** (`go-task`) — the build runner
 - **Zig** — used to cross-compile the `wsh` helper
+
+The fork runs on **Electron 44** (Chromium 152 / Node 24). The Electron binary is downloaded on
+the first `electron` invocation after `npm install` (Electron 42+ no longer does it in
+`postinstall`), so the first `task dev` / `task package` after a fresh checkout takes a moment
+longer. See [Upgrading Electron](#upgrading-electron) before bumping the version.
 
 Then, once per checkout:
 
@@ -39,17 +44,17 @@ task package     # builds an installer for the CURRENT platform → ./make
 
 `task package` only builds for the OS it runs on. Artifacts land in `./make`:
 
-| OS | toolchain notes | artifacts in `./make` |
-|----|-----------------|------------------------|
-| **macOS** | Xcode CLT + an `Apple Development` cert in your keychain. **See "macOS notes" below** — sign the build (ad-hoc/unsigned silently breaks notifications), and run with network so the timestamp step succeeds. | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}` |
-| **Linux** | system build deps for electron-builder targets (e.g. `rpm`, `fakeroot`, `snapcraft` for snap; AppImage/deb work out of the box on most distros) | `*.deb` / `*.AppImage` / `*.snap` |
-| **Windows** | Node/Go/Zig/Task on PATH; a recent MSVC / Build Tools if any native module needs rebuild. **See "Windows notes" below — a bare `task package` can ship a broken installer.** | `*.exe` (NSIS) + `*.zip` |
+| OS          | toolchain notes                                                                                                                                                                                                                                            | artifacts in `./make`                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **macOS**   | Xcode CLT + an `Apple Development` cert in your keychain. **See "macOS notes" below** — sign the build (ad-hoc/unsigned silently breaks notifications), and run with network so the timestamp step succeeds.                                               | `Wave-darwin-{arm64,x64}-<ver>.{dmg,zip}`      |
+| **Linux**   | system build deps for electron-builder targets (e.g. `rpm`, `fakeroot`, `snapcraft` for snap; **`libarchive-tools`** for `pacman` — fpm shells out to `bsdtar` and dies with `exit code 127` without it; AppImage/deb work out of the box on most distros) | `*.deb` / `*.AppImage` / `*.pacman` / `*.snap` |
+| **Windows** | Node/Go/Zig/Task on PATH; a recent MSVC / Build Tools if any native module needs rebuild. **See "Windows notes" below — a bare `task package` can ship a broken installer.**                                                                               | `*.exe` (NSIS) + `*.zip`                       |
 
 ### macOS notes
 
 - **Sign the build — notifications need it.** macOS delivers Electron notifications through
   `UNUserNotificationCenter`, which requires a real code signature (a Team ID). An
-  **ad-hoc / unsigned** app is *silently* dropped: no banners, and the app never even appears
+  **ad-hoc / unsigned** app is _silently_ dropped: no banners, and the app never even appears
   in **System Settings → Notifications**. (Linux/Windows don't have this requirement — that's
   why notifications worked there but not on a `CSC_IDENTITY_AUTO_DISCOVERY=false` macOS build.)
   So let electron-builder sign with your `Apple Development` cert (auto-discovered from the
@@ -62,9 +67,9 @@ task package     # builds an installer for the CURRENT platform → ./make
   `A timestamp was expected but was not found` (electron-builder exits 201). Run the package
   step with normal network access and it timestamps fine. (Signing every Electron component
   with a per-file timestamp request is slow — a signed package takes noticeably longer.)
-- **`rm -rf make` before a rebuild.** `task package` runs `clean` (`rm -rf make`) *in parallel*
+- **`rm -rf make` before a rebuild.** `task package` runs `clean` (`rm -rf make`) _in parallel_
   with `build:backend`, so `go mod tidy` can race it and scan a **leftover** `make/.../Wave.app/
-  .../Electron Framework.framework/Resources/*.lproj` from the previous build — paths with spaces
+.../Electron Framework.framework/Resources/*.lproj` from the previous build — paths with spaces
   → `malformed import path ... invalid char ' '`, and the package aborts at `go:mod:tidy`
   (exit 201). It only bites when `make/` is non-empty at start, so wipe it first:
   ```sh
@@ -77,6 +82,12 @@ task package     # builds an installer for the CURRENT platform → ./make
 - **Per-machine.** The cert lives only in your Mac's keychain, so only your Mac produces a
   signed (notification-capable) build. A machine without the cert yields an ad-hoc build with
   no notifications.
+- **macOS 13 (Ventura) or newer to run.** Electron 44 dropped macOS 12; the DMG's
+  `minimumSystemVersion` in `electron-builder.config.cjs` is set to match so the installer
+  refuses older systems instead of shipping an app that cannot launch.
+- **Unsigned dev builds now log why a notification never showed.** Electron 42+ posts through
+  `UNUserNotificationCenter`, which reports the refusal only via the notification's `failed`
+  event — both main-process call sites log it to `waveapp.log` (`[notification] failed to show`).
 
 ## Two channels side by side — "Wave" and "Wave (Dev)"
 
@@ -98,9 +109,11 @@ CSC_IDENTITY_AUTO_DISCOVERY=false task package         # → "Wave (Dev)-darwin-
 
 > ⚠️ **`task package` runs `clean` first (`rm -rf make`).** Building the second channel wipes
 > the first channel's artifacts from `./make`. Copy them aside before the second build:
+>
 > ```sh
 > mkdir -p artifacts/release && cp -p "make/Wave-darwin-"*.{dmg,zip} artifacts/release/
 > ```
+>
 > The two channels' artifacts are named differently (`Wave-darwin-…` vs `Wave (Dev)-darwin-…`),
 > so once both are in `./make` together they don't collide — only the `clean` step is the hazard.
 
@@ -113,7 +126,7 @@ backend binary didn't make it into the package.
 
 - **`wavesrv` silently dropped from the package.** `task package` runs `clean` and
   `build:backend` in parallel; once Task has cached `build:server`/`build:wsh` as
-  up-to-date it *skips* them, while `clean` wipes `dist/bin` — so the installer ships
+  up-to-date it _skips_ them, while `clean` wipes `dist/bin` — so the installer ships
   without `wavesrv.x64.exe`. Build in two explicit steps instead of a bare `task package`:
   ```sh
   CC="zig cc" task --force build:backend                 # force-rebuild wavesrv + wsh
@@ -121,6 +134,13 @@ backend binary didn't make it into the package.
   CSC_IDENTITY_AUTO_DISCOVERY=false \
     npx electron-builder -c electron-builder.config.cjs --win nsis zip -p never
   ```
+- **Count the `wsh` binaries before packaging.** `build:wsh` cross-compiles eight targets in
+  parallel and the Go build cache can hit an internal compiler error on one of them
+  (`internal compiler error: panic: unexpected decoding error: EOF` in
+  `crypto/internal/fips140/edwards25519`, seen on `linux/mips`). In a `call`-chained script the
+  failure is swallowed and electron-builder happily packages an installer with 7 of 8 helpers.
+  Expect `dir dist\bin\wsh-*` to list **8** files; if not, `go clean -cache && task --force
+build:wsh` and package again (`dist/` persists, only electron-builder needs to re-run).
 - **`CC="zig cc"` is required.** The `generate` step does a native cgo build that
   defaults to `gcc` (absent on Windows) → `cgo: C compiler "gcc" not found`. Pointing
   `CC` at `zig cc` fixes it; the `wavesrv` cross-compile sets its own `-target` on top.
@@ -133,6 +153,32 @@ backend binary didn't make it into the package.
   Node-bundled one (the `npm.cmd` shim prefers the global prefix). If `npm install`
   throws `Class extends value undefined …minipass-sized`, remove/rename
   `%APPDATA%\npm\node_modules\npm` so the bundled npm is used.
+
+## Upgrading Electron
+
+Everything that had to move together for the 41 → 44 bump (2026-09-05), so the next bump is
+a checklist rather than an archaeology dig:
+
+1. **`electron`** in `package.json`, plus **`@types/node`** to the major Electron bundles
+   (44 → Node 24) — check the release notes on `github.com/electron/electron/releases`.
+2. **`node-abi`** (a direct devDependency) must know the new Electron's ABI or
+   `electron-builder install-app-deps` aborts with `Could not detect abi for version X and
+runtime electron` right in `postinstall`. Bump it to the latest before `npm install`.
+   **`electron-builder`** to the latest 26.x at the same time (it pins `@electron/rebuild`).
+3. **`electron.vite.config.ts`** — the `CHROME` / `NODE` bundle targets (`chrome152` / `node24`)
+   follow the bundled Chromium and Node.
+4. **`tsconfig.json` `lib`** — `es2022` since `@types/node` 24 no longer references it and the
+   code uses `Array.prototype.at`; a lower lib surfaces as `Property 'at' does not exist`.
+5. **`electron-builder.config.cjs` `mac.minimumSystemVersion`** — follow Electron's macOS floor.
+6. **Read the "Planned Breaking Changes" doc** for every major in between
+   (`electronjs.org/docs/latest/breaking-changes`) and grep `emain/` + `frontend/` for the
+   APIs it names. 42–44 touched notifications (signing), the `clipboard` module (renderer
+   access removed; the fork only uses `navigator.clipboard`), dialog defaults, and
+   `select-client-certificate`.
+7. **The smoke driver's `playwright-core`** (`.kilocode/skills/run-desktop/`) must support the
+   new Chromium — 1.61 connected to Chromium 152's DevTools and then hung in `launch`; 1.63
+   works. Run `npx tsc --noEmit` (diff against the previous baseline — the repo carries a few
+   known errors) and the smoke suite before merging.
 
 ## Publish to a GitHub release
 
