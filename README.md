@@ -79,6 +79,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Duplicate a tab** — right-click a tab → _Duplicate_: a copy opens immediately to its right
   with the same arrangement and the same block settings (cwd, connection, theme), and fresh
   shells. Nested splits survive intact.
+- **Undo close tab** — <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> reopens the tab you closed
+  last, back at the position it was closed from, with its split layout and its terminal scrollback.
+  Right-click a tab for _Reopen Closed Tab_ to pick an older one by name. Upstream deletes a closed
+  tab outright; here the last 10 per workspace are kept for a week. The shells themselves are gone —
+  but a reopened terminal starts in the same directory, and its Claude session is still resumable.
 - **Folder bookmarks ("projects")** — bookmark folders and reach them from the Files view, the
   connection dropdown, and a Connections & Projects settings panel.
 - **Desktop notifications** — get a system notification when a long command finishes while the

@@ -79,6 +79,16 @@ task package     # builds an installer for the CURRENT platform → ./make
   but still runs locally because a locally-built app carries no `com.apple.quarantine`. Launch
   via Finder/`open`. If a launch flakes (app exits immediately), it's a stale process/lock —
   `pkill -9 -f WaveDev` (or `Wave`) then `open` again.
+- **macOS 26/27 Command Line Tools can break every native link.** On a Mac whose CLT SDK is
+  newer than Xcode's, `xcrun --show-sdk-path` hands out `/Library/Developer/CommandLineTools/
+SDKs/MacOSX.sdk`, and if that SDK's `.tbd` stubs declare an architecture the installed `tapi`
+  does not know (`arm64e.x1` on the 27.0 CLT), **every** cgo link and every `node-gyp` rebuild
+  dies with `ld: tapi error: malformed file … unknown architecture`. It is not a Go, npm or
+  electron-builder problem — `task generate`, `task package` and `electron-builder
+  install-app-deps` all fail the same way. Point the build at Xcode's own SDK instead:
+  ```sh
+  export SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+  ```
 - **Per-machine.** The cert lives only in your Mac's keychain, so only your Mac produces a
   signed (notification-capable) build. A machine without the cert yields an ad-hoc build with
   no notifications.
