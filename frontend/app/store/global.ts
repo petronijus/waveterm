@@ -33,7 +33,7 @@ import { reregisterGlobalKeys } from "./keymodel";
 import { atoms, blockComponentModelMap, ConnStatusMapAtom, initGlobalAtoms, orefAtomCache } from "./global-atoms";
 import { globalStore } from "./jotaiStore";
 import { modalsModel } from "./modalmodel";
-import { ClientService, ObjectService } from "./services";
+import { ClientService, ObjectService, WorkspaceService } from "./services";
 import { isPreviewWindow } from "./windowtype";
 import * as WOS from "./wos";
 import { getFileSubject, waveEventSubscribeSingle } from "./wps";
@@ -50,6 +50,12 @@ function initGlobal(initOpts: GlobalInitOptions) {
         });
     } catch (e) {
         console.log("failed to initialize onMenuItemAbout handler", e);
+    }
+    // dev-only hook so the smoke suite can drive undo-close-tab directly. Its fresh-install
+    // sandbox leaves global keybindings disabled (the onboarding modal turns them off and
+    // nothing turns them back on), so a key-driven check there would test the harness.
+    if (isDev()) {
+        (window as any).__undoCloseTab = undoCloseTab;
     }
 }
 
@@ -729,6 +735,23 @@ function createTab() {
     getApi().createTab();
 }
 
+// undoCloseTab reopens a tab from the tab trash and switches to it. Without a tabId it
+// reopens the most recently closed tab of the current workspace. Returns the reopened tab
+// id, or null when the trash held nothing.
+async function undoCloseTab(tabId?: string): Promise<string> {
+    const workspaceId = globalStore.get(atoms.workspaceId);
+    const restoredTabId = await WorkspaceService.UndoCloseTab(workspaceId, tabId ?? "");
+    if (isBlank(restoredTabId)) {
+        return null;
+    }
+    getApi().setActiveTab(restoredTabId);
+    return restoredTabId;
+}
+
+function listClosedTabs(): Promise<ClosedTabInfo[]> {
+    return WorkspaceService.ListClosedTabs(globalStore.get(atoms.workspaceId));
+}
+
 function setActiveTab(tabId: string) {
     getApi().setActiveTab(tabId);
 }
@@ -772,6 +795,7 @@ export {
     initGlobal,
     initGlobalWaveEventSubs,
     isDev,
+    listClosedTabs,
     loadConnStatus,
     makeDefaultConnStatus,
     openLink,
@@ -785,6 +809,7 @@ export {
     setNodeFocus,
     setPlatform,
     subscribeToConnEvents,
+    undoCloseTab,
     unregisterBlockComponentModel,
     useBlockAtom,
     useBlockCache,

@@ -230,6 +230,15 @@ declare global {
         newactivetabid?: string;
     };
 
+    // wstore.ClosedTabInfo
+    type ClosedTabInfo = {
+        tabid: string;
+        workspaceid: string;
+        name: string;
+        blockcount: number;
+        closedat: number;
+    };
+
     // wshrpc.CommandAuthenticateJobManagerData
     type CommandAuthenticateJobManagerData = {
         jobid: string;

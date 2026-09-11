@@ -48,6 +48,15 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **Undo close tab** (<kbd>Cmd/Ctrl+Shift+T</kbd>) — upstream's `DeleteTab` drops the tab, its
+  blocks and its layout straight out of SQLite, so a mis-click was unrecoverable. Closing now
+  writes a full snapshot (tab + layout tree + every block, subblocks included) to a `db_tab_trash`
+  table and deletes the rows with the filestore zones **left in place**, so a reopened tab comes
+  back at its old position with its layout and its terminal scrollback intact. Right-clicking a tab
+  offers **Reopen Closed Tab** with the recent ones by name. The trash keeps 10 tabs per workspace
+  for 7 days; eviction is what finally releases the blockfiles. Processes are not resurrected — the
+  block controllers still stop on close — but a reopened terminal starts in the same directory, and
+  the fork's per-block Claude session id comes back with the block, so `claude --resume` still works.
 - **Hard-wrap aware copy & links** — TUI programs (Claude Code, tmux, less, ...) re-wrap
   their output themselves and print real newlines at the terminal width, so copied text came
   out shredded into width-sized lines and URLs split across lines weren't clickable. The

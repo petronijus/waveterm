@@ -3,6 +3,7 @@
     { "command": "tab:prev",              "keys": ["Cmd:[", "Shift:Cmd:["] },
     { "command": "tab:new",               "keys": ["Cmd:t"] },
     { "command": "tab:close",             "keys": ["Cmd:Shift:w"] },
+    { "command": "tab:undo-close",        "keys": ["Cmd:Shift:t"] },
     { "command": "tab:switch-num",        "keys": ["Cmd:1"], "commandstr": "1" },
     { "command": "tab:switch-num",        "keys": ["Cmd:2"], "commandstr": "2" },
     { "command": "tab:switch-num",        "keys": ["Cmd:3"], "commandstr": "3" },

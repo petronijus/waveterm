@@ -17,8 +17,10 @@
 //                      goes to the background (macOS only; needs `top`)
 //   5. webview-throttle — a webview guest process stops its rAF loop once its tab goes
 //                      to the background (guests don't inherit the embedder's throttling)
-//   6. notify-skip   — command-done is suppressed while the window is focused
-//   7. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
+//   6. undo-close-tab — a closed tab is restorable from the tab trash (Cmd+Shift+T), back
+//                      at the index it was closed from
+//   7. notify-skip   — command-done is suppressed while the window is focused
+//   8. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
 //
 // Notes:
@@ -599,7 +601,82 @@ try {
         }
     }
 
-    // 6. notify-skip: done while focused → main process logs SKIP. Needs the window
+    // 6. undo-close-tab: closing a tab snapshots it into the tab trash, and undo brings it
+    // back at the index it was closed from, with its blocks.
+    // Two deliberate detours around this harness: the close goes through the tab's own X
+    // button, because each tab renders in its own webContents and closing the tab this page
+    // is attached to would destroy the page mid-check; and the undo goes through the dev-only
+    // window.__undoCloseTab hook rather than Cmd+Shift+T, because the fresh-install sandbox
+    // leaves global keybindings disabled (onboarding turns them off) — verified with Cmd+T,
+    // which does not open a tab here either.
+    {
+        const tabIds = () =>
+            page.evaluate(() => [
+                ...new Set(
+                    Array.from(document.querySelectorAll(".tab-bar [data-tab-id]")).map((el) =>
+                        el.getAttribute("data-tab-id")
+                    )
+                ),
+            ]);
+        const until = async (fn, ms = 10_000) => {
+            const end = Date.now() + ms;
+            while (Date.now() < end) {
+                if (await fn()) {
+                    return true;
+                }
+                await sleep(300);
+            }
+            return false;
+        };
+        const closeTabById = (tabId) =>
+            page.evaluate((id) => {
+                const btn = document.querySelector(`.tab-bar [data-tab-id="${id}"] button.close`);
+                if (btn == null) {
+                    return false;
+                }
+                btn.click();
+                return true;
+            }, tabId);
+
+        const before = await tabIds();
+        await page.evaluate(() => window.api.createTab());
+        const created = await until(async () => (await tabIds()).length > before.length);
+        const afterCreate = await tabIds();
+        const tmpId = afterCreate.find((id) => !before.includes(id));
+        if (!created || tmpId == null) {
+            report(
+                "undo-close-tab",
+                false,
+                `could not create a scratch tab (tabs ${before.length} -> ${afterCreate.length})`
+            );
+        } else {
+            const tmpIdx = afterCreate.indexOf(tmpId);
+            const clicked = await closeTabById(tmpId);
+            const closed = clicked && (await until(async () => !(await tabIds()).includes(tmpId)));
+            const undone = await page
+                .evaluate(() => window.__undoCloseTab?.() ?? Promise.resolve(null))
+                .catch((e) => `ERR ${e.message}`);
+            const restored = await until(async () => (await tabIds()).includes(tmpId));
+            const restoredIdx = (await tabIds()).indexOf(tmpId);
+            const blockCount = restored
+                ? await page.evaluate(() => document.querySelectorAll("[data-blockid]").length)
+                : 0;
+            const ok = closed && restored && restoredIdx === tmpIdx && undone === tmpId;
+            report(
+                "undo-close-tab",
+                ok,
+                ok
+                    ? `tab ${tmpId.slice(0, 8)} reopened at index ${restoredIdx} (${blockCount} block(s) rendered)`
+                    : `close-button=${clicked} closed=${closed} undo=${undone} restored=${restored} index ${tmpIdx} -> ${restoredIdx}`
+            );
+            if (restored) {
+                await closeTabById(tmpId);
+                await until(async () => !(await tabIds()).includes(tmpId));
+            }
+        }
+    }
+
+    // 7. notify-skip: done while focused → main process logs SKIP. Needs the window
     // to be OS-focused, which means stealing focus from the user — only done with
     // SMOKE_FOREGROUND=1; in background mode the check reports SKIP.
     markLog();
@@ -634,7 +711,7 @@ try {
         }
     }
 
-    // 7. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
+    // 8. notify-fire: hide the app (all windows unfocused), done → QUEUED + fire
     if (IsMac) {
         markLog();
         await runTerminalCommand(page, "sleep 3 && echo SMOKE_FIRE");

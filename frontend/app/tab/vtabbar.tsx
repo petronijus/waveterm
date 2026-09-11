@@ -161,8 +161,10 @@ function VTabWrapper({
         (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
             e.stopPropagation();
-            const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env);
-            env.showContextMenu(menu, e);
+            fireAndForget(async () => {
+                const menu = await buildTabContextMenu(tabId, renameRef, () => onClose(), env);
+                env.showContextMenu(menu, e);
+            });
         },
         [tabId, onClose, env]
     );

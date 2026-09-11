@@ -19,6 +19,7 @@ import {
     recordTEvent,
     refocusNode,
     replaceBlock,
+    undoCloseTab,
     WOS,
 } from "@/app/store/global";
 import { UserInputService } from "@/app/store/services";
@@ -584,6 +585,10 @@ function getCommandHandlers(): Record<string, CommandHandler> {
         },
         "tab:close": () => () => {
             simpleCloseStaticTab();
+            return true;
+        },
+        "tab:undo-close": () => () => {
+            fireAndForget(() => undoCloseTab());
             return true;
         },
         "tab:switch-num": (commandStr) => () => {

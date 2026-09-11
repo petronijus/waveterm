@@ -71,7 +71,7 @@ func CreateBlockWithTelemetry(ctx context.Context, tabId string, blockDef *waveo
 		}
 		// if there was an error, and we created the block, clean it up since the function failed
 		if blockCreated && newBlockOID != "" {
-			deleteBlockObj(ctx, newBlockOID)
+			deleteBlockObj(ctx, newBlockOID, false)
 			filestore.WFS.DeleteZone(ctx, newBlockOID)
 		}
 	}()
@@ -155,6 +155,16 @@ func createBlockObj(ctx context.Context, tabId string, blockDef *waveobj.BlockDe
 // recursive: if true, will recursively close parent tab, window, workspace, if they are empty.
 // Returns new active tab id, error.
 func DeleteBlock(ctx context.Context, blockId string, recursive bool) error {
+	return deleteBlock(ctx, blockId, recursive, false)
+}
+
+// DeleteBlockKeepZone deletes a block but leaves its filestore zone (terminal scrollback)
+// in place, so a tab closed to the trash can be restored with its content intact.
+func DeleteBlockKeepZone(ctx context.Context, blockId string, recursive bool) error {
+	return deleteBlock(ctx, blockId, recursive, true)
+}
+
+func deleteBlock(ctx context.Context, blockId string, recursive bool, keepZone bool) error {
 	block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
 	if err != nil {
 		return fmt.Errorf("error getting block: %w", err)
@@ -164,13 +174,13 @@ func DeleteBlock(ctx context.Context, blockId string, recursive bool) error {
 	}
 	if len(block.SubBlockIds) > 0 {
 		for _, subBlockId := range block.SubBlockIds {
-			err := DeleteBlock(ctx, subBlockId, recursive)
+			err := deleteBlock(ctx, subBlockId, recursive, keepZone)
 			if err != nil {
 				return fmt.Errorf("error deleting subblock %s: %w", subBlockId, err)
 			}
 		}
 	}
-	parentBlockCount, err := deleteBlockObj(ctx, blockId)
+	parentBlockCount, err := deleteBlockObj(ctx, blockId, keepZone)
 	if err != nil {
 		return fmt.Errorf("error deleting block: %w", err)
 	}
@@ -195,7 +205,7 @@ func DeleteBlock(ctx context.Context, blockId string, recursive bool) error {
 }
 
 // returns the updated block count for the parent object
-func deleteBlockObj(ctx context.Context, blockId string) (int, error) {
+func deleteBlockObj(ctx context.Context, blockId string, keepZone bool) (int, error) {
 	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (int, error) {
 		block, err := wstore.DBGet[*waveobj.Block](tx.Context(), blockId)
 		if err != nil {
@@ -226,7 +236,11 @@ func deleteBlockObj(ctx context.Context, blockId string) (int, error) {
 				}
 			}
 		}
-		wstore.DBDelete(tx.Context(), waveobj.OType_Block, blockId)
+		if keepZone {
+			wstore.DBDeleteKeepZone(tx.Context(), waveobj.OType_Block, blockId)
+		} else {
+			wstore.DBDelete(tx.Context(), waveobj.OType_Block, blockId)
+		}
 
 		// Clean up block runtime info
 		blockORef := waveobj.MakeORef(waveobj.OType_Block, blockId)

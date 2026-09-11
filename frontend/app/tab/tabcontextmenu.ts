@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getOrefMetaKeyAtom, globalStore, recordTEvent } from "@/app/store/global";
+import { getOrefMetaKeyAtom, globalStore, listClosedTabs, recordTEvent, undoCloseTab } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { fireAndForget } from "@/util/util";
@@ -27,12 +27,33 @@ export function buildTabBarContextMenu(env: TabEnv): ContextMenuItem[] {
     return [{ label: "Tab Bar Position", type: "submenu", submenu: tabBarSubmenu }];
 }
 
-export function buildTabContextMenu(
+const MaxReopenMenuEntries = 10;
+
+// buildReopenMenuItem is async because the closed-tab list lives in the backend's tab trash;
+// the menu is only built on right-click, so the round trip is not on any hot path.
+async function buildReopenMenuItem(): Promise<ContextMenuItem> {
+    let closedTabs: ClosedTabInfo[] = [];
+    try {
+        closedTabs = await listClosedTabs();
+    } catch (e) {
+        console.log("error listing closed tabs", e);
+    }
+    if (closedTabs.length === 0) {
+        return { label: "Reopen Closed Tab", enabled: false };
+    }
+    const submenu: ContextMenuItem[] = closedTabs.slice(0, MaxReopenMenuEntries).map((closedTab) => ({
+        label: closedTab.name || "Untitled Tab",
+        click: () => fireAndForget(() => undoCloseTab(closedTab.tabid)),
+    }));
+    return { label: "Reopen Closed Tab", type: "submenu", submenu };
+}
+
+export async function buildTabContextMenu(
     id: string,
     renameRef: React.RefObject<(() => void) | null>,
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void,
     env: TabEnv
-): ContextMenuItem[] {
+): Promise<ContextMenuItem[]> {
     const menu: ContextMenuItem[] = [];
     menu.push(
         { label: "Rename Tab", click: () => renameRef.current?.() },
@@ -122,6 +143,6 @@ export function buildTabContextMenu(
         menu.push({ label: "Backgrounds", type: "submenu", submenu }, { type: "separator" });
     }
     menu.push(...buildTabBarContextMenu(env), { type: "separator" });
-    menu.push({ label: "Close Tab", click: () => onClose(null) });
+    menu.push({ label: "Close Tab", click: () => onClose(null) }, await buildReopenMenuItem());
     return menu;
 }

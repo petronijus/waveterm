@@ -272,6 +272,17 @@ func DBSelectMap[T waveobj.WaveObj](ctx context.Context, ids []string) (map[stri
 }
 
 func DBDelete(ctx context.Context, otype string, id string) error {
+	return dbDelete(ctx, otype, id, true)
+}
+
+// DBDeleteKeepZone deletes the object row but leaves its filestore zone alone. Closing a
+// tab to the trash uses this so the blocks' terminal scrollback survives an undo; the zone
+// is dropped later, when the trash snapshot is evicted.
+func DBDeleteKeepZone(ctx context.Context, otype string, id string) error {
+	return dbDelete(ctx, otype, id, false)
+}
+
+func dbDelete(ctx context.Context, otype string, id string, deleteZone bool) error {
 	err := WithTx(ctx, func(tx *TxWrap) error {
 		table := tableNameFromOType(otype)
 		query := fmt.Sprintf("DELETE FROM %s WHERE oid = ?", table)
@@ -281,6 +292,9 @@ func DBDelete(ctx context.Context, otype string, id string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if !deleteZone {
+		return nil
 	}
 	go func() {
 		defer func() {

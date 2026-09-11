@@ -283,8 +283,10 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const handleContextMenu = useCallback(
         (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
             e.preventDefault();
-            const menu = buildTabContextMenu(id, renameRef, onClose, env);
-            env.showContextMenu(menu, e);
+            fireAndForget(async () => {
+                const menu = await buildTabContextMenu(id, renameRef, onClose, env);
+                env.showContextMenu(menu, e);
+            });
         },
         [id, onClose, env]
     );

@@ -197,6 +197,11 @@ export class WorkspaceServiceType {
     GetWorkspace(workspaceId: string): Promise<Workspace> {
         return callBackendService(this?.waveEnv, "workspace", "GetWorkspace", Array.from(arguments))
     }
+
+    // @returns closed tabs, most recently closed first
+    ListClosedTabs(workspaceId: string): Promise<ClosedTabInfo[]> {
+        return callBackendService(this?.waveEnv, "workspace", "ListClosedTabs", Array.from(arguments))
+    }
     ListWorkspaces(): Promise<WorkspaceListEntry[]> {
         return callBackendService(this?.waveEnv, "workspace", "ListWorkspaces", Array.from(arguments))
     }
@@ -204,6 +209,11 @@ export class WorkspaceServiceType {
     // @returns object updates
     SetActiveTab(workspaceId: string, tabId: string): Promise<void> {
         return callBackendService(this?.waveEnv, "workspace", "SetActiveTab", Array.from(arguments))
+    }
+
+    // @returns restored tabid (empty when there was nothing to restore) (and object updates)
+    UndoCloseTab(workspaceId: string, tabId: string): Promise<string> {
+        return callBackendService(this?.waveEnv, "workspace", "UndoCloseTab", Array.from(arguments))
     }
 
     // @returns object updates

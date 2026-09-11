@@ -222,7 +222,7 @@ func (svc *WorkspaceService) CloseTab(ctx context.Context, workspaceId string, t
 	// BlockCloseEvent -> handleBlockCloseEvent -> DestroyBlockController.
 	// Do NOT call DestroyBlockController here; doing so creates a race
 	// where the controller is destroyed twice concurrently.
-	newActiveTabId, err := wcore.DeleteTab(ctx, workspaceId, tabId, true)
+	newActiveTabId, err := wcore.CloseTabToTrash(ctx, workspaceId, tabId, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error closing tab: %w", err)
 	}
@@ -240,4 +240,44 @@ func (svc *WorkspaceService) CloseTab(ctx context.Context, workspaceId string, t
 		wps.Broker.SendUpdateEvents(updates)
 	}()
 	return rtn, updates, nil
+}
+
+func (svc *WorkspaceService) UndoCloseTab_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		ArgNames:   []string{"ctx", "workspaceId", "tabId"},
+		ReturnDesc: "restored tabid (empty when there was nothing to restore)",
+	}
+}
+
+// UndoCloseTab reopens a closed tab from the tab trash. An empty tabId reopens the most
+// recently closed tab of the workspace.
+func (svc *WorkspaceService) UndoCloseTab(ctx context.Context, workspaceId string, tabId string) (string, waveobj.UpdatesRtnType, error) {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	tab, err := wcore.UndoCloseTab(ctx, workspaceId, tabId)
+	if err != nil {
+		return "", nil, fmt.Errorf("error reopening tab: %w", err)
+	}
+	if tab == nil {
+		return "", nil, nil
+	}
+	log.Printf("[undoclosetab] restored tab=%s name=%q", tab.OID, tab.Name)
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("WorkspaceService:UndoCloseTab:SendUpdateEvents", recover())
+		}()
+		wps.Broker.SendUpdateEvents(updates)
+	}()
+	return tab.OID, updates, nil
+}
+
+func (svc *WorkspaceService) ListClosedTabs_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		ArgNames:   []string{"ctx", "workspaceId"},
+		ReturnDesc: "closed tabs, most recently closed first",
+	}
+}
+
+func (svc *WorkspaceService) ListClosedTabs(ctx context.Context, workspaceId string) ([]wstore.ClosedTabInfo, error) {
+	return wcore.ListClosedTabs(ctx, workspaceId)
 }

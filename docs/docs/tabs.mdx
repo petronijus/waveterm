@@ -25,7 +25,15 @@ You can create a new tab by clicking the <i className="fa-sharp fa-plus" title="
 
 You can close a tab by hovering over it and clicking the <i className="fa-sharp fa-xmark-large" title="x"/> button that appears, or by pressing <Kbd k="Cmd:Shift:w"/> on the keyboard. You can also close a tab by [closing all the blocks](#delete-a-block) within it.
 
-Closing a block is a destructive action that will stop any running processes and discard any unsaved work. This cannot be undone.
+Closing a tab stops the processes running in its blocks, and that part cannot be undone. The tab itself can: see [reopening a closed tab](#reopening-a-closed-tab).
+
+### Reopening a closed tab
+
+Press <Kbd k="Cmd:Shift:t"/> to reopen the tab you closed last, or right-click any tab and pick **Reopen Closed Tab** to choose from the recently closed ones. The tab comes back where it was, with its blocks, its layout and its terminal scrollback.
+
+What does not come back are the processes that were running in it — a reopened terminal starts a fresh shell in the same directory.
+
+Wave keeps the last 10 closed tabs per workspace for 7 days; older ones are discarded along with their scrollback.
 
 ### Rearranging tabs
 

@@ -141,6 +141,7 @@ func DeleteWorkspace(ctx context.Context, workspaceId string, force bool) (bool,
 			return false, "", fmt.Errorf("error closing tab: %w", err)
 		}
 	}
+	evictWorkspaceTabTrash(ctx, workspaceId)
 	windowId, _ := wstore.DBFindWindowForWorkspaceId(ctx, workspaceId)
 	err = wstore.DBDelete(ctx, waveobj.OType_Workspace, workspaceId)
 	if err != nil {
@@ -295,6 +296,17 @@ func createTabObj(ctx context.Context, workspaceId string, name string, meta wav
 // recursive: if true, will recursively close parent window, workspace, if they are empty.
 // Returns new active tab id, error.
 func DeleteTab(ctx context.Context, workspaceId string, tabId string, recursive bool) (string, error) {
+	return deleteTab(ctx, workspaceId, tabId, recursive, false)
+}
+
+// CloseTabToTrash deletes a tab like DeleteTab does, but first snapshots it into the tab
+// trash so the close can be undone. The blocks' filestore zones are left alone while the
+// snapshot lives, so a restored tab comes back with its terminal scrollback.
+func CloseTabToTrash(ctx context.Context, workspaceId string, tabId string, recursive bool) (string, error) {
+	return deleteTab(ctx, workspaceId, tabId, recursive, true)
+}
+
+func deleteTab(ctx context.Context, workspaceId string, tabId string, recursive bool, toTrash bool) (string, error) {
 	ws, _ := wstore.DBGet[*waveobj.Workspace](ctx, workspaceId)
 	if ws == nil {
 		return "", fmt.Errorf("workspace not found: %q", workspaceId)
@@ -309,9 +321,22 @@ func DeleteTab(ctx context.Context, workspaceId string, tabId string, recursive 
 
 	// close blocks (sends events + stops block controllers)
 	tab, _ := wstore.DBGet[*waveobj.Tab](ctx, tabId)
+	if toTrash && tab != nil {
+		err := trashTab(ctx, workspaceId, tab, tabIdx)
+		if err != nil {
+			// the user asked for the tab to go away, so a failed snapshot must not block the close
+			log.Printf("error snapshotting tab %s into the tab trash: %v\n", tabId, err)
+			toTrash = false
+		}
+	}
 	if tab != nil {
 		for _, blockId := range tab.BlockIds {
-			err := DeleteBlock(ctx, blockId, false)
+			var err error
+			if toTrash {
+				err = DeleteBlockKeepZone(ctx, blockId, false)
+			} else {
+				err = DeleteBlock(ctx, blockId, false)
+			}
 			if err != nil {
 				return "", fmt.Errorf("error deleting block %s: %w", blockId, err)
 			}
