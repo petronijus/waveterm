@@ -136,6 +136,9 @@ export class WindowServiceType {
     CloseWindow(windowId: string, fromElectron: boolean): Promise<void> {
         return callBackendService(this?.waveEnv, "window", "CloseWindow", Array.from(arguments))
     }
+    CloseWindowKeepWorkspace(windowId: string): Promise<void> {
+        return callBackendService(this?.waveEnv, "window", "CloseWindowKeepWorkspace", Array.from(arguments))
+    }
     CreateWindow(winSize: WinSize, workspaceId: string): Promise<WaveWindow> {
         return callBackendService(this?.waveEnv, "window", "CreateWindow", Array.from(arguments))
     }

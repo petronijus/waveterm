@@ -352,9 +352,12 @@ export class WaveBrowserWindow extends BaseWindow {
             fireAndForget(async () => {
                 const numWindows = waveWindowMap.size;
                 const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
-                const preserveThisWindow =
-                    fullConfig.settings["window:restoreallwindows"] ||
-                    (numWindows === 1 && fullConfig.settings["window:savelastwindow"]);
+                // window:restoreallwindows is deliberately NOT consulted here. Quitting returns
+                // above without ever setting deleteAllowed, so every window open at quit already
+                // survives into the next launch; that setting only decides what relaunchBrowserWindows
+                // does with them. Honouring it here as well meant a window the user explicitly closed
+                // was never removed from client.windowids and reopened on every start, forever.
+                const preserveThisWindow = numWindows === 1 && fullConfig.settings["window:savelastwindow"];
                 if (!preserveThisWindow) {
                     if (fullConfig.settings["window:confirmclose"]) {
                         const workspace = await WorkspaceService.GetWorkspace(this.workspaceId);
@@ -966,7 +969,15 @@ export async function relaunchBrowserWindows() {
     const wins: WaveBrowserWindow[] = [];
     const isFirstRelaunch = !hasCompletedFirstRelaunch;
     const primaryWindowId = windowIds.length > 0 ? windowIds[0] : null;
+    const restoreAllWindows = fullConfig.settings["window:restoreallwindows"];
     for (const windowId of windowIds.slice().reverse()) {
+        if (!restoreAllWindows && windowId !== primaryWindowId) {
+            // Dropped from the restore set, not closed by the user, so the workspace is kept:
+            // it stays reachable from the workspace switcher instead of being cleaned up.
+            console.log("relaunch -- not restoring secondary window", windowId);
+            await WindowService.CloseWindowKeepWorkspace(windowId);
+            continue;
+        }
         const windowData: WaveWindow = await WindowService.GetWindow(windowId);
         if (windowData == null) {
             console.log("relaunch -- window data not found, closing window", windowId);
