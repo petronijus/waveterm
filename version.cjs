@@ -95,7 +95,25 @@ if (typeof require !== "undefined" && require.main === module) {
         }
         packageJson.version = newVersion;
         fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4) + "\n");
+        syncLockfileVersion(newVersion);
         console.log(newVersion);
+
+        // The lockfile carries the version in two places and npm only rewrites it during an
+        // install, so bumping package.json alone leaves the two disagreeing until someone
+        // notices. Keep them in step here: a release is cut straight after the bump, and
+        // reaching for `npm install --package-lock-only` at that point is easy to forget.
+        function syncLockfileVersion(version) {
+            const lockPath = path.resolve(__dirname, "package-lock.json");
+            if (!fs.existsSync(lockPath)) {
+                return;
+            }
+            const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+            lock.version = version;
+            if (lock.packages?.[""]) {
+                lock.packages[""].version = version;
+            }
+            fs.writeFileSync(lockPath, JSON.stringify(lock, null, 4) + "\n");
+        }
     } else {
         console.log(VERSION);
     }
