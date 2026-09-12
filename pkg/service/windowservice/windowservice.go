@@ -110,3 +110,17 @@ func (svc *WindowService) CloseWindow(ctx context.Context, windowId string, from
 	ctx = waveobj.ContextWithUpdates(ctx)
 	return wcore.CloseWindow(ctx, windowId, fromElectron)
 }
+
+func (svc *WindowService) CloseWindowKeepWorkspace_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		ArgNames: []string{"ctx", "windowId"},
+	}
+}
+
+// CloseWindowKeepWorkspace drops a window without touching its workspace, so a window
+// that is only being dropped from the restore set does not take the user's tabs with it
+// the way CloseWindow's unnamed-workspace cleanup would.
+func (svc *WindowService) CloseWindowKeepWorkspace(ctx context.Context, windowId string) error {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	return wcore.CloseWindowKeepWorkspace(ctx, windowId)
+}
