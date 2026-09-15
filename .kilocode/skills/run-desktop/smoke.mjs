@@ -12,15 +12,17 @@
 //                      records its hidden state and repaints after an OS-level unmap
 //                      (runs first: a tab that has been backgrounded once reads true
 //                      regardless, so a later check would not catch the regression)
-//   3. badge         — a running command gets its backend-driven spinner badge in the tab bar
-//   4. throttle      — a tab flooding terminal output stops burning CPU once its tab
+//   3. osc8-link     — an OSC 8 hyperlink opens through Wave's own openLink on modifier-click
+//                      (and stays put on a bare click); hover reports the real target
+//   4. badge         — a running command gets its backend-driven spinner badge in the tab bar
+//   5. throttle      — a tab flooding terminal output stops burning CPU once its tab
 //                      goes to the background (macOS only; needs `top`)
-//   5. webview-throttle — a webview guest process stops its rAF loop once its tab goes
+//   6. webview-throttle — a webview guest process stops its rAF loop once its tab goes
 //                      to the background (guests don't inherit the embedder's throttling)
-//   6. undo-close-tab — a closed tab is restorable from the tab trash (Cmd+Shift+T), back
+//   7. undo-close-tab — a closed tab is restorable from the tab trash (Cmd+Shift+T), back
 //                      at the index it was closed from
-//   7. notify-skip   — command-done is suppressed while the window is focused
-//   8. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
+//   8. notify-skip   — command-done is suppressed while the window is focused
+//   9. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
 //
 // Notes:
@@ -116,7 +118,17 @@ function prepareSettings() {
     fs.mkdirSync(SandboxConfigDir, { recursive: true });
     fs.writeFileSync(
         DevSettingsPath,
-        JSON.stringify({ "notify:commanddone": true, "notify:commanddonethresholdms": 1500 }, null, 2)
+        JSON.stringify(
+            {
+                "notify:commanddone": true,
+                "notify:commanddonethresholdms": 1500,
+                // osc8-link clicks a real hyperlink; opening internally keeps it in a web
+                // block instead of spawning the test machine's browser.
+                "web:openlinksinternally": true,
+            },
+            null,
+            2
+        )
     );
 }
 
@@ -258,6 +270,14 @@ try {
                     b.click();
                     return label;
                 }
+            }
+            // The feature tour opens behind the onboarding modal and Escape does not close
+            // it (onboarding leaves global keybindings off). Its backdrop covers the whole
+            // app, so any check driving real mouse input hits the backdrop instead.
+            const skip = btns.find((el) => (el.textContent || "").trim().startsWith("Skip Feature Tour"));
+            if (skip) {
+                skip.click();
+                return "Skip Feature Tour";
             }
             return null;
         });
@@ -409,6 +429,90 @@ try {
                 ok
                     ? `URL rejoined across the hard wrap (cols=${sel.cols}, copy-on-select clipboard ${clipJoined ? "matches too" : "not asserted — window unfocused"})`
                     : `copy text still broken: ${JSON.stringify(sel.copyText.slice(0, 120))} (cols=${sel.cols})`
+            );
+        }
+    }
+
+    // osc8-link: an OSC 8 hyperlink must open through Wave's own openLink — xterm's built-in
+    // handler calls window.open() with no URL, which the window-open policy denies, so the
+    // click used to do nothing. Terminal output is untrusted and the link text can hide any
+    // target, so it opens on the platform's modifier-click only; a bare click must not
+    // navigate. Driven with real mouse input at the link's cell: the link lives in the
+    // renderer's terminal cells, not in an anchor element there is a selector for.
+    {
+        const linkUrl = "https://example.com/SMOKE-OSC8";
+        // web:openlinksinternally keeps the click in a web block, but if that setting ever
+        // stops applying the link would open in the user's own browser — neuter the main
+        // process's escape hatch and assert it stayed unused.
+        await app.evaluate(({ shell }) => {
+            globalThis.__smokeOpenedExternal = [];
+            shell.openExternal = async (u) => {
+                globalThis.__smokeOpenedExternal.push(u);
+            };
+        });
+        const geom = await page.evaluate(async (url) => {
+            const wraps = window.__termwraps;
+            if (!wraps || !wraps.size) {
+                return { err: "no __termwraps registry (dev hook missing?)" };
+            }
+            const tw = [...wraps.values()][0];
+            const term = tw.terminal;
+            const label = "SMOKE-OSC8-LINK";
+            await new Promise((r) => term.write(`\r\n\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\\r\n`, r));
+            const buf = term.buffer.active;
+            let row = -1;
+            for (let i = buf.length - 1; i >= 0; i--) {
+                if ((buf.getLine(i)?.translateToString(true) ?? "").includes(label)) {
+                    row = i;
+                    break;
+                }
+            }
+            if (row < 0) {
+                return { err: "OSC 8 line not found in terminal buffer" };
+            }
+            const col = (buf.getLine(row)?.translateToString(true) ?? "").indexOf(label) + Math.floor(label.length / 2);
+            const screen = term.element?.querySelector(".xterm-screen");
+            if (!screen) {
+                return { err: "no .xterm-screen element" };
+            }
+            const rect = screen.getBoundingClientRect();
+            return {
+                x: rect.left + (col + 0.5) * (rect.width / term.cols),
+                y: rect.top + (row - buf.viewportY + 0.5) * (rect.height / term.rows),
+                blocks: document.querySelectorAll("[data-blockid]").length,
+            };
+        }, linkUrl);
+        if (geom.err) {
+            report("osc8-link", false, geom.err);
+        } else {
+            await page.mouse.move(geom.x, geom.y);
+            await sleep(400);
+            const hovered = await page.evaluate(() => [...window.__termwraps.values()][0].hoveredLinkUri ?? null);
+            await page.mouse.click(geom.x, geom.y);
+            await sleep(1200);
+            const afterPlain = await page.evaluate(() => document.querySelectorAll("[data-blockid]").length);
+            // page.mouse.click takes no modifiers (that is locator.click) — hold the key down
+            // around the click, or the event arrives with ctrlKey/metaKey false.
+            const modifier = IsMac ? "Meta" : "Control";
+            await page.keyboard.down(modifier);
+            await page.mouse.click(geom.x, geom.y);
+            await page.keyboard.up(modifier);
+            await sleep(2500);
+            const opened = await page.evaluate(() =>
+                [...document.querySelectorAll("input.url-input")].map((i) => i.value || "")
+            );
+            const external = await app.evaluate(() => globalThis.__smokeOpenedExternal);
+            const hoverOk = hovered === linkUrl;
+            const plainOk = afterPlain === geom.blocks && external.length === 0;
+            const openedOk = opened.some((v) => v.includes("SMOKE-OSC8"));
+            report(
+                "osc8-link",
+                hoverOk && plainOk && openedOk,
+                [
+                    `hover ${hoverOk ? "reported the target" : `reported ${JSON.stringify(hovered)}`}`,
+                    `bare click ${plainOk ? "opened nothing" : `changed the block count ${geom.blocks}\u2192${afterPlain}`}`,
+                    `${IsMac ? "Cmd" : "Ctrl"}-click ${openedOk ? "opened the link in a web block" : `opened no block for it (url inputs: ${JSON.stringify(opened)})`}`,
+                ].join(", ")
             );
         }
     }

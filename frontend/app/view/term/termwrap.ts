@@ -31,6 +31,7 @@ import { Terminal } from "@xterm/xterm";
 import debug from "debug";
 import * as jotai from "jotai";
 import { debounce } from "throttle-debounce";
+import { WaveLinkProvider } from "./linkprovider";
 import {
     agentKindForCommand,
     handleOsc11Command,
@@ -41,7 +42,6 @@ import {
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
-import { WaveLinkProvider } from "./linkprovider";
 import {
     bufferLinesToText,
     createRemoteTempFileFromBlob,
@@ -68,6 +68,15 @@ const MaxRepaintTransactionMs = 2000;
 // (keystrokes, prompt redraws) never waits on the timer.
 const TermWriteFlushIntervalMs = 33;
 const TermWriteFlushMaxBytes = 256 * 1024;
+
+// A link opens on the platform's modifier-click, never on a bare click: terminal output is
+// untrusted, and an OSC 8 hyperlink can hide any target behind arbitrary text.
+function isLinkActivationEvent(e: MouseEvent): boolean {
+    if (PLATFORM === PlatformMacOS) {
+        return e.metaKey;
+    }
+    return e.ctrlKey;
+}
 
 // detect webgl support
 function detectWebGLSupport(): boolean {
@@ -185,7 +194,27 @@ export class TermWrap {
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.agentKindAtom = jotai.atom(null) as jotai.PrimitiveAtom<string>;
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
-        this.terminal = new Terminal(options);
+        this.terminal = new Terminal({
+            ...options,
+            // xterm's built-in OSC 8 handler calls window.open() with no URL, which Wave's
+            // window-open policy denies — so hyperlinks did nothing until this took over.
+            linkHandler: {
+                activate: (e, uri) => {
+                    if (!isLinkActivationEvent(e)) {
+                        return;
+                    }
+                    fireAndForget(() => openLink(uri));
+                },
+                hover: (e, uri) => {
+                    this.hoveredLinkUri = uri;
+                    this.onLinkHover?.(uri, e.clientX, e.clientY);
+                },
+                leave: () => {
+                    this.hoveredLinkUri = null;
+                    this.onLinkHover?.(null, 0, 0);
+                },
+            },
+        });
         this.fitAddon = new FitAddon();
         this.serializeAddon = new SerializeAddon();
         this.searchAddon = new SearchAddon();
@@ -198,18 +227,10 @@ export class TermWrap {
                     this.terminal,
                     (e, uri) => {
                         e.preventDefault();
-                        switch (PLATFORM) {
-                            case PlatformMacOS:
-                                if (e.metaKey) {
-                                    fireAndForget(() => openLink(uri));
-                                }
-                                break;
-                            default:
-                                if (e.ctrlKey) {
-                                    fireAndForget(() => openLink(uri));
-                                }
-                                break;
+                        if (!isLinkActivationEvent(e)) {
+                            return;
                         }
+                        fireAndForget(() => openLink(uri));
                     },
                     {
                         hover: (e, uri) => {
