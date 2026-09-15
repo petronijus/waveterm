@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
@@ -120,14 +122,32 @@ func encodeEnvVarsForFish(env map[string]string) (string, error) {
 	return encoded, nil
 }
 
+// PowerShell's braced form ${env:NAME} can carry the Windows-standard names that
+// IsValidEnvVarName rejects (ProgramFiles(x86), CommonProgramFiles(x86)), but a closing
+// brace, a backtick or a control character would escape the braces and inject script text.
+func isRepresentablePowerShellEnvVarName(name string) bool {
+	if name == "" {
+		return false
+	}
+	if strings.ContainsAny(name, "}`=") {
+		return false
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 func encodeEnvVarsForPowerShell(env map[string]string) (string, error) {
 	var encoded string
 	for k, v := range env {
 		// validate key
-		if !IsValidEnvVarName(k) {
+		if !isRepresentablePowerShellEnvVarName(k) {
 			return "", fmt.Errorf("invalid env var name: %q", k)
 		}
-		encoded += fmt.Sprintf("$env:%s = %s\n", k, HardQuotePowerShell(v))
+		encoded += fmt.Sprintf("${env:%s} = %s\n", k, HardQuotePowerShell(v))
 	}
 	return encoded, nil
 }
