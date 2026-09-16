@@ -14,6 +14,8 @@ const previewElectronApi: ElectronApi = {
     getHomeDir: () => "",
     getWebviewPreload: () => "",
     getAboutModalDetails: () => ({}) as AboutModalDetails,
+    getChangelog: (_force?: boolean) =>
+        Promise.resolve({ entries: [], fetchedat: 0, stale: false } as ChangelogResult),
     getZoomFactor: () => 1.0,
     showWorkspaceAppMenu: (_workspaceId: string) => {},
     showBuilderAppMenu: (_builderId: string) => {},

@@ -259,6 +259,12 @@ const MarkdownImg = ({
             setResolvedStr(null);
             return;
         }
+        if (props.src.startsWith("http://") || props.src.startsWith("https://")) {
+            setResolving(false);
+            setResolvedSrc(props.src);
+            setResolvedStr(null);
+            return;
+        }
         if (resolveOpts == null) {
             setResolving(false);
             setResolvedSrc(null);
@@ -290,6 +296,43 @@ const MarkdownImg = ({
         return <img {...props} src={resolvedSrc} srcSet={resolvedSrcSet} />;
     }
     return <span>[img]</span>;
+};
+
+const MarkdownVideo = ({
+    props,
+    resolveOpts,
+}: {
+    props: React.VideoHTMLAttributes<HTMLVideoElement>;
+    resolveOpts: MarkdownResolveOpts;
+}) => {
+    const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
+    const [resolving, setResolving] = useState<boolean>(true);
+
+    useEffect(() => {
+        if (!props.src || props.src.startsWith("http://") || props.src.startsWith("https://")) {
+            setResolvedSrc(props.src);
+            setResolving(false);
+            return;
+        }
+        if (resolveOpts == null) {
+            setResolvedSrc(null);
+            setResolving(false);
+            return;
+        }
+        const resolveFn = async () => {
+            setResolvedSrc(await resolveRemoteFile(props.src, resolveOpts));
+            setResolving(false);
+        };
+        resolveFn();
+    }, [props.src]);
+
+    if (resolving) {
+        return null;
+    }
+    if (resolvedSrc == null && props.children == null) {
+        return <span>[video]</span>;
+    }
+    return <video {...props} src={resolvedSrc} controls preload="metadata" />;
 };
 
 type MarkdownProps = {
@@ -419,6 +462,9 @@ const Markdown = forwardRef<MarkdownHandle, MarkdownProps>(
             source: (props: React.HTMLAttributes<HTMLSourceElement>) => (
                 <MarkdownSource props={props} resolveOpts={resolveOpts} />
             ),
+            video: (props: React.VideoHTMLAttributes<HTMLVideoElement>) => (
+                <MarkdownVideo props={props} resolveOpts={resolveOpts} />
+            ),
             code: Code,
             pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
                 <CodeBlock children={props.children} onClickExecute={onClickExecute} />
@@ -490,6 +536,7 @@ const Markdown = forwardRef<MarkdownHandle, MarkdownProps>(
                                 // ['className', 'hljs-number', 'hljs-title', 'hljs-variable']
                             ],
                             waveblock: [["blockkey"]],
+                            video: [["src"], ["poster"], ["controls"], ["loop"], ["muted"], ["playsinline"]],
                         },
                         tagNames: [
                             ...(defaultSchema.tagNames || []),
@@ -497,6 +544,7 @@ const Markdown = forwardRef<MarkdownHandle, MarkdownProps>(
                             "waveblock",
                             "picture",
                             "source",
+                            "video",
                             "mermaidblock",
                         ],
                     }),

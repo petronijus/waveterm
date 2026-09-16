@@ -17,12 +17,12 @@ const VersionBadge = memo(() => {
     const label = pjMatch ? `pj.${pjMatch[1]}` : `v${version}`;
     return (
         <Tooltip
-            content={`Wave ${version}`}
+            content={`Wave ${version} — click for the changelog`}
             placement="bottom"
             hideOnClick
             divClassName="flex h-[22px] px-2 mb-1 items-center rounded-md box-border cursor-pointer hover:bg-hoverbg transition-colors text-[11px] text-secondary hover:text-primary select-none whitespace-nowrap"
             divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            divOnClick={() => modalsModel.pushModal("AboutModal")}
+            divOnClick={() => modalsModel.pushModal("ChangelogModal")}
         >
             {label}
         </Tooltip>

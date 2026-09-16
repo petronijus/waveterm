@@ -21,6 +21,7 @@ import {
     setWasActive,
 } from "./emain-activity";
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
+import { getChangelog } from "./emain-changelog";
 import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-platform";
 import { getWaveTabViewByWebContentsId } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
@@ -283,6 +284,10 @@ export function initIpcHandlers() {
 
     electron.ipcMain.on("get-about-modal-details", (event) => {
         event.returnValue = getWaveVersion() as AboutModalDetails;
+    });
+
+    electron.ipcMain.handle("get-changelog", (_event, force: boolean) => {
+        return getChangelog(force);
     });
 
     electron.ipcMain.on("get-zoom-factor", (event) => {

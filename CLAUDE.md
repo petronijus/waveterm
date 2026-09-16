@@ -174,8 +174,12 @@ overwrites `package.json` with a bare upstream version, `version.cjs` recovers t
 from the `v*-pj.*` git tags, so bump only from a checkout that has the fork tags fetched.
 
 The pj number is also shown in the app itself: a `pj.N` badge sits at the right end of the tab
-bar (and in the vertical tab bar's macOS header) — click opens the About dialog with the full
-version (`frontend/app/tab/versionbadge.tsx`).
+bar (and in the vertical tab bar's macOS header) — click opens the **changelog**, the last 10
+GitHub releases of this repo with their notes (`frontend/app/tab/versionbadge.tsx`,
+`frontend/app/modals/changelog.tsx`, fetched and cached in `emain/emain-changelog.ts`; About is
+still one click away from its footer and from Help → About). Release notes are rendered as
+markdown, so a screenshot, GIF or video attachment in a release shows up in the app — which
+means it is worth putting one there.
 
 One-time caveat, already spent: semver ranks `0.14.5-pj.N` _below_ a plain `0.14.5`, so the
 pj.1–pj.10 builds (all reporting `0.14.5`) cannot auto-update to pj.11 and need a manual

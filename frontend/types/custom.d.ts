@@ -91,6 +91,7 @@ declare global {
         getHomeDir: () => string; // get-home-dir
         getWebviewPreload: () => string; // get-webview-preload
         getAboutModalDetails: () => AboutModalDetails; // get-about-modal-details
+        getChangelog: (force?: boolean) => Promise<ChangelogResult>; // get-changelog
         getZoomFactor: () => number; // get-zoom-factor
         showWorkspaceAppMenu: (workspaceId: string) => void; // workspace-appmenu-show
         showBuilderAppMenu: (builderId: string) => void; // builder-appmenu-show
@@ -387,6 +388,22 @@ declare global {
     interface AboutModalDetails {
         version: string;
         buildTime: number;
+    }
+
+    interface ChangelogEntry {
+        tag: string;
+        name: string;
+        publishedat: string;
+        body: string;
+        url: string;
+        prerelease: boolean;
+    }
+
+    interface ChangelogResult {
+        entries: ChangelogEntry[];
+        fetchedat: number;
+        stale: boolean;
+        error?: string;
     }
 
     type BlockComponentModel = {

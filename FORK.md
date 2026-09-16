@@ -48,6 +48,18 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **In-app changelog** — the `pj.N` badge in the tab bar opens a _What's New_ dialog listing the
+  last 10 releases of this repo, each with the release notes as they are written on GitHub
+  (newest expanded, older ones one click away). The notes are fetched in the main process from
+  the GitHub releases API — no CORS, a proper user agent, an `If-None-Match` conditional request
+  so repeated opens cost nothing against the 60/hour unauthenticated budget — and cached in the
+  Wave data dir (`changelog-cache.json`, 30 min fresh), so the dialog opens instantly and still
+  works offline, saying so when what it shows is the cached copy. Media in a release body is
+  rendered: images and GIFs as images, and a video attachment (GitHub leaves those as a bare,
+  extensionless URL) is probed with a `HEAD` request and turned into a real player — code fences
+  and link definitions are left alone. `Markdown` gained `<video>` support and now renders
+  absolute `http(s)` image sources without a resolver, which is what makes the above work.
+
 - **Undo close tab** (<kbd>Cmd/Ctrl+Shift+T</kbd>) — upstream's `DeleteTab` drops the tab, its
   blocks and its layout straight out of SQLite, so a mis-click was unrecoverable. Closing now
   writes a full snapshot (tab + layout tree + every block, subblocks included) to a `db_tab_trash`

@@ -12,6 +12,9 @@
 //                      records its hidden state and repaints after an OS-level unmap
 //                      (runs first: a tab that has been backgrounded once reads true
 //                      regardless, so a later check would not catch the regression)
+//      changelog     — the pj.N badge opens the changelog modal, rendered from the cached
+//                      GitHub release notes, images and video attachments included (a seeded
+//                      cache and a local asset keep the check offline)
 //   3. osc8-link     — an OSC 8 hyperlink opens through Wave's own openLink on modifier-click
 //                      (and stays put on a bare click); hover reports the real target
 //   4. badge         — a running command gets its backend-driven spinner badge in the tab bar
@@ -180,7 +183,14 @@ markLog();
 // The webview-throttle check needs a page running a rAF loop. A data: URL gets
 // rewritten to a web search by the webview's URL handling, so serve the page from
 // a throwaway localhost server instead — self-contained, no network needed.
-const rafServer = http.createServer((_req, res) => {
+const OnePixelGif = Buffer.from("R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==", "base64");
+const rafServer = http.createServer((req, res) => {
+    // the changelog check embeds an image from here — a real byte stream, still no network
+    if (req.url.endsWith(".gif")) {
+        res.writeHead(200, { "content-type": "image/gif" });
+        res.end(OnePixelGif);
+        return;
+    }
     res.writeHead(200, { "content-type": "text/html" });
     res.end(
         "<body style='background:#222;margin:0'><div id='c' style='font:64px monospace;color:#0f0;padding:40px'></div>" +
@@ -343,6 +353,108 @@ try {
                 ok,
                 after.err ??
                     `throttling=${before.throttling}, after hide/show: visible=${after.visible} throttling=${after.throttling}`
+            );
+        }
+    }
+
+    // changelog: the pj.N badge opens the changelog modal. Its entries come from the
+    // GitHub releases API through the main process, so the sandbox gets a seeded cache
+    // file that is still fresh — what is asserted is the IPC + render path, never
+    // GitHub's uptime or this machine's network.
+    {
+        const appVersion = JSON.parse(fs.readFileSync(path.join(APP_DIR, "package.json"), "utf8")).version;
+        fs.writeFileSync(
+            path.join(SandboxDataDir, "changelog-cache.json"),
+            JSON.stringify({
+                etag: "",
+                fetchedat: Date.now(),
+                entries: [
+                    {
+                        tag: `v${appVersion}`,
+                        name: `Wave (pj) ${appVersion}`,
+                        publishedat: "2026-09-16T07:41:25Z",
+                        body: `### Smoke fixture\nThe entry for the running build.\n\n![shot](${rafUrl}shot.gif)\n\n<video src="${rafUrl}clip.mp4" controls></video>`,
+                        url: "https://example.invalid/latest",
+                        prerelease: false,
+                    },
+                    {
+                        tag: "v0.0.1-pj.1",
+                        name: "v0.0.1-pj.1 — the older one",
+                        publishedat: "2026-01-02T00:00:00Z",
+                        body: "An older entry, collapsed until clicked.",
+                        url: "https://example.invalid/older",
+                        prerelease: false,
+                    },
+                ],
+            })
+        );
+        const badgeClicked = await page.evaluate(() => {
+            const badge = [...document.querySelectorAll("div")].find(
+                (d) => d.childElementCount === 0 && /^(pj\.\d+|v\d+\.)/.test((d.textContent || "").trim())
+            );
+            badge?.click();
+            return !!badge;
+        });
+        if (!badgeClicked) {
+            report("changelog", false, "version badge not found in the tab bar");
+        } else {
+            await sleep(1500);
+            const readModal = () =>
+                page.evaluate(() => {
+                    const modal = [...document.querySelectorAll(".modal")].find((m) =>
+                        (m.textContent || "").includes("What's New")
+                    );
+                    if (!modal) {
+                        return { open: false };
+                    }
+                    const rows = [...modal.querySelectorAll("button[aria-expanded]")].map((b) => ({
+                        label: b.innerText.trim().replace(/\s+/g, " "),
+                        expanded: b.getAttribute("aria-expanded") === "true",
+                    }));
+                    const img = modal.querySelector("img");
+                    const video = modal.querySelector("video");
+                    return {
+                        open: true,
+                        rows,
+                        text: modal.innerText,
+                        media: {
+                            imgLoaded: !!img && img.naturalWidth > 0,
+                            videoEl: !!video && video.controls && !!video.getAttribute("src"),
+                        },
+                    };
+                });
+            const state = await readModal();
+            const rowsOk = state.open && state.rows.length === 2 && state.rows[0].expanded && !state.rows[1].expanded;
+            const currentOk = state.open && state.text.includes("current") && state.text.includes("Smoke fixture");
+            // release notes carry screenshots, GIFs and video attachments — the sanitizer has to
+            // let both through, and a remote src has to render without a resolver
+            const mediaOk = state.open && state.media.imgLoaded && state.media.videoEl;
+            await page.evaluate(() => {
+                const modal = [...document.querySelectorAll(".modal")].find((m) =>
+                    (m.textContent || "").includes("What's New")
+                );
+                const older = [...(modal?.querySelectorAll("button[aria-expanded]") ?? [])].find((b) =>
+                    b.innerText.includes("pj.1")
+                );
+                older?.click();
+            });
+            await sleep(600);
+            const afterToggle = await readModal();
+            const toggleOk = afterToggle.open && afterToggle.text.includes("An older entry");
+            await page.evaluate(() => {
+                const modal = [...document.querySelectorAll(".modal")].find((m) =>
+                    (m.textContent || "").includes("What's New")
+                );
+                modal?.querySelector(".modal-close-btn")?.click();
+            });
+            await sleep(600);
+            const closed = !(await readModal()).open;
+            report(
+                "changelog",
+                rowsOk && currentOk && toggleOk && mediaOk && closed,
+                state.open
+                    ? `rows=${state.rows.length} current=${currentOk} media=${mediaOk} expand=${toggleOk} closed=${closed}`
+                    : "changelog modal did not open"
             );
         }
     }

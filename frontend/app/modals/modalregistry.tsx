@@ -9,6 +9,7 @@ import { EditBookmarksModal } from "@/app/view/preview/bookmarks-edit-modal";
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
+import { ChangelogModal } from "./changelog";
 import { UserInputPrompt } from "./userinputprompt";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
@@ -17,6 +18,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [UpgradeOnboardingPatch.displayName || "UpgradeOnboardingPatch"]: UpgradeOnboardingPatch,
     [UserInputPrompt.displayName || "UserInputPrompt"]: UserInputPrompt,
     [AboutModal.displayName || "AboutModal"]: AboutModal,
+    [ChangelogModal.displayName || "ChangelogModal"]: ChangelogModal,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
     [PublishAppModal.displayName || "PublishAppModal"]: PublishAppModal,
     [RenameFileModal.displayName || "RenameFileModal"]: RenameFileModal,
