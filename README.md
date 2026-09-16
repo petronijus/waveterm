@@ -50,6 +50,11 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   the terminal. Nothing renders until something _emits_ an image, so install a producer
   (`brew install chafa`, `apt install chafa`, …) and use `chafa -f sixel` — `chafa -f iterm2`
   wraps TIFF, which browsers cannot decode.
+- **Text aliases** — `term:aliases` maps a trigger word to the text it stands for
+  (`{"AtoRun": "docker compose up -d"}`); type it, press space or tab, and it is replaced. A shell
+  `alias` only ever works at a prompt — this one is expanded between the keyboard and the pty, so
+  it also works inside a TUI that reads its own keystrokes (Claude Code) and over SSH. It never
+  presses Enter for you.
 - **Remote file transfer** — paste or drop an image/file into a **remote** SSH terminal and it's
   uploaded to that host, with the remote path pasted back (upload indicator included).
 - **Non-blocking SSH auth prompts** — password / passphrase / keyboard-interactive prompts appear
@@ -97,8 +102,10 @@ Wave's own architecture and built to work **locally and over SSH** alike.
 - **Auto-updates from this fork's releases** — the built-in updater runs against this repo's
   GitHub Releases on a dedicated `pj` channel: new fork versions download in the background and
   install on restart (on Linux the app relaunches itself once the old instance is really gone).
-  A **`pj.N` badge** in the tab bar always shows which build you're on — click it for the full
-  version.
+  A **`pj.N` badge** in the tab bar always shows which build you're on — click it for the
+  **changelog**: the last 10 releases with their notes as written on GitHub, screenshots, GIFs and
+  video attachments included. The notes are cached, so it opens instantly and still works offline;
+  About is one click away in its footer.
 
 ### 🎨 Make it yours
 
