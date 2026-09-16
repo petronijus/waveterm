@@ -43,6 +43,15 @@ import {
     type ShellIntegrationStatus,
 } from "./osc-handlers";
 import {
+    AliasChunkDelayMs,
+    BracketedPasteMode,
+    buildAliasChunks,
+    isAliasTrigger,
+    joinWrappedRows,
+    matchAlias,
+    MaxWrappedRows,
+} from "./term-aliases";
+import {
     bufferLinesToText,
     createRemoteTempFileFromBlob,
     createTempFileFromBlob,
@@ -135,6 +144,8 @@ export class TermWrap {
     webglAddon: WebglAddon | null = null;
     webglContextLossDisposable: TermTypes.IDisposable | null = null;
     webglEnabledAtom: jotai.PrimitiveAtom<boolean>;
+    pendingInput: string[] = [];
+    pendingInputTimer: NodeJS.Timeout = null;
     pasteActive: boolean = false;
     uploadActive: boolean = false;
     lastUpdated: number;
@@ -649,6 +660,11 @@ export class TermWrap {
             clearTimeout(this.pendingWriteFlushTimer);
             this.pendingWriteFlushTimer = null;
         }
+        if (this.pendingInputTimer != null) {
+            clearTimeout(this.pendingInputTimer);
+            this.pendingInputTimer = null;
+        }
+        this.pendingInput = [];
         this.pendingWriteChunks = [];
         this.pendingWriteBytes = 0;
         if (this._visibilityChangeHandler) {
@@ -685,8 +701,75 @@ export class TermWrap {
             return;
         }
 
+        const chunks = this.expandAlias(data);
+        if (chunks != null) {
+            this.queueInput(chunks);
+            return;
+        }
+        if (this.pendingInput.length > 0) {
+            // a keystroke typed while an expansion is still going out queues behind it, or it
+            // would overtake the paste and land in the middle of the expanded text
+            this.queueInput([data]);
+            return;
+        }
+        this.sendInput(data);
+    }
+
+    sendInput(data: string) {
         this.sendDataHandler?.(data);
         this.multiInputCallback?.(data);
+    }
+
+    queueInput(chunks: string[]) {
+        this.pendingInput.push(...chunks);
+        if (this.pendingInputTimer != null) {
+            return;
+        }
+        const sendNext = () => {
+            const next = this.pendingInput.shift();
+            if (next == null) {
+                this.pendingInputTimer = null;
+                return;
+            }
+            this.sendInput(next);
+            this.pendingInputTimer = setTimeout(sendNext, AliasChunkDelayMs);
+        };
+        sendNext();
+    }
+
+    textBeforeCursor(): string {
+        const buf = this.terminal.buffer.active;
+        const cursorRow = buf.baseY + buf.cursorY;
+        const rows: { text: string; wrapped: boolean }[] = [];
+        for (let row = cursorRow; row >= 0 && cursorRow - row < MaxWrappedRows; row--) {
+            const line = buf.getLine(row);
+            if (line == null) {
+                break;
+            }
+            const text = row == cursorRow ? line.translateToString(false, 0, buf.cursorX) : line.translateToString();
+            rows.unshift({ text, wrapped: line.isWrapped });
+            if (!line.isWrapped) {
+                break;
+            }
+        }
+        return joinWrappedRows(rows);
+    }
+
+    // the alias is matched against what is actually on screen in front of the cursor rather than
+    // against the keystrokes seen here, so history, arrow keys and edits can't desync it
+    expandAlias(data: string): string[] {
+        if (!isAliasTrigger(data)) {
+            return null;
+        }
+        const aliases = globalStore.get(getSettingsKeyAtom("term:aliases"));
+        if (aliases == null) {
+            return null;
+        }
+        const match = matchAlias(this.textBeforeCursor(), aliases);
+        if (match == null) {
+            return null;
+        }
+        return buildAliasChunks(match, data, this.activeDecModes.has(BracketedPasteMode));
     }
 
     addFocusListener(focusFn: () => void) {

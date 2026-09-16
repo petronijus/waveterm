@@ -183,6 +183,12 @@
         "term:activitydebug": {
           "type": "boolean"
         },
+        "term:aliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "sysinfo:trackpath": {
           "type": "string"
         },

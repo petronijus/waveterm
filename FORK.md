@@ -48,6 +48,20 @@ git checkout feat/<task> && git rebase main
 
 ## Done
 
+- **Terminal aliases (text expansion)** — `term:aliases` maps a trigger word to the text it
+  stands for (`{"AtoRun": "docker compose up -d"}`); typing the word followed by a space or a
+  tab replaces it. The substitution happens on the way from the keyboard to the pty, not in the
+  shell, so it works at a prompt, inside a TUI that reads its own keystrokes (Claude Code) and
+  over a remote connection alike — where a shell `alias` only ever works at a prompt. The word
+  is matched against what is actually on screen in front of the cursor (wrapped rows joined),
+  so history, arrow keys and edits can't desync it, and an expansion never presses Enter: a
+  trailing newline in the value is dropped, the triggering space is kept so typing carries on,
+  a triggering tab is swallowed (it would otherwise reach the shell as a completion request).
+  The erase, the bracketed paste and the trailing space go out as **separate writes** — Claude
+  Code drops a paste whose read carries anything after the end marker, which made the first
+  version expand to nothing inside it — and anything typed meanwhile queues behind them, so a
+  fast next keystroke can't land in the middle of the expansion.
+
 - **Undo close tab** (<kbd>Cmd/Ctrl+Shift+T</kbd>) — upstream's `DeleteTab` drops the tab, its
   blocks and its layout straight out of SQLite, so a mis-click was unrecoverable. Closing now
   writes a full snapshot (tab + layout tree + every block, subblocks included) to a `db_tab_trash`
