@@ -15,6 +15,7 @@
 //      changelog     — the pj.N badge opens the changelog modal, rendered from the cached
 //                      GitHub release notes, images and video attachments included (a seeded
 //                      cache and a local asset keep the check offline)
+//      alias         — a term:aliases word typed into a terminal expands on its way to the pty
 //   3. osc8-link     — an OSC 8 hyperlink opens through Wave's own openLink on modifier-click
 //                      (and stays put on a bare click); hover reports the real target
 //   4. badge         — a running command gets its backend-driven spinner badge in the tab bar
@@ -128,6 +129,8 @@ function prepareSettings() {
                 // osc8-link clicks a real hyperlink; opening internally keeps it in a web
                 // block instead of spawning the test machine's browser.
                 "web:openlinksinternally": true,
+                // the alias check types this trigger word into a real shell
+                "term:aliases": { wvsmoke: "echo alias-expanded" },
             },
             null,
             2
@@ -542,6 +545,86 @@ try {
                     ? `URL rejoined across the hard wrap (cols=${sel.cols}, copy-on-select clipboard ${clipJoined ? "matches too" : "not asserted — window unfocused"})`
                     : `copy text still broken: ${JSON.stringify(sel.copyText.slice(0, 120))} (cols=${sel.cols})`
             );
+        }
+    }
+
+    // alias: a word from term:aliases typed into a terminal is replaced on its way to the pty
+    // (erase the alias, paste the expansion, keep the space). Driven with real keystrokes into
+    // a fresh terminal — the block copy-unwrap used has text written straight into its buffer,
+    // which the shell's line editor knows nothing about. What is asserted is the echoed line,
+    // so the shell has to have printed its prompt first.
+    {
+        const blocksBefore = await page.evaluate(() =>
+            [...document.querySelectorAll("[data-blockid]")].map((e) => e.getAttribute("data-blockid"))
+        );
+        const widget = await clickWidget(page, "terminal");
+        if (widget !== "OK") {
+            report("alias", false, "widget terminal not found");
+        } else {
+            await sleep(2000);
+            const blockId = await page.evaluate((prev) => {
+                const fresh = [...document.querySelectorAll("[data-blockid]")].find(
+                    (e) => !prev.includes(e.getAttribute("data-blockid")) && e.querySelector(".xterm-helper-textarea")
+                );
+                fresh?.querySelector(".xterm-helper-textarea")?.focus();
+                return fresh?.getAttribute("data-blockid") ?? null;
+            }, blocksBefore);
+            // blocks in this tab are narrow, so the echoed line wraps — read the cursor row
+            // together with the rows it wrapped from, the way the input line actually reads
+            const cursorLine = (id) =>
+                page.evaluate((id) => {
+                    const tw = [...(window.__termwraps?.values() ?? [])].find((w) => w.blockId === id);
+                    const term = tw?.terminal;
+                    if (!term) {
+                        return null;
+                    }
+                    const buf = term.buffer.active;
+                    let row = buf.baseY + buf.cursorY;
+                    let text = "";
+                    for (let i = 0; i < 8 && row >= 0; i++) {
+                        const line = buf.getLine(row);
+                        if (!line) {
+                            break;
+                        }
+                        text = line.translateToString(true) + text;
+                        if (!line.isWrapped) {
+                            break;
+                        }
+                        row--;
+                    }
+                    return text;
+                }, id);
+            let prompt = null;
+            for (let i = 0; blockId && i < 40; i++) {
+                prompt = await cursorLine(blockId);
+                if (prompt) {
+                    break;
+                }
+                await sleep(500);
+            }
+            if (!blockId) {
+                report("alias", false, "fresh terminal block never appeared");
+            } else if (!prompt) {
+                report("alias", false, "fresh terminal never printed a prompt within 20s");
+            } else {
+                await page.keyboard.type("wvsmoke", { delay: 40 });
+                await sleep(400);
+                await page.keyboard.type(" ", { delay: 40 });
+                await sleep(1200);
+                const line = await cursorLine(blockId);
+                // leave the shell on an empty line whatever happened, so nothing is left
+                // half-typed at a prompt for the checks that follow
+                await page.keyboard.press("Control+c");
+                await sleep(500);
+                const ok = line != null && line.includes("echo alias-expanded") && !line.includes("wvsmoke");
+                // close this terminal again: every block left behind shrinks the ones the later
+                // checks work in, and the badge check needs a usable terminal
+                await page.evaluate((id) => {
+                    document.querySelector(`[data-blockid="${id}"] .block-frame-default-close`)?.click();
+                }, blockId);
+                await sleep(1000);
+                report("alias", ok, `line reads ${JSON.stringify((line ?? "").slice(-60))}`);
+            }
         }
     }
 

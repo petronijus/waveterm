@@ -1709,6 +1709,7 @@ declare global {
         "term:trimtrailingwhitespace"?: boolean;
         "term:copyunwrap"?: boolean;
         "term:activitydebug"?: boolean;
+        "term:aliases"?: {[key: string]: string};
         "sysinfo:trackpath"?: string;
         "sysinfo:dockerproject"?: string;
         "editor:minimapenabled"?: boolean;

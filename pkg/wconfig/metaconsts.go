@@ -64,6 +64,7 @@ const (
 	ConfigKey_TermTrimTrailingWhitespace     = "term:trimtrailingwhitespace"
 	ConfigKey_TermCopyUnwrap                 = "term:copyunwrap"
 	ConfigKey_TermActivityDebug              = "term:activitydebug"
+	ConfigKey_TermAliases                    = "term:aliases"
 
 	ConfigKey_SysinfoTrackPath               = "sysinfo:trackpath"
 	ConfigKey_SysinfoDockerProject           = "sysinfo:dockerproject"

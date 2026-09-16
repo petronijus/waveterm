@@ -122,6 +122,11 @@ type SettingsType struct {
 	TermCopyUnwrap             *bool    `json:"term:copyunwrap,omitempty"`
 	TermActivityDebug          bool     `json:"term:activitydebug,omitempty"`
 
+	// Text expansions keyed by the word that triggers them ({"AtoRun": "docker compose up -d"}).
+	// Expanded on the way to the pty, so they work in the shell, inside a TUI like Claude Code,
+	// and over a remote connection alike.
+	TermAliases map[string]string `json:"term:aliases,omitempty"`
+
 	SysinfoTrackPath     string `json:"sysinfo:trackpath,omitempty"`
 	SysinfoDockerProject string `json:"sysinfo:dockerproject,omitempty"`
 
