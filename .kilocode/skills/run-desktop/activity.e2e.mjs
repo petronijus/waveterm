@@ -4,7 +4,7 @@
 // so the log is the source of truth for what every tab bar renders).
 //
 // Build first:  task --force build:server && npm run build:dev
-// Run:          node .kilocode/skills/run-desktop/activity.test.mjs
+// Run:          node .kilocode/skills/run-desktop/activity.e2e.mjs
 import { _electron as electron } from "playwright-core";
 import * as fs from "node:fs";
 import * as os from "node:os";

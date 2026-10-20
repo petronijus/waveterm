@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks for heavy dependencies so TermWrap can be instantiated in Node.js
@@ -39,7 +39,11 @@ vi.mock("@xterm/xterm", () => ({
     },
 }));
 
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class MockFitAddon { fit = vi.fn(); } }));
+vi.mock("@xterm/addon-fit", () => ({
+    FitAddon: class MockFitAddon {
+        fit = vi.fn();
+    },
+}));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: class MockSearchAddon {} }));
 vi.mock("@xterm/addon-serialize", () => ({ SerializeAddon: class MockSerializeAddon {} }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class MockWebglAddon {} }));
@@ -55,7 +59,10 @@ vi.mock("@/store/global", () => ({
     getSettingsKeyAtom: vi.fn(() => vi.fn()),
     isDev: vi.fn(() => false),
     openLink: vi.fn(),
-    WOS: {},
+    WOS: {
+        makeORef: vi.fn((otype: string, oid: string) => `${otype}:${oid}`),
+        getWaveObjectAtom: vi.fn(() => vi.fn()),
+    },
     fetchWaveFile: vi.fn(),
 }));
 
@@ -67,7 +74,7 @@ vi.mock("@/store/services", () => ({
 
 vi.mock("@/app/store/badge", () => ({ setBadge: vi.fn() }));
 vi.mock("@/app/store/wps", () => ({ getFileSubject: vi.fn(() => null) }));
-vi.mock("@/app/store/wshclientapi", () => ({ RpcApi: {} }));
+vi.mock("@/app/store/wshclientapi", () => ({ RpcApi: { ControllerResyncCommand: vi.fn(() => Promise.resolve()) } }));
 vi.mock("@/app/store/wshrpcutil", () => ({ TabRpcClient: {} }));
 vi.mock("@/util/platformutil", () => ({ PLATFORM: "darwin", PlatformMacOS: true }));
 vi.mock("@/util/util", () => ({ base64ToArray: vi.fn(), fireAndForget: vi.fn((f) => f()) }));
@@ -114,13 +121,7 @@ describe("TermWrap DEC mode tracking", () => {
             style: {},
         } as unknown as HTMLDivElement;
 
-        term = new TermWrap(
-            "tab-1",
-            "block-1",
-            mockElem,
-            {},
-            {}
-        );
+        term = new TermWrap("tab-1", "block-1", mockElem, {}, {});
     });
 
     describe("serializeDecModes", () => {
