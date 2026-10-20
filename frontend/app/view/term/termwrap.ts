@@ -51,6 +51,7 @@ import {
     matchAlias,
     MaxWrappedRows,
 } from "./term-aliases";
+import { makeTermLinkHandlers } from "./term-links";
 import {
     bufferLinesToText,
     createRemoteTempFileFromBlob,
@@ -77,15 +78,6 @@ const MaxRepaintTransactionMs = 2000;
 // (keystrokes, prompt redraws) never waits on the timer.
 const TermWriteFlushIntervalMs = 33;
 const TermWriteFlushMaxBytes = 256 * 1024;
-
-// A link opens on the platform's modifier-click, never on a bare click: terminal output is
-// untrusted, and an OSC 8 hyperlink can hide any target behind arbitrary text.
-function isLinkActivationEvent(e: MouseEvent): boolean {
-    if (PLATFORM === PlatformMacOS) {
-        return e.metaKey;
-    }
-    return e.ctrlKey;
-}
 
 // detect webgl support
 function detectWebGLSupport(): boolean {
@@ -159,7 +151,7 @@ export class TermWrap {
     // pkg/blockcontroller/termactivity.go and emain/emain-term-notify.ts.
     nodeModel: BlockNodeModel; // this can be null
     hoveredLinkUri: string | null = null;
-    onLinkHover?: (uri: string | null, mouseX: number, mouseY: number) => void;
+    onLinkHover?: (uri: string | null, mouseX: number, mouseY: number, showUrl: boolean) => void;
 
     _visibilityChangeHandler: (() => void) | null = null;
 
@@ -205,25 +197,22 @@ export class TermWrap {
         this.claudeCodeActiveAtom = jotai.atom(false);
         this.agentKindAtom = jotai.atom(null) as jotai.PrimitiveAtom<string>;
         this.webglEnabledAtom = jotai.atom(false) as jotai.PrimitiveAtom<boolean>;
+        // A link opens on the platform's modifier-click, never on a bare click: terminal output is
+        // untrusted, and an OSC 8 hyperlink can hide any target behind arbitrary text.
+        const linkHandlers = makeTermLinkHandlers(
+            PLATFORM === PlatformMacOS,
+            (uri) => fireAndForget(() => openLink(uri)),
+            (uri, x, y, showUrl) => {
+                this.hoveredLinkUri = uri;
+                this.onLinkHover?.(uri, x, y, showUrl);
+            }
+        );
         this.terminal = new Terminal({
             ...options,
-            // xterm's built-in OSC 8 handler calls window.open() with no URL, which Wave's
-            // window-open policy denies — so hyperlinks did nothing until this took over.
             linkHandler: {
-                activate: (e, uri) => {
-                    if (!isLinkActivationEvent(e)) {
-                        return;
-                    }
-                    fireAndForget(() => openLink(uri));
-                },
-                hover: (e, uri) => {
-                    this.hoveredLinkUri = uri;
-                    this.onLinkHover?.(uri, e.clientX, e.clientY);
-                },
-                leave: () => {
-                    this.hoveredLinkUri = null;
-                    this.onLinkHover?.(null, 0, 0);
-                },
+                activate: linkHandlers.activate,
+                hover: linkHandlers.osc8Hover,
+                leave: linkHandlers.leave,
             },
         });
         this.fitAddon = new FitAddon();
@@ -234,26 +223,10 @@ export class TermWrap {
         this.terminal.loadAddon(this.serializeAddon);
         this.toDispose.push(
             this.terminal.registerLinkProvider(
-                new WaveLinkProvider(
-                    this.terminal,
-                    (e, uri) => {
-                        e.preventDefault();
-                        if (!isLinkActivationEvent(e)) {
-                            return;
-                        }
-                        fireAndForget(() => openLink(uri));
-                    },
-                    {
-                        hover: (e, uri) => {
-                            this.hoveredLinkUri = uri;
-                            this.onLinkHover?.(uri, e.clientX, e.clientY);
-                        },
-                        leave: () => {
-                            this.hoveredLinkUri = null;
-                            this.onLinkHover?.(null, 0, 0);
-                        },
-                    }
-                )
+                new WaveLinkProvider(this.terminal, linkHandlers.activate, {
+                    hover: linkHandlers.hover,
+                    leave: linkHandlers.leave,
+                })
             )
         );
         // Inline terminal images: Sixel + iTerm2 inline (IIP, PNG/JPEG). Best-effort —
