@@ -65,7 +65,10 @@ git worktree remove ../waveterm-<task>                 # when the task is merged
 
 Convention: the main checkout (`~/Documents/Dev/waveterm`) stays on **`release`**; each feature /
 the dev-channel lives in its own worktree. A fresh worktree has no deps — run `task init` in it
-once before the first build. Each worktree has its own `./make`, so two `task package` builds can
+once before the first build. npm 11 skips dependency install scripts it has not been told to
+allow (`npm warn install-scripts …`), so the Electron binary is not downloaded: follow with
+`node node_modules/electron/install.js`, and `npm install` in `.kilocode/skills/run-desktop` for
+the smoke suite. Each worktree has its own `./make`, so two `task package` builds can
 run at once without clobbering each other.
 
 Rules that hold **with or without** worktrees:
