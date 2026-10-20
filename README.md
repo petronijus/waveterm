@@ -145,6 +145,13 @@ Wave's own architecture and built to work **locally and over SSH** alike.
   and clamps timers while their tab is hidden (measured 120 rAF/s → 0), with audible pages
   exempt so background music keeps playing; git status polling, sysinfo plot rebuilds, and the
   tab-bar spinner's repaint rate are similarly gated.
+- **Tabs are less than half the memory** — every tab is its own renderer, and each one used to
+  load the code editor, the markdown/syntax-highlighting stack and Excalidraw up front. They now
+  load on first use, so a tab with a terminal costs ~104 MB instead of ~239 MB. A background tab
+  left alone for an hour (`window:tabcacheidlemins`) is dropped and rebuilt on demand, unless it
+  holds unsaved edits, an unsent or streaming AI message, or playing audio — a guard that now also
+  protects unsaved edits when the tab cache overflows. Terminals in a hidden tab give their WebGL
+  context back after a minute (GPU process 534 → 249 MB for four terminals).
 - **No more grey window** — coming back from a minimize, a workspace switch or a locked screen
   could leave the active tab painted as a flat grey rectangle until you switched tabs. The
   compositor surface gets evicted when the OS unmaps the window, and a leftover
