@@ -7,7 +7,7 @@ import { ErrorOverlay } from "@/app/view/preview/preview-error-overlay";
 import { Excalidraw } from "@excalidraw/excalidraw";
 import { useAtom, useAtomValue } from "jotai";
 
-import { ExcalidrawModel } from "./excalidraw-model";
+import type { ExcalidrawModel } from "./excalidraw-model";
 
 (window as any).EXCALIDRAW_ASSET_PATH = "./excalidraw/";
 

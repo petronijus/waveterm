@@ -212,6 +212,22 @@ git checkout feat/<task> && git rebase main
   back-and-forth switches; a terminal the user switched to DOM by hand stays on DOM. Measured
   with four terminals in a background tab: GPU process 534 → 249 MB. Smoke check:
   `webgl-hidden-release`.
+  Most of a tab's fixed cost was code it never ran: every renderer loaded Monaco, streamdown
+  (with shiki, mermaid, katex and cytoscape) and Excalidraw up front — ~28 MB of JS — even if it
+  only showed terminals. All three now sit behind dynamic imports and load on first use:
+  `monaco-react-lazy.tsx` and `streamdown-lazy.tsx` keep the upstream component names and props
+  (so upstream code only changed its import lines), the eager `loadMonaco()` at startup is gone
+  (the editor wrapper already calls it), and the Excalidraw model loads its library through
+  `excalidraw-lib.ts` instead of importing it. Upstream's `manualChunks` had to go: a manual
+  chunk absorbs every dependency nobody else claimed — React and jotai had landed in
+  "excalidraw", d3 in "mermaid" — so the entry imported all of them statically, and
+  `onlyExplicitManualChunks` instead produced a chunk cycle (shiki ↔ streamdown's code-block)
+  that crashed on an uninitialized binding. Rollup's automatic chunking keeps execution order
+  correct and now splits shiki per language as well. The entry chunk has no static imports left.
+  Measured: a new tab 239 → 104 MB (JS heap 93 → 18 MB), the starter tab 268 → 137 MB, the whole
+  six-tab scenario 1.6 GB → 0.96 GB before any eviction. Rebuilding an evicted tab did not get
+  measurably faster (~0.65–0.8 s): the hot-spare renderer already parses the bundle in the
+  background, so the wait is block loading, not code.
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

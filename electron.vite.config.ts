@@ -134,22 +134,15 @@ export default defineConfig({
                 input: {
                     index: "index.html",
                 },
-                output: {
-                    manualChunks(id) {
-                        const p = id.replace(/\\/g, "/");
-                        if (p.includes("node_modules/monaco") || p.includes("node_modules/@monaco")) return "monaco";
-                        if (p.includes("node_modules/mermaid") || p.includes("node_modules/@mermaid")) return "mermaid";
-                        if (p.includes("node_modules/katex") || p.includes("node_modules/@katex")) return "katex";
-                        if (p.includes("node_modules/shiki") || p.includes("node_modules/@shiki")) {
-                            return "shiki";
-                        }
-                        if (p.includes("node_modules/cytoscape") || p.includes("node_modules/@cytoscape"))
-                            return "cytoscape";
-                        if (p.includes("node_modules/excalidraw") || p.includes("node_modules/@excalidraw"))
-                            return "excalidraw";
-                        return undefined;
-                    },
-                },
+                // No manualChunks: monaco, streamdown (shiki/mermaid/katex/cytoscape) and excalidraw
+                // sit behind dynamic imports, so Rollup's automatic chunking already splits them
+                // out and loads them on first use. Forcing them into named chunks broke both ends:
+                // a manual chunk absorbs every dependency not claimed elsewhere (React and jotai
+                // landed in "excalidraw", d3 in "mermaid", so the entry imported all of them
+                // statically), and restricting it with onlyExplicitManualChunks produced a chunk
+                // cycle (shiki <-> streamdown's code-block) that crashed on an uninitialized
+                // binding. Automatic chunks keep Rollup's execution-order guarantee.
+                output: {},
             },
         },
         optimizeDeps: {

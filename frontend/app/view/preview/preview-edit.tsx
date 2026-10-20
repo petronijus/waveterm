@@ -7,8 +7,8 @@ import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue, useSetAtom } from "jotai";
+import type * as monaco from "monaco-editor";
 import type * as MonacoTypes from "monaco-editor";
-import * as monaco from "monaco-editor";
 import { useEffect } from "react";
 import type { SpecializedViewProps } from "./preview";
 

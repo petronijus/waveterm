@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { MonacoDiffViewer } from "@/app/monaco/monaco-react";
+import { MonacoDiffViewer } from "@/app/monaco/monaco-react-lazy";
 import { useOverrideConfigAtom } from "@/app/store/global";
 import { boundNumber } from "@/util/util";
 import type * as MonacoTypes from "monaco-editor";

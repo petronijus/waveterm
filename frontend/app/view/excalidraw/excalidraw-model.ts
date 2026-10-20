@@ -7,28 +7,28 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { base64ToString, stringToBase64 } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
-import {
-    CaptureUpdateAction,
-    convertToExcalidrawElements,
-    getSceneVersion,
-    serializeAsJSON,
-    THEME,
-} from "@excalidraw/excalidraw";
-import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { atom, type Atom, type PrimitiveAtom } from "jotai";
 import { loadable } from "jotai/utils";
+import { createElement, lazy, Suspense } from "react";
 
 import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { ExcalidrawView } from "./excalidraw";
+import { loadExcalidrawLib, type ExcalidrawLib } from "./excalidraw-lib";
 
 const AutosaveDebounceMs = 1500;
 const MaxSaveSizeBytes = 8 * 1024 * 1024;
+
+const ExcalidrawViewImpl = lazy(() => import("./excalidraw").then((m) => ({ default: m.ExcalidrawView })));
+
+const ExcalidrawViewLazy: ViewComponent = (props) =>
+    createElement(Suspense, { fallback: null }, createElement(ExcalidrawViewImpl, props as any));
 
 export class ExcalidrawModel implements ViewModel {
     viewType = "excalidraw";
     blockId: string;
     nodeModel: BlockNodeModel;
-    viewComponent: ViewComponent = ExcalidrawView;
+    viewComponent: ViewComponent = ExcalidrawViewLazy;
+    // set before the scene resolves, so it is loaded whenever the editor is on screen
+    lib: ExcalidrawLib = null;
 
     noPadding = atom(true);
     isDirtyAtom = atom(false) as PrimitiveAtom<boolean>;
@@ -80,10 +80,11 @@ export class ExcalidrawModel implements ViewModel {
         });
 
         this.themeAtom = atom(() => {
-            return THEME.DARK;
+            return "dark";
         });
 
         this.sceneAtom = atom(async (get) => {
+            this.lib = await loadExcalidrawLib();
             const filePath = get(this.filePathAtom);
             if (!filePath) {
                 return null;
@@ -138,7 +139,7 @@ export class ExcalidrawModel implements ViewModel {
 
     initSavedStateFromScene(scene: any) {
         const elements = scene?.elements ?? [];
-        this.lastSavedVersion = getSceneVersion(elements);
+        this.lastSavedVersion = this.lib.getSceneVersion(elements);
         this.lastSavedBackground = scene?.appState?.viewBackgroundColor;
         this.lastAppliedPushId = scene?.wavepushid ?? this.lastAppliedPushId;
         this.pendingElements = elements;
@@ -203,11 +204,15 @@ export class ExcalidrawModel implements ViewModel {
         if (pushData.format === "mermaid") {
             try {
                 const mermaidText = pushData.scenedata as string;
+                const [{ parseMermaidToExcalidraw }, lib] = await Promise.all([
+                    import("@excalidraw/mermaid-to-excalidraw"),
+                    loadExcalidrawLib(),
+                ]);
                 const result = await parseMermaidToExcalidraw(mermaidText);
                 if (seq !== this.pushSeq) {
                     return;
                 }
-                elements = convertToExcalidrawElements(result.elements);
+                elements = lib.convertToExcalidrawElements(result.elements);
                 files = result.files;
             } catch (e) {
                 if (seq !== this.pushSeq) {
@@ -260,7 +265,7 @@ export class ExcalidrawModel implements ViewModel {
         this.excalidrawAPI.updateScene({
             elements: scene.elements,
             appState: scene.appState,
-            captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+            captureUpdate: this.lib.CaptureUpdateAction.IMMEDIATELY,
         });
         this.pendingElements = scene.elements;
         this.pendingAppState = scene.appState;
@@ -271,7 +276,7 @@ export class ExcalidrawModel implements ViewModel {
     }
 
     handleChange(elements: readonly any[], appState: any, files: any) {
-        const newVersion = getSceneVersion(elements);
+        const newVersion = this.lib.getSceneVersion(elements);
         if (newVersion === this.lastSavedVersion && appState?.viewBackgroundColor === this.lastSavedBackground) {
             return;
         }
@@ -296,11 +301,17 @@ export class ExcalidrawModel implements ViewModel {
             return;
         }
         this.lastFileUri = fileUri;
-        const version = getSceneVersion(this.pendingElements as any[]);
+        const lib = await loadExcalidrawLib();
+        const version = lib.getSceneVersion(this.pendingElements as any[]);
         const background = this.pendingAppState?.viewBackgroundColor;
         const seq = this.changeSeq;
         const sceneObj = JSON.parse(
-            serializeAsJSON(this.pendingElements as any[], this.pendingAppState ?? {}, this.pendingFiles ?? {}, "local")
+            lib.serializeAsJSON(
+                this.pendingElements as any[],
+                this.pendingAppState ?? {},
+                this.pendingFiles ?? {},
+                "local"
+            )
         );
         if (this.lastAppliedPushId) {
             sceneObj.wavepushid = this.lastAppliedPushId;
