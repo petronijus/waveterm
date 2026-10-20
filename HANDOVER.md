@@ -65,13 +65,15 @@ there on.
 - **Windows:** done — built on the build VM (NSIS signed via the cert in the Windows store),
   `.exe`/`.zip` + `pj.yml`/`latest.yml`/blockmap uploaded. Remaining: install pj.11 on the
   actual Windows machines once (older installs can't see pj prereleases).
-- **macOS:** built on the build VM **signed with Developer ID** (arm64 + x64 dmg/zip +
+- **macOS:** done — built on the build VM **signed with Developer ID** (arm64 + x64 dmg/zip +
   `pj-mac.yml`/`latest-mac.yml`/blockmaps uploaded). The `errSecInternalComponent`
   SSH-codesign failure is solved by importing the .p12 and running
   `security set-key-partition-list -S apple-tool:,apple:` on the login keychain — no GUI
-  session needed. Remaining: **notarization** (needs the `APPLE_ID` e-mail confirmed and set
-  as `username` on the 1Password app-specific-password item; team is `ASFPR2T2DQ`, cert says
-  "Petr Parkan Janda") and a one-time pj.11 install on the real Macs.
+  session needed. **Notarization works** since pj.20 (built on the MacBook 2026-08-23):
+  `APPLE_ID` = `petronijus@bastla.com` (stored as `username` on the 1Password item
+  "Waveterm notarization app-specific password", 2026-09-06), team `ASFPR2T2DQ`. The
+  MacBook runs a notarized pj.23 (`spctl`: Notarized Developer ID), so the one-time manual
+  reinstall is done there; auto-update flows from here on.
 
 ## Manual session sync — Save/Load (as of 2026-06-24)
 
