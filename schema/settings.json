@@ -310,6 +310,9 @@
         "window:maxtabcachesize": {
           "type": "integer"
         },
+        "window:tabcacheidlemins": {
+          "type": "integer"
+        },
         "window:magnifiedblockopacity": {
           "type": "number"
         },

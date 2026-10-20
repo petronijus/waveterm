@@ -1,6 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { App } from "@/app/app";
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
@@ -21,6 +22,7 @@ import { getLayoutModelForStaticTab } from "@/layout/index";
 import { countersClear, countersPrint } from "@/store/counters";
 import {
     atoms,
+    getAllBlockComponentModels,
     getApi,
     globalStore,
     initGlobal,
@@ -56,6 +58,18 @@ function updateZoomFactor(zoomFactor: number) {
     document.documentElement.style.setProperty("--zoomfactor-inv", String(1 / zoomFactor));
 }
 
+function isTabEvictable(): boolean {
+    if (WaveAIModel.hasUnsavedState()) {
+        return false;
+    }
+    for (const bcm of getAllBlockComponentModels()) {
+        if (bcm.viewModel?.hasUnsavedState?.()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 async function initBare() {
     getApi().sendLog("Init Bare");
     document.body.style.visibility = "hidden";
@@ -63,6 +77,7 @@ async function initBare() {
     document.body.classList.add("is-transparent");
     getApi().onWaveInit(initWaveWrap);
     getApi().onBuilderInit(initBuilderWrap);
+    getApi().onQueryTabEvictable(isTabEvictable);
     getApi().onWaveResize(() => {
         window.dispatchEvent(new CustomEvent("wave-resize"));
     });

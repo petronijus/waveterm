@@ -1749,6 +1749,7 @@ declare global {
         "window:disablehardwareacceleration"?: boolean;
         "window:disablegraphite"?: boolean;
         "window:maxtabcachesize"?: number;
+        "window:tabcacheidlemins"?: number;
         "window:magnifiedblockopacity"?: number;
         "window:magnifiedblocksize"?: number;
         "window:magnifiedblockblurprimarypx"?: number;

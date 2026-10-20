@@ -27,6 +27,7 @@ const previewElectronApi: ElectronApi = {
     onFullScreenChange: (_callback: (isFullScreen: boolean) => void) => {},
     onTabVisibilityChange: (_callback: (visible: boolean) => void) => {},
     onWindowFocusChange: (_callback: (focused: boolean) => void) => {},
+    onQueryTabEvictable: (_callback: () => boolean) => {},
     onZoomFactorChange: (_callback: (zoomFactor: number) => void) => {},
     onUpdaterStatusChange: (_callback: (status: UpdaterStatus) => void) => {},
     getUpdaterStatus: () => "up-to-date",

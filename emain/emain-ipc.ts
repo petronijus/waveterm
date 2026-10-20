@@ -23,7 +23,7 @@ import {
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
 import { getChangelog } from "./emain-changelog";
 import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-platform";
-import { getWaveTabViewByWebContentsId } from "./emain-tabview";
+import { getWaveTabViewByWebContentsId, resolveTabEvictableQuery } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
 import { getWaveVersion } from "./emain-wavesrv";
 import { createNewWaveWindow, getWaveWindowByWebContentsId } from "./emain-window";
@@ -266,6 +266,10 @@ export function initIpcHandlers() {
             y: screenPoint.y - windowRect.y,
         };
         event.returnValue = retVal;
+    });
+
+    electron.ipcMain.on("tab-evictable-reply", (_event, reqId: number, evictable: boolean) => {
+        resolveTabEvictableQuery(reqId, evictable === true);
     });
 
     electron.ipcMain.handle("capture-screenshot", async (event, rect) => {

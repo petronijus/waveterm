@@ -4,6 +4,7 @@
 import { RpcApi } from "@/app/store/wshclientapi";
 import { adaptFromElectronKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
+import { fireAndForget } from "@/util/util";
 import { Rectangle, shell, WebContentsView } from "electron";
 import { createNewWaveWindow, getWaveWindowById } from "emain/emain-window";
 import path from "path";
@@ -464,12 +465,42 @@ export class WaveTabView extends WebContentsView {
     }
 }
 
+const DefaultTabCacheIdleMins = 60;
+const TabCacheIdleCheckIntervalMs = 60 * 1000;
+const TabEvictableQueryTimeoutMs = 2000;
+
 let MaxCacheSize = 10;
+let TabCacheIdleMins = DefaultTabCacheIdleMins;
 const wcvCache = new Map<string, WaveTabView>();
 
 export function setMaxTabCacheSize(size: number) {
     console.log("setMaxTabCacheSize", size);
     MaxCacheSize = size;
+}
+
+export function applyTabCacheSettings(settings: SettingsType) {
+    const maxSize = settings?.["window:maxtabcachesize"];
+    if (maxSize != null && maxSize > 0 && maxSize != MaxCacheSize) {
+        setMaxTabCacheSize(maxSize);
+    }
+    const idleMins = settings?.["window:tabcacheidlemins"] ?? DefaultTabCacheIdleMins;
+    if (idleMins != TabCacheIdleMins) {
+        console.log("setTabCacheIdleMins", idleMins);
+        TabCacheIdleMins = idleMins;
+    }
+}
+
+// Each cached tab is a full renderer (~235 MB for a bare tab, measured), so a tab nobody has
+// looked at for TabCacheIdleMins is dropped and rebuilt on demand. Settings are re-read every
+// tick because the main process gets no config-change events.
+export function startTabCacheIdleEviction() {
+    setInterval(() => {
+        fireAndForget(async () => {
+            const fullConfig = await RpcApi.GetFullConfigCommand(ElectronWshClient);
+            applyTabCacheSettings(fullConfig?.settings);
+            requestCacheEviction();
+        });
+    }, TabCacheIdleCheckIntervalMs);
 }
 
 export function getWaveTabView(waveTabId: string): WaveTabView | undefined {
@@ -480,7 +511,45 @@ export function getWaveTabView(waveTabId: string): WaveTabView | undefined {
     return rtn;
 }
 
-function tryEvictEntry(waveTabId: string): boolean {
+let tabEvictableReqSeq = 0;
+const pendingEvictableQueries = new Map<number, (evictable: boolean) => void>();
+
+export function resolveTabEvictableQuery(reqId: number, evictable: boolean) {
+    pendingEvictableQueries.get(reqId)?.(evictable);
+}
+
+// Unsaved editor buffers live only in the renderer, so destroying it would silently drop them.
+// A renderer that does not answer in time keeps its tab: when unsure, never evict.
+function queryTabEvictable(tabView: WaveTabView): Promise<boolean> {
+    if (!tabView.isWaveReady) {
+        return Promise.resolve(true);
+    }
+    const reqId = ++tabEvictableReqSeq;
+    return new Promise((resolve) => {
+        const timeoutHandle = setTimeout(() => finish(false), TabEvictableQueryTimeoutMs);
+        function finish(evictable: boolean) {
+            clearTimeout(timeoutHandle);
+            pendingEvictableQueries.delete(reqId);
+            resolve(evictable);
+        }
+        pendingEvictableQueries.set(reqId, finish);
+        tabView.webContents.send("query-tab-evictable", reqId);
+    });
+}
+
+function isTabAudible(tabView: WaveTabView): boolean {
+    if (tabView.webContents.isCurrentlyAudible()) {
+        return true;
+    }
+    for (const guest of tabView.attachedGuests) {
+        if (!guest.isDestroyed() && guest.isCurrentlyAudible()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function tryEvictEntry(waveTabId: string, reason: string): Promise<boolean> {
     const tabView = wcvCache.get(waveTabId);
     if (!tabView) {
         return false;
@@ -492,6 +561,19 @@ function tryEvictEntry(waveTabId: string): boolean {
     if (lastUsedDiff < 1000) {
         return false;
     }
+    if (isTabAudible(tabView)) {
+        return false;
+    }
+    const evictable = await queryTabEvictable(tabView);
+    if (!evictable) {
+        console.log("keeping cached tab (unsaved state or no answer)", waveTabId, reason);
+        return false;
+    }
+    // the user can switch to the tab while its renderer is answering
+    if (wcvCache.get(waveTabId) !== tabView || tabView.isActiveTab || tabView.isDestroyed) {
+        return false;
+    }
+    console.log("evicting cached tab", waveTabId, reason);
     const ww = getWaveWindowById(tabView.waveWindowId);
     if (!ww) {
         // this shouldn't happen, but if it does, just destroy the tabview
@@ -505,28 +587,63 @@ function tryEvictEntry(waveTabId: string): boolean {
     }
 }
 
-function checkAndEvictCache(): void {
+let evictionRunning = false;
+let evictionRequested = false;
+
+// Eviction awaits renderer answers, so runs are serialized: overlapping runs would each
+// count the same over-capacity tabs and evict more than needed.
+function requestCacheEviction(): void {
+    evictionRequested = true;
+    if (evictionRunning) {
+        return;
+    }
+    fireAndForget(async () => {
+        evictionRunning = true;
+        try {
+            while (evictionRequested) {
+                evictionRequested = false;
+                await evictOverCapacity();
+                await evictIdle();
+            }
+        } finally {
+            evictionRunning = false;
+        }
+    });
+}
+
+async function evictOverCapacity() {
     if (wcvCache.size <= MaxCacheSize) {
         return;
     }
-    const sorted = Array.from(wcvCache.values()).sort((a, b) => {
-        // Prioritize entries which are active
-        if (a.isActiveTab && !b.isActiveTab) {
-            return -1;
+    // tabs kept for unsaved state can leave the cache over capacity, so walk every
+    // candidate oldest-first instead of evicting a fixed count
+    const candidates = Array.from(wcvCache.values())
+        .filter((tabView) => !tabView.isActiveTab)
+        .sort((a, b) => a.lastUsedTs - b.lastUsedTs);
+    for (const tabView of candidates) {
+        if (wcvCache.size <= MaxCacheSize) {
+            return;
         }
-        // Otherwise, sort by lastUsedTs
-        return a.lastUsedTs - b.lastUsedTs;
-    });
-    for (let i = 0; i < sorted.length - MaxCacheSize; i++) {
-        tryEvictEntry(sorted[i].waveTabId);
+        await tryEvictEntry(tabView.waveTabId, "over capacity");
     }
 }
 
-export function clearTabCache() {
-    const wcVals = Array.from(wcvCache.values());
-    for (let i = 0; i < wcVals.length; i++) {
-        const tabView = wcVals[i];
-        tryEvictEntry(tabView.waveTabId);
+async function evictIdle() {
+    if (TabCacheIdleMins <= 0) {
+        return;
+    }
+    const cutoffTs = Date.now() - TabCacheIdleMins * 60 * 1000;
+    for (const tabView of Array.from(wcvCache.values())) {
+        if (tabView.isActiveTab || tabView.lastUsedTs > cutoffTs) {
+            continue;
+        }
+        await tryEvictEntry(tabView.waveTabId, "idle");
+    }
+}
+
+export async function clearTabCache() {
+    for (const tabView of Array.from(wcvCache.values())) {
+        await tryEvictEntry(tabView.waveTabId, "clear");
     }
 }
 
@@ -615,7 +732,7 @@ export function setWaveTabView(waveTabId: string, wcv: WaveTabView): void {
         return;
     }
     wcvCache.set(waveTabId, wcv);
-    checkAndEvictCache();
+    requestCacheEviction();
 }
 
 function removeWaveTabView(waveTabId: string): void {

@@ -189,6 +189,22 @@ git checkout feat/<task> && git rebase main
   every block and resize every terminal for a purely visual repair. The smoke suite guards it
   with a check that has to run before any tab switch, since backgrounding a tab enables
   throttling on its own and would mask the bug.
+- **Idle tabs give their memory back** — every cached tab is a whole renderer: measured on a
+  sandboxed build, a tab with a single terminal costs ~235 MB (93 MB of it JS heap), while each
+  extra terminal adds ~3 MB and a full 2000-line scrollback ~3 MB. The cache only shrank when it
+  overflowed `window:maxtabcachesize`, so a tab visited once stayed resident for the rest of the
+  session. `window:tabcacheidlemins` (default 60, `0` disables) now drops a background tab nobody
+  has looked at for that long; it is rebuilt from the backend on the next switch (9 blocks in
+  ~650 ms), terminals keep running in wavesrv meanwhile. Idle time counts from when the tab was
+  left, not from when it was opened. Before destroying a renderer the main process asks it
+  (`query-tab-evictable`) whether it holds state that exists nowhere else — an unsaved editor
+  buffer (preview, config editor), a dirty Excalidraw scene, an unsent or still-streaming AI
+  message (`ViewModel.hasUnsavedState`); such a tab, one that does not answer within 2 s, and one
+  playing audio stay cached. The same guard now covers over-capacity eviction too, which used to
+  drop unsaved edits silently, and that path no longer evicts one tab too few (active tabs were
+  sorted first and wasted a slot). Both settings are re-read every minute, so
+  `window:maxtabcachesize` no longer needs a restart either. Measured: 4 idle tabs → 1 kept,
+  6 → 3 renderers, 1.6 GB → 0.7 GB. Smoke check: `tab-evict-guard`.
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

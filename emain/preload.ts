@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld("api", {
     onTabVisibilityChange: (callback) =>
         ipcRenderer.on("tab-visibility-change", (_event, visible) => callback(visible)),
     onWindowFocusChange: (callback) => ipcRenderer.on("window-focus-change", (_event, focused) => callback(focused)),
+    onQueryTabEvictable: (callback) =>
+        ipcRenderer.on("query-tab-evictable", (_event, reqId) =>
+            ipcRenderer.send("tab-evictable-reply", reqId, callback())
+        ),
     onZoomFactorChange: (callback) =>
         ipcRenderer.on("zoom-factor-change", (_event, zoomFactor) => callback(zoomFactor)),
     onUpdaterStatusChange: (callback) => ipcRenderer.on("app-update-status", (_event, status) => callback(status)),

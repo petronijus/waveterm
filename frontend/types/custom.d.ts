@@ -104,6 +104,7 @@ declare global {
         onFullScreenChange: (callback: (isFullScreen: boolean) => void) => void; // fullscreen-change
         onTabVisibilityChange: (callback: (visible: boolean) => void) => void; // tab-visibility-change
         onWindowFocusChange: (callback: (focused: boolean) => void) => void; // window-focus-change
+        onQueryTabEvictable: (callback: () => boolean) => void; // query-tab-evictable -> tab-evictable-reply
         onZoomFactorChange: (callback: (zoomFactor: number) => void) => void; // zoom-factor-change
         onUpdaterStatusChange: (callback: (status: UpdaterStatus) => void) => void; // app-update-status
         getUpdaterStatus: () => UpdaterStatus; // get-app-update-status
@@ -366,6 +367,10 @@ declare global {
 
         // Handles keydown events within the block.
         keyDownHandler?: (e: WaveKeyboardEvent) => boolean;
+
+        // True while the block holds state that exists only in this renderer (e.g. an unsaved
+        // edit buffer). The main process never evicts a cached tab that reports it.
+        hasUnsavedState?: () => boolean;
 
         // Cleans up resources when the block is disposed.
         dispose?: () => void;

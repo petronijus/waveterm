@@ -113,6 +113,7 @@ const (
 	ConfigKey_WindowDisableHardwareAcceleration = "window:disablehardwareacceleration"
 	ConfigKey_WindowDisableGraphite          = "window:disablegraphite"
 	ConfigKey_WindowMaxTabCacheSize          = "window:maxtabcachesize"
+	ConfigKey_WindowTabCacheIdleMins         = "window:tabcacheidlemins"
 	ConfigKey_WindowMagnifiedBlockOpacity    = "window:magnifiedblockopacity"
 	ConfigKey_WindowMagnifiedBlockSize       = "window:magnifiedblocksize"
 	ConfigKey_WindowMagnifiedBlockBlurPrimaryPx = "window:magnifiedblockblurprimarypx"

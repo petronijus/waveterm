@@ -194,6 +194,16 @@ export class WaveAIModel {
         WaveAIModel.instance = null;
     }
 
+    // Does not create the instance: a tab that never opened the panel has nothing to lose.
+    static hasUnsavedState(): boolean {
+        const model = WaveAIModel.instance;
+        if (model == null) {
+            return false;
+        }
+        // a streaming reply is fetched by this renderer and dies with it
+        return model.useChatStatus !== "ready" || globalStore.get(model.inputAtom).trim() !== "";
+    }
+
     getUseChatEndpointUrl(): string {
         return `${getWebServerEndpoint()}/api/post-chat-message`;
     }

@@ -914,6 +914,10 @@ export class PreviewModel implements ViewModel {
         return false;
     }
 
+    hasUnsavedState(): boolean {
+        return globalStore.get(this.newFileContent) != null;
+    }
+
     keyDownHandler(e: WaveKeyboardEvent): boolean {
         if (checkKeyPressed(e, "Cmd:ArrowLeft")) {
             fireAndForget(this.goHistoryBack.bind(this));

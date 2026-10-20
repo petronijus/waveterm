@@ -112,6 +112,7 @@ wsh editconfig
 | window:magnifiedblockblurprimarypx   | int      | change the blur in CSS pixels that is applied directly behind a magnified block (see [backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter) for more info on how this gets applied)                                              |
 | window:magnifiedblockblursecondarypx | int      | change the blur in CSS pixels that is applied to the visible portions of non-magnified blocks when a block is magnified (see [backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter) for more info on how this gets applied)      |
 | window:maxtabcachesize               | int      | number of tabs to cache. when tabs are cached, switching between them is very fast. (defaults to 10)                                                                                                                                                          |
+| window:tabcacheidlemins              | int      | minutes a cached background tab may sit unused before it is dropped from the cache to free its memory; it is rebuilt on the next switch. tabs with unsaved edits, an unsent or streaming AI message, or playing audio are kept. 0 disables. (defaults to 60) |
 | window:showmenubar                   | bool     | set to use the OS-native menu bar (Windows and Linux only, requires app restart)                                                                                                                                                                              |
 | window:nativetitlebar                | bool     | set to use the OS-native title bar, rather than the overlay (Windows and Linux only, requires app restart)                                                                                                                                                    |
 | window:disablehardwareacceleration   | bool     | set to disable Chromium hardware acceleration to resolve graphical bugs (requires app restart)                                                                                                                                                                |
@@ -147,6 +148,7 @@ For reference, this is the current default configuration (v0.14.0):
     "web:defaultsearch": "https://www.google.com/search?q={query}",
     "window:tilegapsize": 3,
     "window:maxtabcachesize": 10,
+    "window:tabcacheidlemins": 60,
     "window:nativetitlebar": true,
     "window:magnifiedblockopacity": 0.6,
     "window:magnifiedblocksize": 0.9,

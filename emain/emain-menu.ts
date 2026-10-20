@@ -221,7 +221,7 @@ function makeViewMenu(
         },
         {
             label: "Clear Tab Cache",
-            click: () => clearTabCache(),
+            click: () => fireAndForget(clearTabCache),
         },
         {
             label: "Toggle DevTools",

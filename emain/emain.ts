@@ -39,7 +39,7 @@ import {
     unameArch,
     unamePlatform,
 } from "./emain-platform";
-import { ensureHotSpareTab, setMaxTabCacheSize } from "./emain-tabview";
+import { applyTabCacheSettings, ensureHotSpareTab, startTabCacheIdleEviction } from "./emain-tabview";
 import { initTermActivityNotify } from "./emain-term-notify";
 import { getIsWaveSrvDead, getWaveSrvProc, getWaveSrvReady, runWaveSrv } from "./emain-wavesrv";
 import {
@@ -455,9 +455,8 @@ async function appMain() {
     makeDockTaskbar();
     await configureAutoUpdater();
     setGlobalIsStarting(false);
-    if (fullConfig?.settings?.["window:maxtabcachesize"] != null) {
-        setMaxTabCacheSize(fullConfig.settings["window:maxtabcachesize"]);
-    }
+    applyTabCacheSettings(fullConfig?.settings);
+    startTabCacheIdleEviction();
 
     electronApp.on("activate", () => {
         const allWindows = getAllWaveWindows();

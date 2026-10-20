@@ -311,6 +311,10 @@ export class WaveConfigViewModel implements ViewModel {
         return globalStore.get(this.hasEditedAtom);
     }
 
+    hasUnsavedState(): boolean {
+        return this.hasChanges();
+    }
+
     confirmDiscardChanges(): boolean {
         if (!this.hasChanges()) {
             return true;

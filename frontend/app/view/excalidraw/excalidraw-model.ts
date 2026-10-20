@@ -132,6 +132,10 @@ export class ExcalidrawModel implements ViewModel {
         this.replayPersistedPush().catch((e) => console.error("excalidraw pushscene history read failed:", e));
     }
 
+    hasUnsavedState(): boolean {
+        return globalStore.get(this.isDirtyAtom);
+    }
+
     initSavedStateFromScene(scene: any) {
         const elements = scene?.elements ?? [];
         this.lastSavedVersion = getSceneVersion(elements);

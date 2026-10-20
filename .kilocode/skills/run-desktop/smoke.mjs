@@ -25,6 +25,9 @@
 //                      to the background (guests don't inherit the embedder's throttling)
 //   7. undo-close-tab — a closed tab is restorable from the tab trash (Cmd+Shift+T), back
 //                      at the index it was closed from
+//      tab-evict-guard — dropping cached tabs (Clear Tab Cache, the same path idle and
+//                      over-capacity eviction take) frees a clean background tab but keeps one
+//                      holding an unsaved editor buffer, with the edit intact
 //   8. notify-skip   — command-done is suppressed while the window is focused
 //   9. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
@@ -59,6 +62,7 @@ const SandboxDataDir = path.join(SandboxDir, "data");
 const SandboxConfigDir = path.join(SandboxDir, "config");
 const DevLogPath = path.join(SandboxDataDir, "waveapp.log");
 const DevSettingsPath = path.join(SandboxConfigDir, "settings.json");
+const EvictScratchFile = path.join(SandboxDir, "evict-scratch.txt");
 
 const results = [];
 function report(name, ok, detail) {
@@ -135,6 +139,19 @@ function prepareSettings() {
             null,
             2
         )
+    );
+    // tab-evict-guard opens this file in an editing preview to get an unsaved buffer
+    fs.writeFileSync(EvictScratchFile, "original line\n");
+    fs.writeFileSync(
+        path.join(SandboxConfigDir, "widgets.json"),
+        JSON.stringify({
+            "widget@smokeedit": {
+                "display:order": 99,
+                icon: "pen",
+                label: "smokeedit",
+                blockdef: { meta: { view: "preview", file: EvictScratchFile, edit: true } },
+            },
+        })
     );
 }
 
@@ -972,6 +989,100 @@ try {
                 await closeTabById(tmpId);
                 await until(async () => !(await tabIds()).includes(tmpId));
             }
+        }
+
+        // tab-evict-guard: a dirty tab and a clean tab go to the background, then the cache is
+        // cleared. `page` is made the active tab first — active tabs are never evicted and the
+        // remaining checks still drive it.
+        {
+            const EvictMarker = "SMOKE-UNSAVED-EDIT";
+            const ownTabId = await page.evaluate(() => window.globalStore.get(window.globalAtoms.staticTabId));
+            // finds the renderer currently on screen; each tab is its own page
+            const onScreenPage = async () => {
+                const mark = `evict-${Date.now()}`;
+                await app.evaluate(async ({ BaseWindow }, mark) => {
+                    const win = BaseWindow.getAllWindows().find((w) => w.contentView?.children?.length > 0);
+                    const v = win.contentView.children.find((c) => {
+                        const b = c.getBounds();
+                        return b.x === 0 && b.y === 0 && b.width > 0 && c.webContents;
+                    });
+                    await v.webContents.executeJavaScript(`window.__smokeMark = ${JSON.stringify(mark)}`);
+                }, mark);
+                for (const p of app.windows()) {
+                    if ((await p.evaluate(() => window.__smokeMark).catch(() => null)) === mark) {
+                        return p;
+                    }
+                }
+                return null;
+            };
+            const editorText = (p) =>
+                p.evaluate(() => document.querySelector(".monaco-editor .view-lines")?.textContent ?? "");
+
+            const beforeIds = await tabIds();
+            await page.evaluate(() => window.api.createTab());
+            await until(async () => (await tabIds()).length > beforeIds.length);
+            const dirtyId = (await tabIds()).find((id) => !beforeIds.includes(id));
+            await sleep(1500);
+            const dirtyPage = await onScreenPage();
+            let typed = "";
+            if (dirtyPage != null && (await clickWidget(dirtyPage, "smokeedit")) === "OK") {
+                await sleep(4000);
+                await dirtyPage.click(".monaco-editor .view-lines", { timeout: 10_000 }).catch(() => {});
+                await sleep(300);
+                await dirtyPage.keyboard.type(EvictMarker, { delay: 20 });
+                await sleep(800);
+                typed = await editorText(dirtyPage);
+            }
+            const midIds = await tabIds();
+            await page.evaluate(() => window.api.createTab());
+            await until(async () => (await tabIds()).length > midIds.length);
+            const cleanId = (await tabIds()).find((id) => !midIds.includes(id));
+            await sleep(1500);
+            await page.evaluate((id) => window.api.setActiveTab(id), ownTabId);
+            await sleep(1500);
+
+            markLog();
+            const clicked = await app.evaluate(({ Menu }) => {
+                const find = (menu) => {
+                    for (const item of menu?.items ?? []) {
+                        if (item.label === "Clear Tab Cache") {
+                            return item;
+                        }
+                        const sub = find(item.submenu);
+                        if (sub) {
+                            return sub;
+                        }
+                    }
+                    return null;
+                };
+                const item = find(Menu.getApplicationMenu());
+                item?.click();
+                return item != null;
+            });
+            const evictedClean = clicked && (await waitForLog(new RegExp(`evicting cached tab ${cleanId} clear`), 10_000));
+            const keptDirty = clicked && (await waitForLog(new RegExp(`keeping cached tab .*${dirtyId} clear`), 10_000));
+            await page.evaluate((id) => window.api.setActiveTab(id), dirtyId);
+            await sleep(1500);
+            const backPage = await onScreenPage();
+            const survived = backPage != null ? await editorText(backPage) : "";
+            const ok =
+                typed.includes(EvictMarker) && evictedClean != null && keptDirty != null && survived.includes(EvictMarker);
+            report(
+                "tab-evict-guard",
+                ok,
+                ok
+                    ? `clean tab ${cleanId.slice(0, 8)} evicted, dirty tab ${dirtyId.slice(0, 8)} kept with its edit`
+                    : `typed=${typed.includes(EvictMarker)} menu=${clicked} cleanEvicted=${evictedClean != null} dirtyKept=${keptDirty != null} editSurvived=${survived.includes(EvictMarker)}`
+            );
+            await page.evaluate((id) => window.api.setActiveTab(id), ownTabId);
+            await sleep(1000);
+            for (const id of [dirtyId, cleanId]) {
+                if (id != null) {
+                    await closeTabById(id);
+                    await until(async () => !(await tabIds()).includes(id));
+                }
+            }
+
         }
     }
 
