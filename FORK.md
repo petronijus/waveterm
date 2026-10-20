@@ -205,6 +205,13 @@ git checkout feat/<task> && git rebase main
   sorted first and wasted a slot). Both settings are re-read every minute, so
   `window:maxtabcachesize` no longer needs a restart either. Measured: 4 idle tabs → 1 kept,
   6 → 3 renderers, 1.6 GB → 0.7 GB. Smoke check: `tab-evict-guard`.
+  While a tab is still cached, its terminals stop holding GPU memory: each WebGL context keeps
+  its glyph atlas and framebuffers resident in the GPU process although a hidden tab draws
+  nothing, so after 60 s in the background a terminal falls back to the DOM renderer and gets
+  WebGL back when the tab is shown (160 ms for four terminals). The grace period rides out quick
+  back-and-forth switches; a terminal the user switched to DOM by hand stays on DOM. Measured
+  with four terminals in a background tab: GPU process 534 → 249 MB. Smoke check:
+  `webgl-hidden-release`.
 - **Git view** — a first-class Git block: branch switcher, file change list, inline diff,
   double-click a file for the full file with `+`/`-` markers, and an "Open Git Here" context-menu
   entry. Backed by `RemoteGit*` RPC over `wshremote`, so it works locally and over remote SSH

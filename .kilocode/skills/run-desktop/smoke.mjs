@@ -28,6 +28,8 @@
 //      tab-evict-guard — dropping cached tabs (Clear Tab Cache, the same path idle and
 //                      over-capacity eviction take) frees a clean background tab but keeps one
 //                      holding an unsaved editor buffer, with the edit intact
+//      webgl-hidden-release — a background tab's terminals drop to the DOM renderer after
+//                      the 60 s grace period (freeing their GPU memory) and get WebGL back on show
 //   8. notify-skip   — command-done is suppressed while the window is focused
 //   9. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
@@ -1083,6 +1085,44 @@ try {
                 }
             }
 
+            // webgl-hidden-release: a terminal in a background tab gives up its WebGL context
+            // after the 60 s grace period and gets it back the moment its tab is shown.
+            const glIds = await tabIds();
+            await page.evaluate(() => window.api.createTab());
+            await until(async () => (await tabIds()).length > glIds.length);
+            const glTabId = (await tabIds()).find((id) => !glIds.includes(id));
+            await sleep(2500);
+            const glPage = await onScreenPage();
+            const glRenderers = () =>
+                glPage
+                    .evaluate(() =>
+                        [...(window.__termwraps?.values() ?? [])].map((w) => w.getTermRenderer()).join(",")
+                    )
+                    .catch(() => "");
+            const shownRenderers = glPage != null ? await glRenderers() : "";
+            await page.evaluate((id) => window.api.setActiveTab(id), ownTabId);
+            let hiddenRenderers = "";
+            const released = await until(async () => {
+                hiddenRenderers = await glRenderers();
+                return /^(dom,?)+$/.test(hiddenRenderers);
+            }, 120_000);
+            await page.evaluate((id) => window.api.setActiveTab(id), glTabId);
+            let reshownRenderers = "";
+            const restored = await until(async () => {
+                reshownRenderers = await glRenderers();
+                return /^(webgl,?)+$/.test(reshownRenderers);
+            }, 5_000);
+            report(
+                "webgl-hidden-release",
+                /^(webgl,?)+$/.test(shownRenderers) && released && restored,
+                `shown=${shownRenderers} hidden=${hiddenRenderers} reshown=${reshownRenderers}`
+            );
+            await page.evaluate((id) => window.api.setActiveTab(id), ownTabId);
+            await sleep(1000);
+            if (glTabId != null) {
+                await closeTabById(glTabId);
+                await until(async () => !(await tabIds()).includes(glTabId));
+            }
         }
     }
 

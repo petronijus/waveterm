@@ -7,6 +7,7 @@ import { getFileSubject } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
+    atoms,
     fetchWaveFile,
     getApi,
     getBlockMetaKeyAtom,
@@ -79,6 +80,12 @@ const MaxRepaintTransactionMs = 2000;
 const TermWriteFlushIntervalMs = 33;
 const TermWriteFlushMaxBytes = 256 * 1024;
 
+// A hidden tab's WebGL contexts keep their glyph atlases and framebuffers resident in the GPU
+// process although nothing is drawn (measured ~16 MB per terminal). After a grace period that
+// rides out quick back-and-forth tab switches, a hidden terminal falls back to the DOM renderer
+// and gets WebGL back when its tab is shown again.
+const WebGLHiddenReleaseDelayMs = 60 * 1000;
+
 // detect webgl support
 function detectWebGLSupport(): boolean {
     try {
@@ -135,6 +142,9 @@ export class TermWrap {
     toDispose: TermTypes.IDisposable[] = [];
     webglAddon: WebglAddon | null = null;
     webglContextLossDisposable: TermTypes.IDisposable | null = null;
+    webglHiddenReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+    // set only when hiding released WebGL, so a user's manual switch to DOM is never undone
+    webglReleasedForHidden: boolean = false;
     webglEnabledAtom: jotai.PrimitiveAtom<boolean>;
     pendingInput: string[] = [];
     pendingInputTimer: NodeJS.Timeout = null;
@@ -594,7 +604,36 @@ export class TermWrap {
             }
         };
         document.addEventListener("visibilitychange", this._visibilityChangeHandler);
+        const unsubTabVisible = globalStore.sub(atoms.tabVisibleAtom, () => this.handleTabVisibilityChange());
+        this.toDispose.push({ dispose: unsubTabVisible });
+        // a terminal can be created inside a tab that is already in the background
+        this.handleTabVisibilityChange();
         this.runProcessIdleTimeout();
+    }
+
+    handleTabVisibilityChange() {
+        if (globalStore.get(atoms.tabVisibleAtom)) {
+            if (this.webglHiddenReleaseTimer != null) {
+                clearTimeout(this.webglHiddenReleaseTimer);
+                this.webglHiddenReleaseTimer = null;
+            }
+            if (this.webglReleasedForHidden) {
+                this.webglReleasedForHidden = false;
+                this.setTermRenderer("webgl");
+            }
+            return;
+        }
+        if (this.webglAddon == null || this.webglHiddenReleaseTimer != null) {
+            return;
+        }
+        this.webglHiddenReleaseTimer = setTimeout(() => {
+            this.webglHiddenReleaseTimer = null;
+            if (globalStore.get(atoms.tabVisibleAtom) || this.webglAddon == null) {
+                return;
+            }
+            this.setTermRenderer("dom");
+            this.webglReleasedForHidden = true;
+        }, WebGLHiddenReleaseDelayMs);
     }
 
     refreshAfterVisibilityChange() {
@@ -636,6 +675,10 @@ export class TermWrap {
         if (this.pendingInputTimer != null) {
             clearTimeout(this.pendingInputTimer);
             this.pendingInputTimer = null;
+        }
+        if (this.webglHiddenReleaseTimer != null) {
+            clearTimeout(this.webglHiddenReleaseTimer);
+            this.webglHiddenReleaseTimer = null;
         }
         this.pendingInput = [];
         this.pendingWriteChunks = [];

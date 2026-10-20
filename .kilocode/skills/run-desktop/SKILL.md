@@ -90,8 +90,9 @@ join (a URL printed with real newlines at the terminal width must copy as one
 line — driven via the dev-only `window.__termwraps` registry), background-tab CPU
 throttling, webview-guest throttling (rAF stops in a backgrounded tab's webview)
 plus guest resume after re-show, the tab-cache eviction guard (a clean background
-tab is evicted, one with an unsaved editor buffer is kept with its edit), and the
-main-process command-done notification
+tab is evicted, one with an unsaved editor buffer is kept with its edit), the WebGL
+release of hidden terminals (DOM after the 60 s grace period, WebGL again on show —
+this check alone waits up to ~90 s), and the main-process command-done notification
 gate (SKIP when the window is focused, QUEUED→fire when the app is hidden). It
 exits non-zero on any failure:
 
