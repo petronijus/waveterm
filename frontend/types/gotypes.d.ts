@@ -488,6 +488,26 @@ declare global {
         onlybranch?: boolean;
     };
 
+    // wshrpc.CommandGitOverviewBlockData
+    type CommandGitOverviewBlockData = {
+        blockid: string;
+    };
+
+    // wshrpc.CommandGitOverviewStartData
+    type CommandGitOverviewStartData = {
+        blockid: string;
+        roots: string[];
+        maxdepth?: number;
+        ignore?: string[];
+        fetchminutes?: number;
+    };
+
+    // wshrpc.CommandGitOverviewSyncData
+    type CommandGitOverviewSyncData = {
+        blockid: string;
+        targets: GitOverviewSyncTarget[];
+    };
+
     // wshrpc.CommandGitPathData
     type CommandGitPathData = {
         path: string;
@@ -1255,6 +1275,40 @@ declare global {
         hasmore?: boolean;
     };
 
+    // wshrpc.GitOverviewData
+    type GitOverviewData = {
+        repos: GitOverviewRepo[];
+        watching: string;
+        lastfetch?: number;
+        nextfetch?: number;
+        fetching?: boolean;
+        scanerr?: string;
+    };
+
+    // wshrpc.GitOverviewRepo
+    type GitOverviewRepo = {
+        path: string;
+        rel: string;
+        branch?: string;
+        upstream?: string;
+        ahead?: number;
+        behind?: number;
+        changed?: number;
+        state: string;
+        action?: string;
+        reason?: string;
+        busy?: string;
+        err?: string;
+        fetcherr?: string;
+        activity?: number;
+    };
+
+    // wshrpc.GitOverviewSyncTarget
+    type GitOverviewSyncTarget = {
+        path: string;
+        action: string;
+    };
+
     // wshrpc.GitRepoInfo
     type GitRepoInfo = {
         isrepo: boolean;
@@ -1407,6 +1461,11 @@ declare global {
         "aifilediff:chatid"?: string;
         "aifilediff:toolcallid"?: string;
         "git:root"?: string;
+        "gitoverview:*"?: boolean;
+        "gitoverview:roots"?: string[];
+        "gitoverview:maxdepth"?: number;
+        "gitoverview:ignore"?: string[];
+        "gitoverview:fetchminutes"?: number;
         "editor:*"?: boolean;
         "editor:minimapenabled"?: boolean;
         "editor:stickyscrollenabled"?: boolean;

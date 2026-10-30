@@ -48,6 +48,9 @@ export function blockViewToIcon(view: string): string {
     if (view == "git") {
         return "code-branch";
     }
+    if (view == "gitoverview") {
+        return "code-compare";
+    }
     if (view == "excalidraw") {
         return "pen-ruler";
     }
@@ -81,6 +84,9 @@ export function blockViewToName(view: string): string {
     }
     if (view == "git") {
         return "Git";
+    }
+    if (view == "gitoverview") {
+        return "Repos";
     }
     if (view == "excalidraw") {
         return "Excalidraw";

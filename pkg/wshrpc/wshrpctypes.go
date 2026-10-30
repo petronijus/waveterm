@@ -143,6 +143,7 @@ type WshRpcInterface interface {
 	// remotes
 	WshRpcRemoteFileInterface
 	WshRpcRemoteGitInterface
+	WshRpcGitOverviewInterface
 	RemoteStreamCpuDataCommand(ctx context.Context) chan RespOrErrorUnion[TimeSeriesData]
 	RemoteGetInfoCommand(ctx context.Context) (RemoteInfo, error)
 	RemoteInstallRcFilesCommand(ctx context.Context) error

@@ -43,6 +43,7 @@ var WaveEventDataTypes = map[string]reflect.Type{
 	wps.Event_Badge:               reflect.TypeOf(baseds.BadgeEvent{}),
 	wps.Event_TermActivity:        reflect.TypeOf(baseds.TermActivityData{}),
 	wps.Event_ExcalidrawPushScene: reflect.TypeOf(wshrpc.CommandExcalidrawPushData{}),
+	wps.Event_GitOverview:         reflect.TypeOf(wshrpc.GitOverviewData{}),
 }
 
 func getWaveEventDataTSType(eventName string, tsTypesMap map[reflect.Type]string) string {

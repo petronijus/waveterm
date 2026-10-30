@@ -5,6 +5,7 @@ import { BlockNodeModel } from "@/app/block/blocktypes";
 import type { TabModel } from "@/app/store/tab-model";
 import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { GitViewModel } from "@/app/view/git/git-model";
+import { GitOverviewViewModel } from "@/app/view/gitoverview/gitoverview-model";
 import { LauncherViewModel } from "@/app/view/launcher/launcher";
 import { PreviewModel } from "@/app/view/preview/preview-model";
 import { ExcalidrawModel } from "@/app/view/excalidraw/excalidraw-model";
@@ -40,6 +41,7 @@ BlockRegistry.set("waveconfig", WaveConfigViewModel);
 BlockRegistry.set("themeeditor", ThemeEditorViewModel);
 BlockRegistry.set("processviewer", ProcessViewerViewModel);
 BlockRegistry.set("git", GitViewModel);
+BlockRegistry.set("gitoverview", GitOverviewViewModel);
 BlockRegistry.set("excalidraw", ExcalidrawModel);
 
 function makeDefaultViewModel(viewType: string): ViewModel {

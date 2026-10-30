@@ -81,6 +81,12 @@ type MetaTSType struct {
 
 	GitRoot string `json:"git:root,omitempty"`
 
+	GitOverviewClear        bool     `json:"gitoverview:*,omitempty"`
+	GitOverviewRoots        []string `json:"gitoverview:roots,omitempty"`        // directories scanned for repos
+	GitOverviewMaxDepth     int      `json:"gitoverview:maxdepth,omitempty"`     // how deep below a root (default 4)
+	GitOverviewIgnore       []string `json:"gitoverview:ignore,omitempty"`       // repo paths to hide, relative to their root
+	GitOverviewFetchMinutes int      `json:"gitoverview:fetchminutes,omitempty"` // background fetch interval (default 15)
+
 	EditorClear               bool    `json:"editor:*,omitempty"`
 	EditorMinimapEnabled      bool    `json:"editor:minimapenabled,omitempty"`
 	EditorStickyScrollEnabled bool    `json:"editor:stickyscrollenabled,omitempty"`

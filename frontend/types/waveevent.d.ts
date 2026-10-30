@@ -28,6 +28,7 @@ declare global {
         | "badge"
         | "block:termactivity"
         | "excalidraw:pushscene"
+        | "gitoverview"
     ;
 
     type WaveEvent = {
@@ -57,7 +58,8 @@ declare global {
         { event: "block:jobstatus"; data?: BlockJobStatusData; } | 
         { event: "badge"; data?: BadgeEvent; } | 
         { event: "block:termactivity"; data?: TermActivityData; } | 
-        { event: "excalidraw:pushscene"; data?: CommandExcalidrawPushData; }
+        { event: "excalidraw:pushscene"; data?: CommandExcalidrawPushData; } | 
+        { event: "gitoverview"; data?: GitOverviewData; }
     );
 
 }

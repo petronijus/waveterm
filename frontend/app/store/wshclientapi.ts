@@ -540,6 +540,24 @@ export class RpcApiType {
         return client.wshRpcCall("getwaveairatelimit", null, opts);
     }
 
+    // command "gitoverviewrefresh" [call]
+    GitOverviewRefreshCommand(client: WshClient, data: CommandGitOverviewBlockData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "gitoverviewrefresh", data, opts);
+        return client.wshRpcCall("gitoverviewrefresh", data, opts);
+    }
+
+    // command "gitoverviewstart" [call]
+    GitOverviewStartCommand(client: WshClient, data: CommandGitOverviewStartData, opts?: RpcOpts): Promise<GitOverviewData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "gitoverviewstart", data, opts);
+        return client.wshRpcCall("gitoverviewstart", data, opts);
+    }
+
+    // command "gitoverviewsync" [call]
+    GitOverviewSyncCommand(client: WshClient, data: CommandGitOverviewSyncData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "gitoverviewsync", data, opts);
+        return client.wshRpcCall("gitoverviewsync", data, opts);
+    }
+
     // command "jobcmdexited" [call]
     JobCmdExitedCommand(client: WshClient, data: CommandJobCmdExitedData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "jobcmdexited", data, opts);

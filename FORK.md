@@ -237,6 +237,17 @@ git checkout feat/<task> && git rebase main
   sleep/wake or a ws reconnect, and a toolbar ⚠ shows when refresh is failing instead of silently
   serving stale data. The History list has an All | Branch switch — "Branch" shows only commits
   unique to the current branch (what it adds on top of wherever it was cut from).
+- **Repos (git overview)** — a block listing every local repo under chosen folders that is out of
+  sync (behind, ahead, diverged, uncommitted changes, no upstream), most urgent first; click a row
+  to open it in the Git view. **Pull** fast-forwards a clean branch that is only behind and refuses
+  to overwrite gitignored files; **Push** sends exactly one explicit, non-forced refspec to the
+  measured upstream; each acts only if the fresh status still calls for the action the row showed,
+  and Sync all confirms before pushing. The engine (`pkg/gitoverview`) runs in `wavesrv`, one per
+  block, only while the block exists: FSEvents (macOS) / inotify (Linux) report changes, `git
+status` runs only for the repo that changed, debounced, at background priority, with no optional
+  locks, no prompts, no auto-maintenance; changes in gitignored directories are dropped after one
+  `check-ignore`. Measured on ~50 repos: first scan ~1.7 s, idle ~0.2 s of git CPU per minute.
+  Design and cost: `pkg/gitoverview/README.md`.
 - **Config sync** — a per-install last-writer-wins merge engine (`wsync`) with tombstones that
   converges settings across machines. Transports: WebDAV (mtime-stamped change detection) or a
   credential-free local-folder mode (Nextcloud / Drive desktop client). Background scheduler wired

@@ -36,6 +36,7 @@ const (
 	Event_Badge               = "badge"                // type: baseds.BadgeEvent
 	Event_TermActivity        = "block:termactivity"   // type: baseds.TermActivityData
 	Event_ExcalidrawPushScene = "excalidraw:pushscene" // type: any
+	Event_GitOverview         = "gitoverview"          // type: wshrpc.GitOverviewData
 )
 
 var AllEvents []string = []string{
@@ -60,6 +61,7 @@ var AllEvents []string = []string{
 	Event_Badge,
 	Event_TermActivity,
 	Event_ExcalidrawPushScene,
+	Event_GitOverview,
 }
 
 type WaveEvent struct {

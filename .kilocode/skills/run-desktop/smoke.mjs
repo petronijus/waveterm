@@ -33,6 +33,8 @@
 //   8. notify-skip   — command-done is suppressed while the window is focused
 //   9. notify-fire   — command-done queues and fires once the app is hidden (app.hide,
 //                      no OS-focus races; macOS only)
+//  10. gitoverview   — the Repos block lists a clone that is behind its remote with a Pull
+//                      button, and Pull fast-forwards it (wavesrv engine, FSEvents/inotify)
 //
 // Notes:
 //   - Runs in a throwaway sandbox (WAVETERM_DATA_HOME/WAVETERM_CONFIG_HOME under a
@@ -65,6 +67,8 @@ const SandboxConfigDir = path.join(SandboxDir, "config");
 const DevLogPath = path.join(SandboxDataDir, "waveapp.log");
 const DevSettingsPath = path.join(SandboxConfigDir, "settings.json");
 const EvictScratchFile = path.join(SandboxDir, "evict-scratch.txt");
+const RepoWorld = path.join(SandboxDir, "repos");
+const RepoRoot = path.join(RepoWorld, "dev");
 
 const results = [];
 function report(name, ok, detail) {
@@ -153,8 +157,39 @@ function prepareSettings() {
                 label: "smokeedit",
                 blockdef: { meta: { view: "preview", file: EvictScratchFile, edit: true } },
             },
+            "widget@smokerepos": {
+                "display:order": 100,
+                icon: "code-compare",
+                label: "smokerepos",
+                blockdef: { meta: { view: "gitoverview", "gitoverview:roots": [RepoRoot] } },
+            },
         })
     );
+}
+
+// prepareRepos makes a bare remote and a clone under RepoRoot that is one commit
+// behind it, for the gitoverview check. Its own git config keeps the developer's out.
+function prepareRepos() {
+    fs.mkdirSync(RepoRoot, { recursive: true });
+    const gitConfig = path.join(RepoWorld, "gitconfig");
+    fs.writeFileSync(
+        gitConfig,
+        "[user]\n\tname = Smoke\n\temail = smoke@example.invalid\n[init]\n\tdefaultBranch = main\n"
+    );
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (cwd, args) => execSync(`git ${args}`, { cwd, env, stdio: "pipe" });
+    git(RepoWorld, "init -q --bare remote.git");
+    git(RepoWorld, "clone -q remote.git seed");
+    const seed = path.join(RepoWorld, "seed");
+    fs.writeFileSync(path.join(seed, "README"), "seed\n");
+    git(seed, "add README");
+    git(seed, "commit -q -m seed");
+    git(seed, "push -q origin main");
+    git(RepoWorld, `clone -q remote.git ${JSON.stringify(path.join(RepoRoot, "lagging"))}`);
+    fs.writeFileSync(path.join(seed, "next.txt"), "next\n");
+    git(seed, "add next.txt");
+    git(seed, "commit -q -m next");
+    git(seed, "push -q origin main");
 }
 
 // --- page helpers
@@ -200,6 +235,7 @@ if (!fs.existsSync(path.join(APP_DIR, "dist/frontend/index.html"))) {
     process.exit(1);
 }
 prepareSettings();
+prepareRepos();
 markLog();
 
 // The webview-throttle check needs a page running a rAF loop. A data: URL gets
@@ -1176,6 +1212,51 @@ try {
         );
     } else {
         report("notify-fire", null, "macOS-only (app.hide)");
+    }
+
+    // 10. gitoverview: the Repos block shows the lagging clone with Pull (after its
+    // first fetch), and Pull fast-forwards it to the remote.
+    {
+        if (IsMac) {
+            await app.evaluate(({ app: eApp }) => eApp.show());
+        }
+        const repoRowText = () =>
+            page.evaluate(() => {
+                const view = [...document.querySelectorAll(".block-content")].find((el) =>
+                    (el.textContent || "").includes("need attention")
+                );
+                return view ? view.textContent : "";
+            });
+        const opened = await clickWidget(page, "smokerepos");
+        let text = "";
+        for (let i = 0; i < 40 && !/lagging.*↓1.*Pull/.test(text); i++) {
+            await sleep(250);
+            text = await repoRowText();
+        }
+        const listed = /lagging.*↓1.*Pull/.test(text);
+        let pulled = false;
+        if (listed) {
+            await page.evaluate(() => {
+                const btn = [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Pull");
+                btn?.click();
+            });
+            for (let i = 0; i < 40 && !pulled; i++) {
+                await sleep(250);
+                text = await repoRowText();
+                pulled = /0 need attention · 1 in sync/.test(text);
+            }
+        }
+        let detail;
+        if (opened !== "OK") {
+            detail = "smokerepos widget not found";
+        } else if (!listed) {
+            detail = `no behind row with Pull within 10s: ${text.slice(0, 160)}`;
+        } else if (!pulled) {
+            detail = `Pull did not bring it in sync: ${text.slice(0, 160)}`;
+        } else {
+            detail = "listed behind with Pull, Pull fast-forwarded it";
+        }
+        report("gitoverview", listed && pulled, detail);
     }
 } catch (e) {
     failedHard = true;

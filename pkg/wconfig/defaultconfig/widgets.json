@@ -60,5 +60,16 @@
                 "view": "git"
             }
         }
+    },
+    "defwidget@gitoverview": {
+        "display:order": 0,
+        "icon": "code-compare",
+        "label": "repos",
+        "description": "Which local git repos are out of sync",
+        "blockdef": {
+            "meta": {
+                "view": "gitoverview"
+            }
+        }
     }
 }

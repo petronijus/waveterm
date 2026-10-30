@@ -79,6 +79,12 @@ const (
 
 	MetaKey_GitRoot                          = "git:root"
 
+	MetaKey_GitOverviewClear                 = "gitoverview:*"
+	MetaKey_GitOverviewRoots                 = "gitoverview:roots"
+	MetaKey_GitOverviewMaxDepth              = "gitoverview:maxdepth"
+	MetaKey_GitOverviewIgnore                = "gitoverview:ignore"
+	MetaKey_GitOverviewFetchMinutes          = "gitoverview:fetchminutes"
+
 	MetaKey_EditorClear                      = "editor:*"
 	MetaKey_EditorMinimapEnabled             = "editor:minimapenabled"
 	MetaKey_EditorStickyScrollEnabled        = "editor:stickyscrollenabled"
