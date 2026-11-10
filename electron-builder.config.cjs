@@ -126,6 +126,13 @@ const config = {
         // this should remove /usr/lib/.build-id/ links which can conflict with other electron apps like slack
         fpm: ["--rpm-rpmbuild-define", "_build_id_links none"],
     },
+    // pj fork: electron-builder's default pacman depends list names http-parser and
+    // libappindicator-gtk3, which Arch no longer ships, so the package would not install
+    // without --assume-installed. Electron bundles its own HTTP parser and does the tray over
+    // D-Bus (SNI); this is what it actually loads.
+    pacman: {
+        depends: ["alsa-lib", "gtk3", "libnotify", "libsecret", "libxss", "mesa", "nss", "xdg-utils"],
+    },
     // pj fork: point auto-update at THIS fork's own GitHub releases, never the official
     // Wave server (dl.waveterm.dev). The official feed would hand the fork a stock-Wave
     // build and silently overwrite the fork's frontend (lost sync button / activity
